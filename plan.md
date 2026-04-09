@@ -136,7 +136,6 @@ Suggested file layout:
 - `pkg/badgerbox/retry.go`
 - `pkg/kafkaoutbox/types.go`
 - `pkg/kafkaoutbox/process_func.go`
-- `cmd/example-worker/main.go`
 
 ## Documentation and test plan
 Create a `README.md` that includes:
@@ -150,13 +149,6 @@ Create a `README.md` that includes:
 - a note that handlers must be idempotent
 - a note that Badger value-log GC remains an operational responsibility of the caller
 - a note that Kafka integration tests require Docker and `go test -tags=integration ./...`
-
-Create `cmd/example-worker/main.go` that:
-- opens a Badger DB path
-- builds a Franz-go client from broker addresses supplied via flags or env
-- constructs `badgerbox.Store[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]`
-- runs the processor with `kafkaoutbox.NewProcessFunc`
-- documents that it must have exclusive ownership of the DB directory
 
 Test plan:
 - use real Badger instances in temporary directories for unit and integration tests

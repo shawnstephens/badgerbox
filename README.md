@@ -214,19 +214,6 @@ func main() {
 }
 ```
 
-## Example worker binary
-
-Run the included worker only when it has exclusive ownership of the Badger directory:
-
-```bash
-go run ./cmd/example-worker \
-  -db-path ./data \
-  -brokers localhost:9092 \
-  -namespace kafka
-```
-
-`-brokers` can also be supplied through `KAFKA_BROKERS`.
-
 ## Testing
 
 Run the unit suite:
