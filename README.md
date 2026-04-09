@@ -1,5 +1,7 @@
 # badgerbox
 
+![badgerbox](image.png)
+
 `badgerbox` is a durable outbox library for Go applications that already use [Badger](https://github.com/dgraph-io/badger). It stores typed payloads and typed destinations under `./pkg/badgerbox`, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
 
 The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on [Franz-go](https://github.com/twmb/franz-go).
@@ -10,6 +12,34 @@ The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on 
 - The processor uses leases. If a worker dies or exceeds its lease, the message is requeued and may be delivered again.
 - Badger allows only one live process to own a DB path. The example worker binary is for exclusive DB ownership only; it is not a multi-process shared-worker deployment model.
 - Badger value log GC is still an operational responsibility of the embedding application.
+
+## Outbox key flow
+
+The store keeps one canonical message record plus time-ordered index keys that move as the message advances through the outbox lifecycle:
+
+```mermaid
+flowchart TD
+    enqueued["Enqueued<br/>msg/&lt;id&gt;<br/>ready/&lt;availableAt&gt;/&lt;id&gt;"]
+    processing["Processing<br/>msg/&lt;id&gt;<br/>processing/&lt;leaseUntil&gt;/&lt;id&gt;"]
+    deleted["Deleted<br/>delete msg + processing"]
+    retrying["Retrying<br/>msg/&lt;id&gt;<br/>ready/&lt;nextAvailableAt&gt;/&lt;id&gt;"]
+    deadlettered["Dead-lettered<br/>dlq/&lt;failedAt&gt;/&lt;id&gt;"]
+
+    enqueued -->|"claimReadyBatch"| processing
+    processing -->|"acknowledge"| deleted
+    processing -->|"failProcessing\nretryable error"| retrying
+    retrying -->|"claimReadyBatch"| processing
+    processing -->|"failProcessing\npermanent or max attempts"| deadlettered
+    deadlettered -->|"RequeueDeadLetter"| enqueued
+```
+
+Prefix roles:
+
+- `ob/<namespace>/msg/` stores the durable source-of-truth record.
+- `ob/<namespace>/ready/` is the pending-work index scanned by the dispatcher in available-at order.
+- `ob/<namespace>/processing/` is the in-flight lease index scanned by the reaper in lease-expiry order.
+- `ob/<namespace>/dlq/` stores dead-letter records for failed messages.
+- `ob/<namespace>/seq/message-id` is the Badger sequence key used to allocate message IDs.
 
 ## Install
 
