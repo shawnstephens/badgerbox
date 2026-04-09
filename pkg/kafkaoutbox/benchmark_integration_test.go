@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"badgerbox/pkg/badgerbox"
-	"badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 

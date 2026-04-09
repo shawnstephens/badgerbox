@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sort"
 
-	"badgerbox/pkg/badgerbox"
+	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
