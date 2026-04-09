@@ -1,4 +1,4 @@
-module badgerbox
+module github.com/shawnstephens/badgerbox
 
 go 1.26
 

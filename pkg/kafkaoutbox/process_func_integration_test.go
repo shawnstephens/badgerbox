@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"badgerbox/pkg/badgerbox"
-	"badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/testcontainers/testcontainers-go"

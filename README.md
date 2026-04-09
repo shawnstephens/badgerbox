@@ -13,6 +13,40 @@ The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on 
 - Badger allows only one live process to own a DB path. The example worker binary is for exclusive DB ownership only; it is not a multi-process shared-worker deployment model.
 - Badger value log GC is still an operational responsibility of the embedding application.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    app["Go application"]
+    producer["Store.Enqueue / EnqueueTx"]
+    processor["Processor<br/>(dispatcher + workers + reaper)"]
+    handler["ProcessFunc"]
+    kafka["kafkaoutbox.NewProcessFunc"]
+
+    subgraph badger["Badger DB"]
+        msg["msg/<id><br/>canonical record"]
+        ready["ready/<availableAt>/<id><br/>pending index"]
+        processing["processing/<leaseUntil>/<id><br/>lease index"]
+        dlq["dlq/<failedAt>/<id><br/>dead-letter record"]
+        seq["seq/message-id<br/>ID allocator"]
+    end
+
+    app --> producer
+    app --> processor
+    producer --> seq
+    producer --> msg
+    producer --> ready
+
+    processor --> ready
+    processor --> msg
+    processor --> processing
+    processor --> dlq
+
+    processor --> handler
+    handler --> kafka
+    kafka --> broker["Kafka broker"]
+```
+
 ## Outbox key flow
 
 The store keeps one canonical message record plus time-ordered index keys that move as the message advances through the outbox lifecycle:
@@ -44,8 +78,7 @@ Prefix roles:
 ## Install
 
 ```bash
-go get github.com/dgraph-io/badger/v4
-go get github.com/twmb/franz-go/pkg/kgo
+go get github.com/shawnstephens/badgerbox
 ```
 
 ## Generic producer example
@@ -57,7 +90,7 @@ import (
 	"context"
 	"log"
 
-	"badgerbox/pkg/badgerbox"
+	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/dgraph-io/badger/v4"
 )
 
@@ -157,8 +190,8 @@ import (
 	"context"
 	"log"
 
-	"badgerbox/pkg/badgerbox"
-	"badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
