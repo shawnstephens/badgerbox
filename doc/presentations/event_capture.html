@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Event Capture and Cloud Considerations</title>
+    <style>
+      :root {
+        --bg-top: #09111f;
+        --bg-bottom: #03060c;
+        --panel: rgba(6, 13, 27, 0.86);
+        --panel-border: rgba(128, 219, 214, 0.2);
+        --text: #f4f2eb;
+        --muted: #bfd3d0;
+        --accent: #80dbd6;
+        --accent-strong: #ff9f68;
+        --accent-soft: rgba(128, 219, 214, 0.16);
+        --shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(255, 159, 104, 0.18), transparent 28%),
+          radial-gradient(circle at right 10% top 20%, rgba(128, 219, 214, 0.16), transparent 24%),
+          linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+        overflow: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 40px 40px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent 95%);
+        pointer-events: none;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      .slide {
+        position: absolute;
+        inset: 0;
+        display: none;
+        padding: 2.5rem;
+      }
+
+      .slide.is-active {
+        display: flex;
+      }
+
+      .slide-shell {
+        position: relative;
+        width: min(1200px, 100%);
+        min-height: min(720px, calc(100vh - 5rem));
+        margin: auto;
+        padding: 3rem 3.25rem 2.75rem;
+        border-radius: 32px;
+        background:
+          linear-gradient(150deg, rgba(10, 18, 34, 0.95), rgba(4, 10, 24, 0.9)),
+          var(--panel);
+        border: 1px solid var(--panel-border);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .slide-shell::after {
+        content: "";
+        position: absolute;
+        width: 340px;
+        height: 340px;
+        right: -110px;
+        bottom: -150px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(128, 219, 214, 0.16), transparent 65%);
+        pointer-events: none;
+      }
+
+      .hero {
+        display: grid;
+        align-content: center;
+        gap: 1.5rem;
+      }
+
+      .eyebrow,
+      .section-number {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        width: fit-content;
+        padding: 0.45rem 0.8rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 0.82rem;
+      }
+
+      h1,
+      h2,
+      h3,
+      p,
+      li {
+        position: relative;
+        z-index: 1;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 12ch;
+        font-size: clamp(3.2rem, 6vw, 5.8rem);
+        line-height: 0.96;
+        letter-spacing: -0.04em;
+      }
+
+      h2 {
+        margin: 0.65rem 0 1.4rem;
+        max-width: 16ch;
+        font-size: clamp(2.4rem, 4vw, 4rem);
+        line-height: 1;
+        letter-spacing: -0.04em;
+      }
+
+      h3 {
+        margin: 0 0 0.75rem;
+        font-size: 1.15rem;
+        letter-spacing: 0.02em;
+        color: var(--accent);
+        text-transform: uppercase;
+      }
+
+      .lead {
+        margin: 0;
+        max-width: 38rem;
+        font-size: clamp(1.25rem, 2.1vw, 1.9rem);
+        line-height: 1.35;
+        color: var(--muted);
+      }
+
+      .hero-band {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.65rem 0.95rem;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        border: 1px solid rgba(128, 219, 214, 0.24);
+        color: var(--text);
+        font-size: 0.98rem;
+      }
+
+      .slide-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        gap: 2rem;
+        align-items: center;
+        height: 100%;
+      }
+
+      .single-column {
+        display: grid;
+        align-content: start;
+        gap: 0.85rem;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 1.2rem;
+        font-size: clamp(1.1rem, 1.85vw, 1.55rem);
+        line-height: 1.42;
+        color: var(--text);
+      }
+
+      li + li {
+        margin-top: 0.65rem;
+      }
+
+      .visual-card,
+      .note-card,
+      .columns {
+        position: relative;
+        z-index: 1;
+        border-radius: 26px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.05);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      .visual-card {
+        padding: 1.15rem;
+      }
+
+      .visual-card button {
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: zoom-in;
+      }
+
+      .visual-card img {
+        display: block;
+        width: 100%;
+        max-height: 420px;
+        object-fit: contain;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.98);
+        transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+
+      .visual-card button:hover img,
+      .visual-card button:focus-visible img {
+        transform: scale(1.015);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
+      }
+
+      .visual-card button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 6px;
+      }
+
+      .visual-card figcaption,
+      .fine-print,
+      .hint {
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .visual-card figcaption {
+        padding-top: 0.85rem;
+      }
+
+      .note-card {
+        padding: 1.2rem 1.35rem;
+      }
+
+      .note-card p,
+      .note-card li {
+        font-size: 1rem;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      .note-card ul {
+        padding-left: 1rem;
+      }
+
+      .columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        padding: 1.2rem;
+      }
+
+      .column-card {
+        padding: 1rem 1.1rem;
+        border-radius: 18px;
+        background: rgba(0, 0, 0, 0.16);
+      }
+
+      .column-card ul {
+        font-size: 1rem;
+      }
+
+      .source-list {
+        display: grid;
+        gap: 0.9rem;
+        margin-top: 0.5rem;
+      }
+
+      .source-item {
+        padding: 1rem 1.15rem;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .source-item strong {
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+
+      .deck-ui {
+        position: fixed;
+        inset: auto 1.5rem 1.25rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        z-index: 20;
+      }
+
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        min-width: 0;
+        padding: 0.8rem 1rem;
+        border-radius: 999px;
+        background: rgba(4, 10, 24, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(14px);
+      }
+
+      .progress-rail {
+        width: min(32vw, 360px);
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        width: 0;
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+      }
+
+      .slide-label {
+        min-width: 0;
+        font-size: 0.95rem;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .controls {
+        display: flex;
+        gap: 0.65rem;
+      }
+
+      .controls button {
+        border: 0;
+        border-radius: 999px;
+        padding: 0.8rem 1rem;
+        background: rgba(244, 242, 235, 0.08);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+        transition: transform 120ms ease, background 120ms ease;
+      }
+
+      .controls button:hover,
+      .controls button:focus-visible {
+        background: rgba(244, 242, 235, 0.16);
+        transform: translateY(-1px);
+        outline: none;
+      }
+
+      .controls button:active {
+        transform: translateY(0);
+      }
+
+      .title-accent {
+        color: var(--accent);
+      }
+
+      .image-lightbox[hidden] {
+        display: none;
+      }
+
+      .image-lightbox {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+      }
+
+      .image-lightbox__backdrop {
+        position: absolute;
+        inset: 0;
+        border: 0;
+        background: rgba(2, 6, 14, 0.86);
+        backdrop-filter: blur(8px);
+        cursor: zoom-out;
+      }
+
+      .image-lightbox__figure {
+        position: relative;
+        z-index: 1;
+        width: min(1100px, calc(100vw - 4rem));
+        margin: 0;
+        padding: 1rem;
+        border-radius: 28px;
+        background: rgba(7, 14, 28, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 40px 120px rgba(0, 0, 0, 0.5);
+      }
+
+      .image-lightbox__figure img {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        max-height: calc(100vh - 10rem);
+        object-fit: contain;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.98);
+      }
+
+      .image-lightbox__caption {
+        padding: 0.85rem 0.35rem 0.15rem;
+        color: var(--muted);
+        font-size: 0.98rem;
+        line-height: 1.4;
+      }
+
+      .image-lightbox__close {
+        position: absolute;
+        top: 2rem;
+        right: 2rem;
+        z-index: 2;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.8rem 1rem;
+        background: rgba(244, 242, 235, 0.12);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .hint {
+        margin-top: 0.4rem;
+      }
+
+      @media (max-width: 980px) {
+        body {
+          overflow-y: auto;
+        }
+
+        .slide {
+          position: relative;
+          display: block;
+          min-height: 100vh;
+          padding: 1rem;
+        }
+
+        .slide.is-active {
+          display: block;
+        }
+
+        .slide + .slide {
+          margin-top: 1rem;
+        }
+
+        .slide-shell {
+          min-height: auto;
+          padding: 2rem 1.5rem 5.5rem;
+        }
+
+        .image-lightbox {
+          padding: 1rem;
+        }
+
+        .image-lightbox__figure {
+          width: min(100%, calc(100vw - 2rem));
+        }
+
+        .image-lightbox__close {
+          top: 1rem;
+          right: 1rem;
+        }
+
+        .slide-grid,
+        .columns {
+          grid-template-columns: 1fr;
+        }
+
+        .deck-ui {
+          position: sticky;
+          bottom: 0.75rem;
+          margin-top: -4.5rem;
+        }
+
+        .status-bar {
+          flex: 1;
+        }
+
+        .progress-rail {
+          width: 100%;
+        }
+      }
+
+      @media print {
+        body {
+          overflow: visible;
+          background: white;
+          color: black;
+        }
+
+        body::before,
+        .deck-ui {
+          display: none;
+        }
+
+        .slide {
+          position: relative;
+          display: block;
+          height: auto;
+          padding: 0;
+          page-break-after: always;
+        }
+
+        .slide-shell {
+          min-height: auto;
+          border: 1px solid #ddd;
+          color: black;
+          background: white;
+          box-shadow: none;
+        }
+
+        a {
+          color: #0a5c91;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="slide is-active" data-title="Overview">
+        <div class="slide-shell hero">
+          <h1>Event Capture and <span class="title-accent">Cloud Considerations</span></h1>
+          <p class="lead">Reliable event delivery when the broker is unavailable.</p>
+          <div class="hero-band">
+            <span class="pill">Transactional outbox</span>
+            <span class="pill">CDC and Kafka Connect</span>
+            <span class="pill">Disk-based durability</span>
+            <span class="pill">Idempotent consumers</span>
+          </div>
+          <p class="hint">Use the arrow keys, space, or the on-screen controls to move through the deck.</p>
+        </div>
+      </section>
+
+      <section class="slide" data-title="A Bit of History">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 2</div>
+            <h2>A Bit of History</h2>
+            <ul>
+              <li>Began my messaging journey with IBM MQ Series at an ATM company.</li>
+              <li>Used MSMQ in other applications there.</li>
+              <li>Moved into the Java world and used JMX.</li>
+              <li>In late 2008, worked on the Six Flags ticketing system using MSMQ via WCF.</li>
+              <li>In the 2010s, used RabbitMQ and CloudAMQP heavily.</li>
+              <li>In 2019, my employer moved from RabbitMQ to Kafka, which introduced very different ordering and partition considerations.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="The Problem That Never Went Away">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 3</div>
+            <h2>The Problem That Never Went Away</h2>
+            <ul>
+              <li>Across almost every messaging system, the same production question kept showing up: what happens when the broker is down and we cannot publish?</li>
+              <li>The one major exception was WCF + MSMQ on Windows servers, where a local durable outbox could forward to the remote queue when it became available again.</li>
+              <li>The right answer depends on reliability and durability needs.</li>
+              <li>This talk focuses on the cases where we need a high probability that no data is lost.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Decision Lens">
+        <div class="slide-shell">
+          <div class="slide-grid">
+            <div class="single-column">
+              <div class="section-number">Slide 4</div>
+              <h2>Decision Lens</h2>
+              <ul>
+                <li>Where can I durably persist intent before the broker is reachable?</li>
+                <li>Can I capture the event in the same local transaction as the business state change?</li>
+                <li>Do I want to pay that cost in my primary database, in a CDC pipeline, or on local disk?</li>
+                <li>Which failure domains do I trust most: database, broker, network, sidecar, or local disk?</li>
+                <li>No matter which option I choose, consumers should be idempotent.</li>
+              </ul>
+            </div>
+            <aside class="note-card">
+              <h3>What this slide is really asking</h3>
+              <p>Choose the place where intent is captured before a broker outage can interrupt the flow. The pattern matters less than the durability boundary you trust.</p>
+              <ul>
+                <li>Shared database</li>
+                <li>CDC pipeline</li>
+                <li>Embedded local storage</li>
+              </ul>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Option 1: Transactional Outbox">
+        <div class="slide-shell">
+          <div class="slide-grid">
+            <div class="single-column">
+              <div class="section-number">Slide 5</div>
+              <h2>Option 1: Transactional Outbox</h2>
+              <ul>
+                <li>Write the business state change and the event to the database in the same transaction.</li>
+                <li>If the transaction commits, both are durable.</li>
+                <li>A relay process reads pending outbox records and publishes them to the broker.</li>
+                <li>This is usually the best fit when the endpoint already depends on a database.</li>
+              </ul>
+              <p class="fine-print">Source: <a href="https://microservices.io/patterns/data/transactional-outbox">microservices.io/patterns/data/transactional-outbox</a></p>
+            </div>
+            <figure class="visual-card">
+              <button type="button" class="zoomable-image" aria-label="Enlarge transactional outbox pattern diagram">
+                <img src="https://microservices.io/i/patterns/data/ReliablePublication.png" alt="Transactional outbox pattern diagram">
+              </button>
+              <figcaption>Atomic state change plus queued publish intent.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Option 1: Tradeoffs">
+        <div class="slide-shell">
+          <div class="slide-grid">
+            <div class="single-column">
+              <div class="section-number">Slide 6</div>
+              <h2>Option 1: Tradeoffs</h2>
+              <ul>
+                <li>I wrote a lot of transactional outboxes, especially in Go.</li>
+                <li>PostgreSQL makes this pattern practical with <code>FOR UPDATE SKIP LOCKED</code>.</li>
+                <li>MySQL 8.x supports <code>SKIP LOCKED</code>; MySQL 5.x does not.</li>
+                <li>The upside is atomic capture of both state and message.</li>
+                <li>The downside is extra database write load, relay complexity, and throughput bounded by the database.</li>
+              </ul>
+            </div>
+            <aside class="note-card">
+              <h3>Practical Postgres note</h3>
+              <p><a href="https://riverqueue.com/">River</a> combines <code>LISTEN/NOTIFY</code> pub/sub with <code>FOR UPDATE SKIP LOCKED</code> as a fallback.</p>
+              <p><a href="https://riverqueue.com/docs/benchmarks">River benchmarks</a> report about 46k jobs/sec overall on an 8-core 2022 M2 MacBook Air.</p>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Option 2: CDC with Kafka Connectors">
+        <div class="slide-shell">
+          <div class="slide-grid">
+            <div class="single-column">
+              <div class="section-number">Slide 7</div>
+              <h2>Option 2: Change Data Capture</h2>
+              <ul>
+                <li>The application writes once to the database.</li>
+                <li>A CDC connector tails the write-ahead log or binlog.</li>
+                <li>Kafka Connect publishes those changes to Kafka topics.</li>
+                <li>This works well when the database is the source of truth and Kafka is the distribution layer.</li>
+              </ul>
+              <p class="fine-print">Source: <a href="https://debezium.io/documentation/reference/architecture.html">debezium.io/documentation/reference/architecture.html</a></p>
+            </div>
+            <figure class="visual-card">
+              <button type="button" class="zoomable-image" aria-label="Enlarge Debezium CDC architecture diagram">
+                <img src="https://debezium.io/documentation/reference/_images/debezium-architecture.png" alt="Debezium CDC architecture diagram">
+              </button>
+              <figcaption>Log-based capture shifts publish logic into the platform layer.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Option 2: CDC Pros and Cons">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 8</div>
+            <h2>Option 2: CDC Pros and Cons</h2>
+            <div class="columns">
+              <div class="column-card">
+                <h3>Pros</h3>
+                <ul>
+                  <li>Avoids dual-write logic in application code.</li>
+                  <li>Low-latency capture from the database log.</li>
+                  <li>Strong fit for fan-out into Kafka, analytics, search, and downstream systems.</li>
+                  <li>Keeps the database as the system of record.</li>
+                </ul>
+              </div>
+              <div class="column-card">
+                <h3>Cons</h3>
+                <ul>
+                  <li>Adds operational complexity: Kafka Connect, connector configs, monitoring, re-snapshotting, schema drift.</li>
+                  <li>Raw table changes are not always the same thing as intentional domain events.</li>
+                  <li>Deletes, ordering, and schema evolution still need deliberate handling.</li>
+                  <li>In many cases, the cleanest CDC design is CDC over an explicit outbox table, not over arbitrary business tables.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Option 3: Write-Ahead Logs / Disk-Based Outbox">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 9</div>
+            <h2>Option 3: Write-Ahead Logs / Disk-Based Outbox</h2>
+            <ul>
+              <li>Sometimes there is no Postgres, no MySQL 8.x, or no desire to put more load on a shared database.</li>
+              <li>In those cases, publishing straight to the broker is fine until the broker is unavailable.</li>
+              <li>The fallback is a durable local outbox on disk.</li>
+              <li>An embedded processor drains that local backlog when the broker recovers.</li>
+              <li>This reduces dependence on sidecars and avoids introducing another moving part that can fail.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Why Not Just Use epilog?">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 10</div>
+            <h2>Why Not Just Use <code>epilog</code>?</h2>
+            <ul>
+              <li>Historically, the logging Kafka pipeline has not had the same durability bar as our transactional databases.</li>
+              <li>There have been multiple postmortems involving both <code>epilog</code> and the Kafka cluster dominated by logging traffic.</li>
+              <li>Noisy-neighbor and overloaded producer behavior have been major contributors in those cases.</li>
+              <li>That tradeoff made sense for logs, because logs are useful, but they are not usually must-not-lose business data.</li>
+              <li>Cost pressure on high-volume logging pipelines also limited investments like aggressive replication.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Cloud Reality Is Improving, But Path Still Matters">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 11</div>
+            <h2>Cloud Reality Is Improving, But Path Still Matters</h2>
+            <ul>
+              <li>AZW and AZE now separate application clusters from logging clusters.</li>
+              <li>The application cluster is configured with replication.</li>
+              <li>If that replication is not cross-DC yet, it likely will be soon.</li>
+              <li><code>epilog</code> is not multi-sync today, so anything using <code>epilog</code> still produces to the logging cluster.</li>
+              <li>The cloud architecture is improving, but the durability profile still depends on which pipeline I choose.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Enter BadgerBox">
+        <div class="slide-shell">
+          <div class="slide-grid">
+            <div class="single-column">
+              <div class="section-number">Slide 12</div>
+              <h2>Enter BadgerBox</h2>
+              <ul>
+                <li><code>badgerbox</code> is an embedded durable outbox for Go applications that already use Badger.</li>
+                <li>It stores typed payloads and typed destinations locally, then runs a processor with retries, lease recovery, and a dead-letter queue.</li>
+                <li>It gives me a disk-backed option when I want durable capture without coupling everything to Postgres or to a sidecar.</li>
+                <li>The Kafka adapter lets it publish to Kafka once the broker is healthy again.</li>
+              </ul>
+              <p class="fine-print">Repo: <a href="https://github.com/shawnstephens/badgerbox">github.com/shawnstephens/badgerbox</a></p>
+            </div>
+            <figure class="visual-card">
+              <button type="button" class="zoomable-image" aria-label="Enlarge BadgerBox diagram">
+                <img src="../../image.png" alt="BadgerBox diagram">
+              </button>
+              <figcaption>Local capture, retrying processor, and broker publication once healthy.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Choosing the Pattern">
+        <div class="slide-shell">
+          <div class="slide-grid">
+            <div class="single-column">
+              <div class="section-number">Slide 13</div>
+              <h2>Choosing the Pattern</h2>
+              <ul>
+                <li>If the request path already writes to Postgres or MySQL 8.x, start with a transactional outbox.</li>
+                <li>If the database is the source of truth and the platform already runs Kafka Connect, CDC is a strong option.</li>
+                <li>If I need embedded durability with minimal external dependencies, use a disk-based outbox.</li>
+                <li>In every model, assume retries will happen and keep consumers idempotent.</li>
+                <li>The main design question is simple: where do I want to durably capture intent before the broker is available again?</li>
+              </ul>
+            </div>
+            <aside class="note-card">
+              <h3>Simple rule</h3>
+              <p>Start from the system already on the request path. Add the least additional failure surface that still gives you a durable handoff.</p>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Sources">
+        <div class="slide-shell">
+          <div class="single-column">
+            <div class="section-number">Slide 14</div>
+            <h2>Sources</h2>
+            <div class="source-list">
+              <div class="source-item">
+                <strong>Transactional outbox pattern and image</strong>
+                <a href="https://microservices.io/patterns/data/transactional-outbox">https://microservices.io/patterns/data/transactional-outbox</a>
+              </div>
+              <div class="source-item">
+                <strong>Debezium CDC architecture and Kafka Connect model</strong>
+                <a href="https://debezium.io/documentation/reference/architecture.html">https://debezium.io/documentation/reference/architecture.html</a>
+              </div>
+              <div class="source-item">
+                <strong>River benchmark reference</strong>
+                <a href="https://riverqueue.com/docs/benchmarks">https://riverqueue.com/docs/benchmarks</a>
+              </div>
+              <div class="source-item">
+                <strong>BadgerBox repo</strong>
+                <a href="https://github.com/shawnstephens/badgerbox">https://github.com/shawnstephens/badgerbox</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="deck-ui">
+      <div class="status-bar">
+        <div class="progress-rail" aria-hidden="true">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="slide-label" id="slide-label">Overview</div>
+      </div>
+      <div class="controls">
+        <button type="button" id="prev-slide" aria-label="Previous slide">Prev</button>
+        <button type="button" id="next-slide" aria-label="Next slide">Next</button>
+      </div>
+    </div>
+
+    <div class="image-lightbox" id="image-lightbox" hidden aria-hidden="true">
+      <button type="button" class="image-lightbox__backdrop" id="image-lightbox-backdrop" aria-label="Close enlarged image"></button>
+      <figure class="image-lightbox__figure">
+        <img id="image-lightbox-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="">
+        <figcaption class="image-lightbox__caption" id="image-lightbox-caption"></figcaption>
+      </figure>
+      <button type="button" class="image-lightbox__close" id="image-lightbox-close" aria-label="Close enlarged image">Close</button>
+    </div>
+
+    <script>
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const slideLabel = document.getElementById("slide-label");
+      const progressFill = document.getElementById("progress-fill");
+      const prevButton = document.getElementById("prev-slide");
+      const nextButton = document.getElementById("next-slide");
+      const zoomButtons = Array.from(document.querySelectorAll(".zoomable-image"));
+      const lightbox = document.getElementById("image-lightbox");
+      const lightboxImage = document.getElementById("image-lightbox-image");
+      const lightboxCaption = document.getElementById("image-lightbox-caption");
+      const lightboxClose = document.getElementById("image-lightbox-close");
+      const lightboxBackdrop = document.getElementById("image-lightbox-backdrop");
+      const emptyImage = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+      let lastZoomTrigger = null;
+
+      function clampIndex(index) {
+        if (index < 0) {
+          return 0;
+        }
+        if (index >= slides.length) {
+          return slides.length - 1;
+        }
+        return index;
+      }
+
+      function updateSlide(index, updateHash) {
+        const nextIndex = clampIndex(index);
+
+        slides.forEach((slide, slideIndex) => {
+          slide.classList.toggle("is-active", slideIndex === nextIndex);
+        });
+
+        const title = slides[nextIndex].dataset.title || `Slide ${nextIndex + 1}`;
+        slideLabel.textContent = `${nextIndex + 1}/${slides.length}  ${title}`;
+        progressFill.style.width = `${((nextIndex + 1) / slides.length) * 100}%`;
+        document.title = `${title} | Event Capture and Cloud Considerations`;
+
+        if (updateHash) {
+          window.history.replaceState(null, "", `#slide-${nextIndex + 1}`);
+        }
+      }
+
+      function slideIndexFromHash() {
+        const match = window.location.hash.match(/^#slide-(\d+)$/);
+        if (!match) {
+          return 0;
+        }
+        return clampIndex(Number.parseInt(match[1], 10) - 1);
+      }
+
+      function currentSlideIndex() {
+        return slides.findIndex((slide) => slide.classList.contains("is-active"));
+      }
+
+      function goToSlide(index) {
+        updateSlide(index, true);
+      }
+
+      function changeSlide(delta) {
+        goToSlide(currentSlideIndex() + delta);
+      }
+
+      function isLightboxOpen() {
+        return !lightbox.hidden;
+      }
+
+      function openLightbox(button) {
+        const image = button.querySelector("img");
+        const figure = button.closest("figure");
+        const caption = figure ? figure.querySelector("figcaption") : null;
+
+        lightboxImage.src = image.currentSrc || image.src;
+        lightboxImage.alt = image.alt;
+        lightboxCaption.textContent = caption ? caption.textContent : image.alt;
+        lightbox.hidden = false;
+        lightbox.setAttribute("aria-hidden", "false");
+        lastZoomTrigger = button;
+        lightboxClose.focus();
+      }
+
+      function closeLightbox() {
+        if (lightbox.hidden) {
+          return;
+        }
+
+        lightbox.hidden = true;
+        lightbox.setAttribute("aria-hidden", "true");
+        lightboxImage.src = emptyImage;
+        lightboxImage.alt = "";
+        lightboxCaption.textContent = "";
+
+        if (lastZoomTrigger) {
+          lastZoomTrigger.focus();
+        }
+      }
+
+      prevButton.addEventListener("click", () => changeSlide(-1));
+      nextButton.addEventListener("click", () => changeSlide(1));
+      lightboxClose.addEventListener("click", closeLightbox);
+      lightboxBackdrop.addEventListener("click", closeLightbox);
+      zoomButtons.forEach((button) => {
+        button.addEventListener("click", () => openLightbox(button));
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (isLightboxOpen()) {
+          if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            closeLightbox();
+          }
+          return;
+        }
+
+        if (event.target.closest("a, button")) {
+          return;
+        }
+
+        if (["ArrowRight", "PageDown", " ", "Enter"].includes(event.key)) {
+          event.preventDefault();
+          changeSlide(1);
+        }
+
+        if (["ArrowLeft", "PageUp", "Backspace"].includes(event.key)) {
+          event.preventDefault();
+          changeSlide(-1);
+        }
+
+        if (event.key === "Home") {
+          event.preventDefault();
+          goToSlide(0);
+        }
+
+        if (event.key === "End") {
+          event.preventDefault();
+          goToSlide(slides.length - 1);
+        }
+      });
+
+      window.addEventListener("hashchange", () => {
+        updateSlide(slideIndexFromHash(), false);
+      });
+
+      updateSlide(slideIndexFromHash(), false);
+    </script>
+  </body>
+</html>
