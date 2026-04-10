@@ -108,6 +108,7 @@ Defaults are chosen so you do not need to pass flags for the common case:
 - shared state file: `./.demo/badgerbox-demo/state.json`
 - Badger path: `./.demo/badgerbox-demo/badger`
 - topic: `badgerbox-demo`
+- topic partitions: `10`
 - namespace: `demo`
 - enqueue parallelism: `1`
 - message interval: `500ms`

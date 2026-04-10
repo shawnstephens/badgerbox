@@ -55,6 +55,12 @@ func newKafkaCommand() *cli.Command {
 				Value:   demo.DefaultTopic,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_TOPIC"),
 			},
+			&cli.IntFlag{
+				Name:    "topic-partitions",
+				Usage:   "Number of partitions to create for the demo topic",
+				Value:   demo.DefaultTopicPartitions,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_TOPIC_PARTITIONS"),
+			},
 			&cli.StringFlag{
 				Name:    "kafka-image",
 				Usage:   "Kafka container image",
@@ -114,7 +120,7 @@ func newProducerCommand() *cli.Command {
 			},
 			&cli.DurationFlag{
 				Name:    "message-interval",
-				Usage:   "Delay between messages per enqueue goroutine",
+				Usage:   "Wait time after each enqueue per worker",
 				Value:   500 * time.Millisecond,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_MESSAGE_INTERVAL"),
 			},
@@ -216,10 +222,14 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 	logger := demo.NewLogger(os.Stdout, cmd.String("color"))
 	stateFile := cmd.String("state-file")
 	topic := cmd.String("topic")
+	topicPartitions := cmd.Int("topic-partitions")
+	if topicPartitions < 1 {
+		return errors.New("topic-partitions must be at least 1")
+	}
 	image := cmd.String("kafka-image")
 	clusterID := cmd.String("cluster-id")
 
-	logger.Printf("startup", "command=kafka state_file=%s topic=%s image=%s cluster_id=%s", stateFile, topic, image, clusterID)
+	logger.Printf("startup", "command=kafka state_file=%s topic=%s topic_partitions=%d image=%s cluster_id=%s", stateFile, topic, topicPartitions, image, clusterID)
 
 	container, brokers, err := demo.StartKafka(runCtx, image, clusterID)
 	if err != nil {
@@ -244,7 +254,7 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 
 	topicCtx, cancel := context.WithTimeout(runCtx, demo.DefaultKafkaTimeout())
 	defer cancel()
-	if err := demo.CreateTopic(topicCtx, client, topic); err != nil {
+	if err := demo.CreateTopic(topicCtx, client, topic, int32(topicPartitions)); err != nil {
 		return err
 	}
 
@@ -260,7 +270,7 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	logger.Printf("ready", "command=kafka brokers=%s topic=%s state_file=%s container_id=%s", demo.ShortBrokerList(brokers), topic, stateFile, container.GetContainerID())
+	logger.Printf("ready", "command=kafka brokers=%s topic=%s topic_partitions=%d state_file=%s container_id=%s", demo.ShortBrokerList(brokers), topic, topicPartitions, stateFile, container.GetContainerID())
 	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo producer\"")
 	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo consumer\"")
 
@@ -344,6 +354,16 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer store.Close()
 
+	readyCount, err := demo.CountReadyMessages(db, namespace)
+	if err != nil {
+		return err
+	}
+	if readyCount > 0 {
+		logger.Printf("warning", "event=backlog_detected pending_ready=%d namespace=%s db_path=%s note=%q", readyCount, namespace, dbPath, "older ready records will be processed before newly enqueued ones")
+	} else {
+		logger.Printf("ready", "event=backlog pending_ready=0 namespace=%s db_path=%s", namespace, dbPath)
+	}
+
 	publisher := demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger)
 	defer publisher.Close()
 
@@ -387,14 +407,22 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ticker := time.NewTicker(messageInterval)
-			defer ticker.Stop()
+			first := true
 
 			for {
-				select {
-				case <-runCtx.Done():
+				if !first {
+					timer := time.NewTimer(messageInterval)
+					select {
+					case <-runCtx.Done():
+						timer.Stop()
+						return
+					case <-timer.C:
+					}
+				}
+				first = false
+
+				if err := runCtx.Err(); err != nil {
 					return
-				case <-ticker.C:
 				}
 
 				seq := sequence.Add(1)
