@@ -124,6 +124,30 @@ func newProducerCommand() *cli.Command {
 				Value:   4,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PROCESSOR_CONCURRENCY"),
 			},
+			&cli.DurationFlag{
+				Name:    "retry-base-delay",
+				Usage:   "Retry delay after the first failed publish",
+				Value:   demo.DefaultRetryBaseDelay,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_RETRY_BASE_DELAY"),
+			},
+			&cli.DurationFlag{
+				Name:    "retry-max-delay",
+				Usage:   "Maximum retry delay after repeated publish failures",
+				Value:   demo.DefaultRetryMaxDelay,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_RETRY_MAX_DELAY"),
+			},
+			&cli.DurationFlag{
+				Name:    "poll-interval",
+				Usage:   "Processor poll interval for ready and expired records",
+				Value:   demo.DefaultPollInterval,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_POLL_INTERVAL"),
+			},
+			&cli.DurationFlag{
+				Name:    "lease-duration",
+				Usage:   "Lease duration for in-flight processing",
+				Value:   demo.DefaultLeaseDuration,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_LEASE_DURATION"),
+			},
 			&cli.StringFlag{
 				Name:    "producer-id",
 				Usage:   "Logical producer identifier used in keys and logs",
@@ -209,9 +233,7 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 		if err := container.Terminate(shutdownCtx); err != nil {
 			logger.Printf("error", "command=kafka terminate_error=%q", err)
 		}
-		if err := demo.RemoveState(stateFile); err != nil {
-			logger.Printf("warning", "command=kafka remove_state_error=%q path=%s", err, stateFile)
-		}
+		logger.Printf("shutdown", "command=kafka state_file_preserved=true state_file=%s", stateFile)
 	}()
 
 	client, err := demo.NewKafkaClient(brokers)
@@ -253,7 +275,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	logger := demo.NewLogger(os.Stdout, cmd.String("color"))
 	stateFile := cmd.String("state-file")
 
-	brokers, topic, _, err := resolveKafkaTarget(cmd.String("brokers"), cmd.String("topic"), stateFile)
+	target, err := resolveKafkaTarget(cmd.String("brokers"), cmd.String("topic"), stateFile)
 	if err != nil {
 		return err
 	}
@@ -272,6 +294,25 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	if processorConcurrency < 1 {
 		return errors.New("processor-concurrency must be at least 1")
 	}
+	retryBaseDelay := cmd.Duration("retry-base-delay")
+	if retryBaseDelay <= 0 {
+		return errors.New("retry-base-delay must be greater than 0")
+	}
+	retryMaxDelay := cmd.Duration("retry-max-delay")
+	if retryMaxDelay <= 0 {
+		return errors.New("retry-max-delay must be greater than 0")
+	}
+	if retryMaxDelay < retryBaseDelay {
+		return errors.New("retry-max-delay must be greater than or equal to retry-base-delay")
+	}
+	pollInterval := cmd.Duration("poll-interval")
+	if pollInterval <= 0 {
+		return errors.New("poll-interval must be greater than 0")
+	}
+	leaseDuration := cmd.Duration("lease-duration")
+	if leaseDuration <= 0 {
+		return errors.New("lease-duration must be greater than 0")
+	}
 	producerID := cmd.String("producer-id")
 	if producerID == "" {
 		host, _ := os.Hostname()
@@ -281,7 +322,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		producerID = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
 
-	logger.Printf("startup", "command=producer brokers=%s topic=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s producer_id=%s", demo.ShortBrokerList(brokers), topic, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, producerID)
+	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s producer_id=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, producerID)
 
 	if err := os.MkdirAll(dbPath, 0o755); err != nil {
 		return fmt.Errorf("create badger directory: %w", err)
@@ -303,25 +344,15 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer store.Close()
 
-	client, err := demo.NewKafkaClient(brokers)
-	if err != nil {
-		return fmt.Errorf("create kafka client: %w", err)
-	}
-	defer client.Close()
+	publisher := demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger)
+	defer publisher.Close()
 
-	topicCtx, cancel := context.WithTimeout(runCtx, demo.DefaultKafkaTimeout())
-	defer cancel()
-	if err := demo.CreateTopic(topicCtx, client, topic); err != nil {
-		return err
-	}
-
-	baseFn := kafkaoutbox.NewProcessFunc(client, kafkaoutbox.Options{})
 	processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
 		key := string(msg.Payload.Key)
 		logger.Printf("process", "event=start msg_id=%d key=%s topic=%s attempt=%d", msg.ID, key, msg.Destination.Topic, msg.Attempt)
-		err := baseFn(ctx, msg)
+		err := publisher.Publish(ctx, msg)
 		if err != nil {
-			logger.Printf("warning", "event=publish_failed msg_id=%d key=%s topic=%s err=%q", msg.ID, key, msg.Destination.Topic, err)
+			logProcessFailure(logger, time.Now().UTC(), msg, err, retryBaseDelay, retryMaxDelay)
 			return err
 		}
 		logger.Printf("publish", "event=success msg_id=%d key=%s topic=%s", msg.ID, key, msg.Destination.Topic)
@@ -329,7 +360,11 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
-		Concurrency: processorConcurrency,
+		Concurrency:    processorConcurrency,
+		PollInterval:   pollInterval,
+		LeaseDuration:  leaseDuration,
+		RetryBaseDelay: retryBaseDelay,
+		RetryMaxDelay:  retryMaxDelay,
 	})
 	if err != nil {
 		return fmt.Errorf("new processor: %w", err)
@@ -363,7 +398,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 				}
 
 				seq := sequence.Add(1)
-				payload, destination, err := demo.BuildKafkaMessage(topic, producerID, worker, seq)
+				payload, destination, err := demo.BuildKafkaMessage(target.Topic, producerID, worker, seq)
 				if err != nil {
 					select {
 					case enqueueErrCh <- fmt.Errorf("build message: %w", err):
@@ -387,7 +422,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 					return
 				}
 
-				logger.Printf("enqueue", "worker=%d msg_id=%d seq=%d key=%s topic=%s", worker, id, seq, string(payload.Key), topic)
+				logger.Printf("enqueue", "worker=%d msg_id=%d seq=%d key=%s topic=%s", worker, id, seq, string(payload.Key), target.Topic)
 			}
 		}()
 	}
@@ -430,13 +465,13 @@ func runConsumer(ctx context.Context, cmd *cli.Command) error {
 	logger := demo.NewLogger(os.Stdout, cmd.String("color"))
 	stateFile := cmd.String("state-file")
 
-	brokers, topic, _, err := resolveKafkaTarget(cmd.String("brokers"), cmd.String("topic"), stateFile)
+	target, err := resolveKafkaTarget(cmd.String("brokers"), cmd.String("topic"), stateFile)
 	if err != nil {
 		return err
 	}
 
 	opts := []kgo.Opt{
-		kgo.ConsumeTopics(topic),
+		kgo.ConsumeTopics(target.Topic),
 	}
 	if cmd.Bool("from-beginning") {
 		opts = append(opts, kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
@@ -444,13 +479,13 @@ func runConsumer(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()))
 	}
 
-	client, err := demo.NewKafkaClient(brokers, opts...)
+	client, err := demo.NewKafkaClient(target.Brokers, opts...)
 	if err != nil {
 		return fmt.Errorf("create consumer client: %w", err)
 	}
 	defer client.Close()
 
-	logger.Printf("startup", "command=consumer brokers=%s topic=%s from_beginning=%t", demo.ShortBrokerList(brokers), topic, cmd.Bool("from-beginning"))
+	logger.Printf("startup", "command=consumer brokers=%s brokers_source=%s topic=%s topic_source=%s from_beginning=%t", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, cmd.Bool("from-beginning"))
 
 	for {
 		select {
@@ -479,7 +514,16 @@ func runConsumer(ctx context.Context, cmd *cli.Command) error {
 	}
 }
 
-func resolveKafkaTarget(brokersValue, topicValue, stateFile string) ([]string, string, *demo.State, error) {
+type kafkaTarget struct {
+	Brokers       []string
+	Topic         string
+	State         *demo.State
+	BrokersSource string
+	TopicSource   string
+}
+
+func resolveKafkaTarget(brokersValue, topicValue, stateFile string) (kafkaTarget, error) {
+	target := kafkaTarget{}
 	var state *demo.State
 
 	if brokersValue == "" || topicValue == "" {
@@ -487,27 +531,37 @@ func resolveKafkaTarget(brokersValue, topicValue, stateFile string) ([]string, s
 		if err == nil {
 			state = &resolvedState
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, "", nil, fmt.Errorf("read state file %q: %w", stateFile, err)
+			return target, fmt.Errorf("read state file %q: %w", stateFile, err)
 		}
 	}
 
 	brokers := demo.ParseBrokers(brokersValue)
+	brokersSource := "flags-env"
 	if len(brokers) == 0 && state != nil {
 		brokers = append(brokers, state.Brokers...)
+		brokersSource = "state-file"
 	}
 	if len(brokers) == 0 {
-		return nil, "", state, fmt.Errorf("no Kafka brokers resolved; run `badgerbox-demo kafka` first or set --brokers / BADGERBOX_DEMO_BROKERS")
+		return target, fmt.Errorf("no Kafka brokers resolved; run `badgerbox-demo kafka` first or set --brokers / BADGERBOX_DEMO_BROKERS")
 	}
 
 	topic := topicValue
+	topicSource := "flags-env"
 	if topic == "" && state != nil {
 		topic = state.Topic
+		topicSource = "state-file"
 	}
 	if topic == "" {
 		topic = demo.DefaultTopic
+		topicSource = "default"
 	}
 
-	return brokers, topic, state, nil
+	target.Brokers = brokers
+	target.Topic = topic
+	target.State = state
+	target.BrokersSource = brokersSource
+	target.TopicSource = topicSource
+	return target, nil
 }
 
 func prettyValue(data []byte) string {
