@@ -32,11 +32,11 @@ func NewKafkaClient(brokers []string, opts ...kgo.Opt) (*kgo.Client, error) {
 	return kgo.NewClient(allOpts...)
 }
 
-func CreateTopic(ctx context.Context, client *kgo.Client, topic string) error {
+func CreateTopic(ctx context.Context, client *kgo.Client, topic string, partitions int32) error {
 	req := kmsg.NewPtrCreateTopicsRequest()
 	reqTopic := kmsg.NewCreateTopicsRequestTopic()
 	reqTopic.Topic = topic
-	reqTopic.NumPartitions = 1
+	reqTopic.NumPartitions = partitions
 	reqTopic.ReplicationFactor = 1
 	req.Topics = append(req.Topics, reqTopic)
 
