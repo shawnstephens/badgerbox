@@ -92,7 +92,7 @@ go install github.com/shawnstephens/badgerbox/cmd/badgerbox-demo@latest
 The demo binary runs three separate processes:
 
 1. `kafka` starts a Kafka broker with Testcontainers and writes shared runtime state to `./.demo/badgerbox-demo/state.json`.
-2. `producer` opens Badger, continuously enqueues messages into badgerbox, runs the badgerbox processor, and publishes to Kafka.
+2. `producer` opens Badger, continuously enqueues messages into badgerbox, runs the badgerbox processor, and publishes to Kafka. It can start before Kafka is available and will keep retrying until the broker comes back.
 3. `consumer` connects to the same Kafka broker and prints consumed messages.
 
 Default workflow:
@@ -112,6 +112,10 @@ Defaults are chosen so you do not need to pass flags for the common case:
 - enqueue parallelism: `1`
 - message interval: `500ms`
 - processor concurrency: `4`
+- retry base delay: `1s`
+- retry max delay: `5s`
+- poll interval: `250ms`
+- lease duration: `30s`
 
 Every flag also supports an environment variable with the `BADGERBOX_DEMO_` prefix. For example:
 
@@ -121,7 +125,19 @@ BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
 badgerbox-demo producer
 ```
 
-The `kafka` process owns the Testcontainers Kafka broker and must stay running while `producer` and `consumer` are attached. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
+The `kafka` process owns the Testcontainers Kafka broker. Its state file is preserved on shutdown so the producer can start later, keep retrying against the stored broker metadata, and reconnect after Kafka restarts on a new mapped port. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
+
+Offline retry demo:
+
+1. `badgerbox-demo kafka`
+2. Stop it with `Ctrl+C`
+3. `badgerbox-demo producer`
+4. Watch repeated `phase=warning event=publish_failed` lines while messages continue to enqueue
+5. `badgerbox-demo kafka`
+6. `badgerbox-demo consumer`
+7. Watch the producer log `phase=warning event=reload_state`, then `phase=ready event=reconnected`, and finally drain the backlog into Kafka for the consumer to print
+
+The producer follows the preserved state file by default. If Kafka restarts with a new mapped port, the producer reloads the state file after a publish failure, rebuilds its Kafka client, and resumes publishing on the next retry. The producer still requires some broker source at startup, either from flags, environment variables, or the preserved state file.
 
 ## Generic producer example
 

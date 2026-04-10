@@ -1,5 +1,7 @@
 package demo
 
+import "time"
+
 const (
 	DefaultStateDir   = ".demo/badgerbox-demo"
 	DefaultStateFile  = DefaultStateDir + "/state.json"
@@ -8,4 +10,9 @@ const (
 	DefaultNamespace  = "demo"
 	DefaultKafkaImage = "confluentinc/confluent-local:7.5.0"
 	DefaultClusterID  = "badgerbox-demo"
+
+	DefaultRetryBaseDelay = 1 * time.Second
+	DefaultRetryMaxDelay  = 5 * time.Second
+	DefaultPollInterval   = 250 * time.Millisecond
+	DefaultLeaseDuration  = 30 * time.Second
 )
