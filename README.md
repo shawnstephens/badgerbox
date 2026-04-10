@@ -81,6 +81,48 @@ Prefix roles:
 go get github.com/shawnstephens/badgerbox
 ```
 
+Install the demo binary:
+
+```bash
+go install github.com/shawnstephens/badgerbox/cmd/badgerbox-demo@latest
+```
+
+## Demo binary
+
+The demo binary runs three separate processes:
+
+1. `kafka` starts a Kafka broker with Testcontainers and writes shared runtime state to `./.demo/badgerbox-demo/state.json`.
+2. `producer` opens Badger, continuously enqueues messages into badgerbox, runs the badgerbox processor, and publishes to Kafka.
+3. `consumer` connects to the same Kafka broker and prints consumed messages.
+
+Default workflow:
+
+```bash
+badgerbox-demo kafka
+badgerbox-demo producer
+badgerbox-demo consumer
+```
+
+Defaults are chosen so you do not need to pass flags for the common case:
+
+- shared state file: `./.demo/badgerbox-demo/state.json`
+- Badger path: `./.demo/badgerbox-demo/badger`
+- topic: `badgerbox-demo`
+- namespace: `demo`
+- enqueue parallelism: `1`
+- message interval: `500ms`
+- processor concurrency: `4`
+
+Every flag also supports an environment variable with the `BADGERBOX_DEMO_` prefix. For example:
+
+```bash
+BADGERBOX_DEMO_ENQUEUE_PARALLELISM=4 \
+BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
+badgerbox-demo producer
+```
+
+The `kafka` process owns the Testcontainers Kafka broker and must stay running while `producer` and `consumer` are attached. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
+
 ## Generic producer example
 
 ```go
