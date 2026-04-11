@@ -84,10 +84,11 @@ Prefix roles:
 go get github.com/shawnstephens/badgerbox
 ```
 
-Install the demo binary:
+The demo lives in its own module under `cmd/badgerbox-demo`. Run it from that directory:
 
 ```bash
-go install github.com/shawnstephens/badgerbox/cmd/badgerbox-demo@latest
+cd cmd/badgerbox-demo
+go run . --help
 ```
 
 ## Demo binary
@@ -101,9 +102,9 @@ The demo binary runs three separate processes:
 Default workflow:
 
 ```bash
-badgerbox-demo kafka
-badgerbox-demo producer
-badgerbox-demo consumer
+(cd cmd/badgerbox-demo && go run . kafka)
+(cd cmd/badgerbox-demo && go run . producer)
+(cd cmd/badgerbox-demo && go run . consumer)
 ```
 
 Defaults are chosen so you do not need to pass flags for the common case:
@@ -127,7 +128,7 @@ Every flag also supports an environment variable with the `BADGERBOX_DEMO_` pref
 ```bash
 BADGERBOX_DEMO_ENQUEUE_PARALLELISM=4 \
 BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
-badgerbox-demo producer
+(cd cmd/badgerbox-demo && go run . producer)
 ```
 
 The `kafka` process owns the Testcontainers Kafka broker. Its state file is preserved on shutdown so the producer can start later, keep retrying against the stored broker metadata, and reconnect after Kafka restarts on a new mapped port. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
@@ -141,6 +142,16 @@ Offline retry demo:
 5. `badgerbox-demo kafka`
 6. `badgerbox-demo consumer`
 7. Watch the producer log `phase=warning event=reload_state`, then `phase=ready event=reconnected`, and finally drain the backlog into Kafka for the consumer to print
+
+Using repo-local commands, that flow is:
+
+1. `(cd cmd/badgerbox-demo && go run . kafka)`
+2. Stop it with `Ctrl+C`
+3. `(cd cmd/badgerbox-demo && go run . producer)`
+4. Watch repeated `phase=warning event=publish_failed` lines while messages continue to enqueue
+5. `(cd cmd/badgerbox-demo && go run . kafka)`
+6. `(cd cmd/badgerbox-demo && go run . consumer)`
+7. Watch the producer reconnect and drain the backlog
 
 The producer follows the preserved state file by default. If Kafka restarts with a new mapped port, the producer reloads the state file after a publish failure, rebuilds its Kafka client, and resumes publishing on the next retry. The producer still requires some broker source at startup, either from flags, environment variables, or the preserved state file.
 
@@ -322,4 +333,10 @@ Run the Kafka integration suite with Docker available:
 
 ```bash
 go test -tags=integration ./...
+```
+
+Run the demo module tests separately:
+
+```bash
+(cd cmd/badgerbox-demo && go test ./...)
 ```

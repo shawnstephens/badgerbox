@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/shawnstephens/badgerbox/internal/demo"
+	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
 )
 
 func TestResolveKafkaTargetUsesStateFileWhenFlagsAreAbsent(t *testing.T) {
