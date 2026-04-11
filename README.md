@@ -77,6 +77,7 @@ Prefix roles:
 
 ## Roadmap
 1. Add pluggable Metrics and Tracing providers and supply OTEL implementation.
+2. Define/improve retry/DLQ re-enqueue documentation/examples.
 
 ## Install
 
