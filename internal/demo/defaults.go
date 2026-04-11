@@ -16,4 +16,5 @@ const (
 	DefaultRetryMaxDelay  = 5 * time.Second
 	DefaultPollInterval   = 250 * time.Millisecond
 	DefaultLeaseDuration  = 30 * time.Second
+	DefaultPublishTimeout = 2 * time.Second
 )

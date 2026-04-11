@@ -117,6 +117,7 @@ Defaults are chosen so you do not need to pass flags for the common case:
 - retry max delay: `5s`
 - poll interval: `250ms`
 - lease duration: `30s`
+- publish timeout: `2s`
 
 Every flag also supports an environment variable with the `BADGERBOX_DEMO_` prefix. For example:
 
