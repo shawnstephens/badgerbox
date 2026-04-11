@@ -31,5 +31,6 @@ go.work.sum
 # .idea/
 # .vscode/
 
-badgerbox-demo
+/badgerbox-demo
+/cmd/badgerbox-demo/badgerbox-demo
 .demo

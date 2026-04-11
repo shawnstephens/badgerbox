@@ -3,7 +3,7 @@ package main
 import (
 	"time"
 
-	"github.com/shawnstephens/badgerbox/internal/demo"
+	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
 )
