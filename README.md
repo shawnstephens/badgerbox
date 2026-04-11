@@ -2,7 +2,7 @@
 
 ![badgerbox](image.png)
 
-`badgerbox` is a durable outbox library for Go applications that already use [Badger](https://github.com/dgraph-io/badger). It stores typed payloads and typed destinations under `./pkg/badgerbox`, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
+`badgerbox` is an embedded, durable outbox library for Go applications. It uses [Badger](https://github.com/dgraph-io/badger) as a fast, embedded key/value store. It stores typed payloads and typed destinations, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
 
 The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on [Franz-go](https://github.com/twmb/franz-go).
 
@@ -74,6 +74,9 @@ Prefix roles:
 - `ob/<namespace>/processing/` is the in-flight lease index scanned by the reaper in lease-expiry order.
 - `ob/<namespace>/dlq/` stores dead-letter records for failed messages.
 - `ob/<namespace>/seq/message-id` is the Badger sequence key used to allocate message IDs.
+
+## Roadmap
+1. Add pluggable Metrics and Tracing providers and supply OTEL implementation.
 
 ## Install
 
