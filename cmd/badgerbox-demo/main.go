@@ -154,6 +154,12 @@ func newProducerCommand() *cli.Command {
 				Value:   demo.DefaultLeaseDuration,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_LEASE_DURATION"),
 			},
+			&cli.DurationFlag{
+				Name:    "publish-timeout",
+				Usage:   "Timeout for each Kafka publish attempt",
+				Value:   demo.DefaultPublishTimeout,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_PUBLISH_TIMEOUT"),
+			},
 			&cli.StringFlag{
 				Name:    "producer-id",
 				Usage:   "Logical producer identifier used in keys and logs",
@@ -323,6 +329,10 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	if leaseDuration <= 0 {
 		return errors.New("lease-duration must be greater than 0")
 	}
+	publishTimeout := cmd.Duration("publish-timeout")
+	if publishTimeout <= 0 {
+		return errors.New("publish-timeout must be greater than 0")
+	}
 	producerID := cmd.String("producer-id")
 	if producerID == "" {
 		host, _ := os.Hostname()
@@ -332,7 +342,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		producerID = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
 
-	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s producer_id=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, producerID)
+	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s producer_id=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, producerID)
 
 	if err := os.MkdirAll(dbPath, 0o755); err != nil {
 		return fmt.Errorf("create badger directory: %w", err)
@@ -370,7 +380,9 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
 		key := string(msg.Payload.Key)
 		logger.Printf("process", "event=start msg_id=%d key=%s topic=%s attempt=%d", msg.ID, key, msg.Destination.Topic, msg.Attempt)
-		err := publisher.Publish(ctx, msg)
+		publishCtx, cancel := context.WithTimeout(ctx, publishTimeout)
+		err := publisher.Publish(publishCtx, msg)
+		cancel()
 		if err != nil {
 			logProcessFailure(logger, time.Now().UTC(), msg, err, retryBaseDelay, retryMaxDelay)
 			return err
