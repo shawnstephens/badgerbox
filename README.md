@@ -91,6 +91,14 @@ cd cmd/badgerbox-demo
 go run . --help
 ```
 
+If you want to run the demo from the repo root, create a local `go.work` file that includes both modules. `go.work` is gitignored in this repo, so this is a local convenience only:
+
+```bash
+go work init .
+go work use ./cmd/badgerbox-demo
+go run ./cmd/badgerbox-demo --help
+```
+
 ## Demo binary
 
 The demo binary runs three separate processes:
@@ -105,6 +113,14 @@ Default workflow:
 (cd cmd/badgerbox-demo && go run . kafka)
 (cd cmd/badgerbox-demo && go run . producer)
 (cd cmd/badgerbox-demo && go run . consumer)
+```
+
+With a local `go.work` file, the same flow can be run from the repo root:
+
+```bash
+go run ./cmd/badgerbox-demo kafka
+go run ./cmd/badgerbox-demo producer
+go run ./cmd/badgerbox-demo consumer
 ```
 
 Defaults are chosen so you do not need to pass flags for the common case:
