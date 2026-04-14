@@ -1,4 +1,4 @@
-# badgerbox
+# Badger Box
 
 ![badgerbox](image.png)
 
