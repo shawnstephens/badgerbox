@@ -160,6 +160,12 @@ func newProducerCommand() *cli.Command {
 				Value:   demo.DefaultPublishTimeout,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PUBLISH_TIMEOUT"),
 			},
+			&cli.DurationFlag{
+				Name:    "badger-gc-interval",
+				Usage:   "How often to run Badger value-log GC",
+				Value:   demo.DefaultBadgerGCInterval,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_BADGER_GC_INTERVAL"),
+			},
 			&cli.StringFlag{
 				Name:    "producer-id",
 				Usage:   "Logical producer identifier used in keys and logs",
@@ -333,6 +339,10 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	if publishTimeout <= 0 {
 		return errors.New("publish-timeout must be greater than 0")
 	}
+	badgerGCInterval := cmd.Duration("badger-gc-interval")
+	if badgerGCInterval <= 0 {
+		return errors.New("badger-gc-interval must be greater than 0")
+	}
 	producerID := cmd.String("producer-id")
 	if producerID == "" {
 		host, _ := os.Hostname()
@@ -342,7 +352,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		producerID = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
 
-	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s producer_id=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, producerID)
+	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f producer_id=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, producerID)
 
 	if err := os.MkdirAll(dbPath, 0o755); err != nil {
 		return fmt.Errorf("create badger directory: %w", err)
@@ -353,6 +363,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("open badger: %w", err)
 	}
 	defer db.Close()
+
+	go demo.RunValueLogGC(runCtx, db, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, logger)
 
 	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
 		db,
