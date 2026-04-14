@@ -12,9 +12,12 @@ const (
 	DefaultKafkaImage      = "confluentinc/confluent-local:7.5.0"
 	DefaultClusterID       = "badgerbox-demo"
 
-	DefaultRetryBaseDelay = 1 * time.Second
-	DefaultRetryMaxDelay  = 5 * time.Second
-	DefaultPollInterval   = 250 * time.Millisecond
-	DefaultLeaseDuration  = 30 * time.Second
-	DefaultPublishTimeout = 2 * time.Second
+	DefaultRetryBaseDelay   = 1 * time.Second
+	DefaultRetryMaxDelay    = 5 * time.Second
+	DefaultPollInterval     = 250 * time.Millisecond
+	DefaultLeaseDuration    = 30 * time.Second
+	DefaultPublishTimeout   = 2 * time.Second
+	DefaultBadgerGCInterval = time.Minute
+
+	DefaultBadgerGCDiscardRatio = 0.5
 )

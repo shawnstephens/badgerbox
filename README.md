@@ -13,6 +13,25 @@ The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on 
 - Badger allows only one live process to own a DB path. The example worker binary is for exclusive DB ownership only; it is not a multi-process shared-worker deployment model.
 - Badger value log GC is still an operational responsibility of the embedding application.
 
+If you keep a long-lived Badger DB, run value-log GC periodically from your application. `badgerbox` removes processed messages logically, but Badger only reclaims old value-log space when you call `RunValueLogGC` yourself. A simple maintenance loop looks like this:
+
+```go
+go func() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		for {
+			if err := db.RunValueLogGC(0.5); err != nil {
+				break
+			}
+		}
+	}
+}()
+```
+
+If you never run value-log GC, disk usage can keep growing even though outbox messages are being acknowledged and deleted.
+
 ## Architecture
 
 ```mermaid
@@ -139,6 +158,8 @@ Defaults are chosen so you do not need to pass flags for the common case:
 - poll interval: `250ms`
 - lease duration: `30s`
 - publish timeout: `2s`
+- Badger value-log GC interval: `1m`
+- Badger value-log GC discard ratio: `0.5`
 
 Every flag also supports an environment variable with the `BADGERBOX_DEMO_` prefix. For example:
 
@@ -149,6 +170,8 @@ BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
 ```
 
 The `kafka` process owns the Testcontainers Kafka broker. Its state file is preserved on shutdown so the producer can start later, keep retrying against the stored broker metadata, and reconnect after Kafka restarts on a new mapped port. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
+
+The producer also runs Badger value-log GC periodically with a discard ratio of `0.5`. Adjust the interval with `--badger-gc-interval` or `BADGERBOX_DEMO_BADGER_GC_INTERVAL`.
 
 Offline retry demo:
 
