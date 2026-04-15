@@ -21,51 +21,16 @@ const (
 	conflictRetryDelay    = 5 * time.Millisecond
 )
 
-func normalizeOptions(opts Options) Options {
-	if opts.Namespace == "" {
-		opts.Namespace = defaultNamespace
-	}
-	if opts.IDLeaseSize == 0 {
-		opts.IDLeaseSize = defaultIDLeaseSize
-	}
-	return opts
+func withConflictRetry(ctx context.Context, runtime Runtime, fn func() error) error {
+	return withConflictRetryObserved(ctx, runtime, nil, fn)
 }
 
-func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
-	if opts.Concurrency <= 0 {
-		opts.Concurrency = defaultConcurrency
-	}
-	if opts.ClaimBatchSize <= 0 {
-		opts.ClaimBatchSize = defaultClaimBatchSize
-	}
-	if opts.PollInterval <= 0 {
-		opts.PollInterval = defaultPollInterval
-	}
-	if opts.LeaseDuration <= 0 {
-		opts.LeaseDuration = defaultLeaseDuration
-	}
-	if opts.RetryBaseDelay <= 0 {
-		opts.RetryBaseDelay = defaultRetryBaseDelay
-	}
-	if opts.RetryMaxDelay <= 0 {
-		opts.RetryMaxDelay = defaultRetryMaxDelay
-	}
-	if opts.RetryMaxDelay < opts.RetryBaseDelay {
-		opts.RetryMaxDelay = opts.RetryBaseDelay
-	}
-	if opts.MaxAttempts <= 0 {
-		opts.MaxAttempts = defaultMaxAttempts
-	}
-	return opts
-}
-
-func withConflictRetry(ctx context.Context, fn func() error) error {
-	return withConflictRetryObserved(ctx, nil, fn)
-}
-
-func withConflictRetryObserved(ctx context.Context, onRetry func(), fn func() error) error {
+func withConflictRetryObserved(ctx context.Context, runtime Runtime, onRetry func(), fn func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if runtime == nil {
+		runtime = SystemRuntime{}
 	}
 
 	for {
@@ -80,13 +45,8 @@ func withConflictRetryObserved(ctx context.Context, onRetry func(), fn func() er
 		if onRetry != nil {
 			onRetry()
 		}
-
-		timer := time.NewTimer(conflictRetryDelay)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
+		if err := runtime.Sleep(ctx, conflictRetryDelay); err != nil {
+			return err
 		}
 	}
 }

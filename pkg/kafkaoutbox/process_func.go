@@ -14,9 +14,24 @@ var (
 	ErrTopicRequired = errors.New("kafkaoutbox: topic is required")
 )
 
-func NewProcessFunc(client *kgo.Client, _ Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
+type Producer interface {
+	ProduceSync(context.Context, ...*kgo.Record) kgo.ProduceResults
+}
+
+type Options struct{}
+
+func NewProcessFunc(client *kgo.Client, opts Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
+	if client == nil {
+		return func(context.Context, badgerbox.Message[KafkaMessage, KafkaDestination]) error {
+			return ErrNilClient
+		}
+	}
+	return NewProcessFuncWithProducer(client, opts)
+}
+
+func NewProcessFuncWithProducer(producer Producer, _ Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
 	return func(ctx context.Context, msg badgerbox.Message[KafkaMessage, KafkaDestination]) error {
-		if client == nil {
+		if producer == nil {
 			return ErrNilClient
 		}
 		if msg.Destination.Topic == "" {
@@ -44,7 +59,7 @@ func NewProcessFunc(client *kgo.Client, _ Options) badgerbox.ProcessFunc[KafkaMe
 			})
 		}
 
-		return client.ProduceSync(ctx, record).FirstErr()
+		return producer.ProduceSync(ctx, record).FirstErr()
 	}
 }
 

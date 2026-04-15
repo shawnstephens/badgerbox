@@ -9,6 +9,18 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
+type ProcessFunc[M any, D any] func(ctx context.Context, msg Message[M, D]) error
+
+type ProcessorOptions struct {
+	Concurrency    int
+	ClaimBatchSize int
+	PollInterval   time.Duration
+	LeaseDuration  time.Duration
+	RetryBaseDelay time.Duration
+	RetryMaxDelay  time.Duration
+	MaxAttempts    int
+}
+
 type Processor[M any, D any] struct {
 	store *Store[M, D]
 	fn    ProcessFunc[M, D]
@@ -19,6 +31,34 @@ type claimedRecord[M any, D any] struct {
 	Message      Message[M, D]
 	LeaseToken   string
 	TraceCarrier map[string]string
+}
+
+func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
+	if opts.Concurrency <= 0 {
+		opts.Concurrency = defaultConcurrency
+	}
+	if opts.ClaimBatchSize <= 0 {
+		opts.ClaimBatchSize = defaultClaimBatchSize
+	}
+	if opts.PollInterval <= 0 {
+		opts.PollInterval = defaultPollInterval
+	}
+	if opts.LeaseDuration <= 0 {
+		opts.LeaseDuration = defaultLeaseDuration
+	}
+	if opts.RetryBaseDelay <= 0 {
+		opts.RetryBaseDelay = defaultRetryBaseDelay
+	}
+	if opts.RetryMaxDelay <= 0 {
+		opts.RetryMaxDelay = defaultRetryMaxDelay
+	}
+	if opts.RetryMaxDelay < opts.RetryBaseDelay {
+		opts.RetryMaxDelay = opts.RetryBaseDelay
+	}
+	if opts.MaxAttempts <= 0 {
+		opts.MaxAttempts = defaultMaxAttempts
+	}
+	return opts
 }
 
 func NewProcessor[M any, D any](store *Store[M, D], fn ProcessFunc[M, D], opts ProcessorOptions) (*Processor[M, D], error) {
@@ -44,6 +84,13 @@ func (p *Processor[M, D]) Run(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	if err := p.store.RecordObservabilitySnapshot(runCtx); err != nil {
+		return err
+	}
+	if err := p.store.StartObservability(runCtx); err != nil {
+		return err
+	}
 
 	notifyCh := make(chan struct{}, 1)
 	listenerID := p.store.registerListener(notifyCh)
@@ -95,7 +142,7 @@ func (p *Processor[M, D]) Run(ctx context.Context) error {
 }
 
 func (p *Processor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan struct{}, workCh chan<- claimedRecord[M, D]) error {
-	ticker := time.NewTicker(p.opts.PollInterval)
+	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -106,7 +153,7 @@ func (p *Processor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan stru
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-ticker.C:
+		case <-ticker.Chan():
 		case <-notifyCh:
 		}
 	}
@@ -114,7 +161,7 @@ func (p *Processor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan stru
 
 func (p *Processor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- claimedRecord[M, D]) error {
 	for {
-		claimed, err := p.store.claimReadyBatch(ctx, time.Now().UTC(), p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		claimed, err := p.store.claimReadyBatch(ctx, p.store.runtime.Now().UTC(), p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
 		if err != nil {
 			return err
 		}
@@ -138,18 +185,18 @@ func (p *Processor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- c
 }
 
 func (p *Processor[M, D]) reaperLoop(ctx context.Context) error {
-	ticker := time.NewTicker(p.opts.PollInterval)
+	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
 	defer ticker.Stop()
 
 	for {
-		if _, err := p.store.requeueExpired(ctx, time.Now().UTC()); err != nil {
+		if _, err := p.store.requeueExpired(ctx, p.store.runtime.Now().UTC()); err != nil {
 			return err
 		}
 
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-ticker.C:
+		case <-ticker.Chan():
 		}
 	}
 }
@@ -172,7 +219,7 @@ func (p *Processor[M, D]) workerLoop(ctx context.Context, workCh <-chan claimedR
 
 func (p *Processor[M, D]) processOne(ctx context.Context, work claimedRecord[M, D]) (err error) {
 	ctx, span := p.store.obs.startProcessSpan(ctx, work.Message.ID, work.Message.Attempt, work.Message.MaxAttempts, work.Message.CreatedAt, work.Message.AvailableAt, work.TraceCarrier)
-	start := time.Now().UTC()
+	start := p.store.runtime.Now().UTC()
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -214,7 +261,7 @@ func (p *Processor[M, D]) processOne(ctx context.Context, work claimedRecord[M, 
 }
 
 func (p *Processor[M, D]) finishProcessing(ctx context.Context, span oteltrace.Span, started time.Time, processErr error, result failProcessingResult) {
-	duration := time.Since(started)
+	duration := positiveDuration(p.store.runtime.Now().UTC().Sub(started))
 
 	switch result.outcome {
 	case metricOutcomeRetried:
