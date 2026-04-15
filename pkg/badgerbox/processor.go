@@ -4,6 +4,9 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 type Processor[M any, D any] struct {
@@ -13,8 +16,9 @@ type Processor[M any, D any] struct {
 }
 
 type claimedRecord[M any, D any] struct {
-	Message    Message[M, D]
-	LeaseToken string
+	Message      Message[M, D]
+	LeaseToken   string
+	TraceCarrier map[string]string
 }
 
 func NewProcessor[M any, D any](store *Store[M, D], fn ProcessFunc[M, D], opts ProcessorOptions) (*Processor[M, D], error) {
@@ -25,11 +29,12 @@ func NewProcessor[M any, D any](store *Store[M, D], fn ProcessFunc[M, D], opts P
 		return nil, ErrProcessorFuncNil
 	}
 
-	return &Processor[M, D]{
+	processor := &Processor[M, D]{
 		store: store,
 		fn:    fn,
 		opts:  normalizeProcessorOptions(opts),
-	}, nil
+	}
+	return processor, nil
 }
 
 func (p *Processor[M, D]) Run(ctx context.Context) error {
@@ -122,6 +127,7 @@ func (p *Processor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- c
 			case <-ctx.Done():
 				return nil
 			case workCh <- record:
+				p.store.obs.workQueued()
 			}
 		}
 
@@ -154,23 +160,74 @@ func (p *Processor[M, D]) workerLoop(ctx context.Context, workCh <-chan claimedR
 		case <-ctx.Done():
 			return nil
 		case work := <-workCh:
+			p.store.obs.workStarted()
 			if err := p.processOne(ctx, work); err != nil {
+				p.store.obs.workFinished()
 				return err
 			}
+			p.store.obs.workFinished()
 		}
 	}
 }
 
 func (p *Processor[M, D]) processOne(ctx context.Context, work claimedRecord[M, D]) (err error) {
+	ctx, span := p.store.obs.startProcessSpan(ctx, work.Message.ID, work.Message.Attempt, work.Message.MaxAttempts, work.Message.CreatedAt, work.Message.AvailableAt, work.TraceCarrier)
+	start := time.Now().UTC()
+
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, panicError(recovered), p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
+			processErr := panicError(recovered)
+			span.AddEvent("panic_recovered")
+			span.RecordError(processErr)
+			result, failErr := p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, processErr, p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
+			if failErr != nil {
+				err = failErr
+				span.RecordError(failErr)
+				p.store.obs.endSpan(span, "error")
+				return
+			}
+			p.finishProcessing(ctx, span, start, processErr, result)
+			err = nil
 		}
 	}()
 
 	if err = p.fn(ctx, work.Message); err != nil {
-		return p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, err, p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
+		span.RecordError(err)
+		result, failErr := p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, err, p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
+		if failErr != nil {
+			span.RecordError(failErr)
+			p.store.obs.endSpan(span, "error")
+			return failErr
+		}
+		p.finishProcessing(ctx, span, start, err, result)
+		return nil
 	}
 
-	return p.store.acknowledge(ctx, work.Message.ID, work.LeaseToken)
+	if err = p.store.acknowledge(ctx, work.Message.ID, work.LeaseToken); err != nil {
+		span.RecordError(err)
+		p.store.obs.endSpan(span, "error")
+		return err
+	}
+
+	p.finishProcessing(ctx, span, start, nil, failProcessingResult{outcome: metricOutcomeSuccess})
+	return nil
+}
+
+func (p *Processor[M, D]) finishProcessing(ctx context.Context, span oteltrace.Span, started time.Time, processErr error, result failProcessingResult) {
+	duration := time.Since(started)
+
+	switch result.outcome {
+	case metricOutcomeRetried:
+		p.store.obs.recordProcessRetried(ctx, processErr, duration)
+		p.store.obs.recordRetryScheduled(ctx, processErr, result.retryDelay)
+		span.AddEvent("retry_scheduled", oteltrace.WithAttributes(attribute.String("badgerbox.retry_delay", result.retryDelay.String())))
+	case metricOutcomeDeadLetter:
+		p.store.obs.recordProcessDeadLetter(ctx, processErr, duration)
+		p.store.obs.recordDeadLetter(ctx, processErr)
+		span.AddEvent("dead_lettered", oteltrace.WithAttributes(attribute.String("badgerbox.failure_kind", failureKind(processErr))))
+	default:
+		p.store.obs.recordProcessSuccess(ctx, duration)
+	}
+
+	p.store.obs.endSpan(span, result.outcome)
 }

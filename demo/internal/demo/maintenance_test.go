@@ -3,6 +3,7 @@ package demo
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -45,7 +46,7 @@ func TestRunValueLogGCPassContinuesUntilNoRewrite(t *testing.T) {
 	if !strings.Contains(logged, "rewrites=2") {
 		t.Fatalf("expected rewrite count, got %q", logged)
 	}
-	if !strings.Contains(logged, "discard_ratio=0.50") {
+	if !strings.Contains(logged, fmt.Sprintf("discard_ratio=%.2f", DefaultBadgerGCDiscardRatio)) {
 		t.Fatalf("expected discard ratio, got %q", logged)
 	}
 }

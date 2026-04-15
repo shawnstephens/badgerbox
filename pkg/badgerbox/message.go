@@ -36,8 +36,9 @@ type EnqueueRequest[M any, D any] struct {
 }
 
 type Options struct {
-	Namespace   string
-	IDLeaseSize uint64
+	Namespace     string
+	IDLeaseSize   uint64
+	Observability ObservabilityOptions
 }
 
 type ProcessFunc[M any, D any] func(ctx context.Context, msg Message[M, D]) error

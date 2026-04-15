@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
+	"github.com/shawnstephens/badgerbox/demo/internal/demo"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -120,7 +121,7 @@ func newProducerCommand() *cli.Command {
 			},
 			&cli.DurationFlag{
 				Name:    "message-interval",
-				Usage:   "Wait time after each enqueue per worker",
+				Usage:   "Wait time after each enqueue per worker; use 0ms for no delay",
 				Value:   500 * time.Millisecond,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_MESSAGE_INTERVAL"),
 			},
@@ -170,6 +171,23 @@ func newProducerCommand() *cli.Command {
 				Name:    "producer-id",
 				Usage:   "Logical producer identifier used in keys and logs",
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PRODUCER_ID"),
+			},
+			&cli.StringFlag{
+				Name:    "otel-endpoint",
+				Usage:   "OTLP/HTTP collector endpoint host:port; blank disables observability export",
+				Sources: cli.EnvVars("BADGERBOX_DEMO_OTEL_ENDPOINT"),
+			},
+			&cli.StringFlag{
+				Name:    "otel-service-name",
+				Usage:   "OTEL service.name for demo telemetry",
+				Value:   demo.DefaultOTelServiceName,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_OTEL_SERVICE_NAME"),
+			},
+			&cli.StringFlag{
+				Name:    "expvar-listen-addr",
+				Usage:   "Listen address for the demo expvar endpoint; blank disables the expvar server",
+				Value:   demo.DefaultExpvarListenAddr,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_EXPVAR_LISTEN_ADDR"),
 			},
 			colorFlag(demo.ColorAuto),
 		},
@@ -283,8 +301,8 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	logger.Printf("ready", "command=kafka brokers=%s topic=%s topic_partitions=%d state_file=%s container_id=%s", demo.ShortBrokerList(brokers), topic, topicPartitions, stateFile, container.GetContainerID())
-	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo producer\"")
-	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo consumer\"")
+	logger.Printf("ready", "command=kafka next=\"go run ./demo producer\"")
+	logger.Printf("ready", "command=kafka next=\"go run ./demo consumer\"")
 
 	<-runCtx.Done()
 	return nil
@@ -309,8 +327,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("enqueue-parallelism must be at least 1")
 	}
 	messageInterval := cmd.Duration("message-interval")
-	if messageInterval <= 0 {
-		return errors.New("message-interval must be greater than 0")
+	if messageInterval < 0 {
+		return errors.New("message-interval must be greater than or equal to 0")
 	}
 	processorConcurrency := cmd.Int("processor-concurrency")
 	if processorConcurrency < 1 {
@@ -351,14 +369,49 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		}
 		producerID = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
+	otelConfig := demo.OTelConfig{
+		Endpoint:    cmd.String("otel-endpoint"),
+		ServiceName: cmd.String("otel-service-name"),
+	}
+	expvarListenAddr := cmd.String("expvar-listen-addr")
 
-	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f producer_id=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, producerID)
+	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, producerID, otelConfig.Endpoint, expvarListenAddr)
+
+	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
+	if err != nil {
+		return fmt.Errorf("setup otel: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownOTel(shutdownCtx); err != nil {
+			logger.Printf("warning", "event=otel_shutdown_failed err=%q", err)
+		}
+	}()
+	if otelConfig.Enabled() {
+		logger.Printf("ready", "event=otel_export enabled=true endpoint=%s service_name=%s", otelConfig.Endpoint, otelConfig.ServiceName)
+	}
+
+	expvarServer, expvarAddr, expvarErrCh, err := demo.StartExpvarServer(expvarListenAddr)
+	if err != nil {
+		return fmt.Errorf("start expvar server: %w", err)
+	}
+	if expvarServer != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := expvarServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Printf("warning", "event=expvar_shutdown_failed err=%q", err)
+			}
+		}()
+		logger.Printf("ready", "event=expvar enabled=true addr=%s paths=/debug/vars,/metrics", expvarAddr)
+	}
 
 	if err := os.MkdirAll(dbPath, 0o755); err != nil {
 		return fmt.Errorf("create badger directory: %w", err)
 	}
 
-	db, err := badger.Open(badger.DefaultOptions(dbPath).WithLogger(nil))
+	db, err := badger.Open(badger.DefaultOptions(dbPath).WithLogger(nil).WithMetricsEnabled(true))
 	if err != nil {
 		return fmt.Errorf("open badger: %w", err)
 	}
@@ -369,7 +422,10 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
 		db,
 		badgerbox.Serde[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{},
-		badgerbox.Options{Namespace: namespace},
+		badgerbox.Options{
+			Namespace:     namespace,
+			Observability: observability,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("new store: %w", err)
@@ -434,7 +490,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 			first := true
 
 			for {
-				if !first {
+				if !first && messageInterval > 0 {
 					timer := time.NewTimer(messageInterval)
 					select {
 					case <-runCtx.Done():
@@ -492,6 +548,13 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("processor stopped: %w", err)
 		}
 		return nil
+	case err := <-expvarErrCh:
+		if err != nil {
+			processorCancel()
+			stop()
+			wg.Wait()
+			return fmt.Errorf("expvar server stopped: %w", err)
+		}
 	case <-runCtx.Done():
 	}
 

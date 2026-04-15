@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
+	"github.com/shawnstephens/badgerbox/demo/internal/demo"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
 )

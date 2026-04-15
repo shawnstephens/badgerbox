@@ -1,0 +1,1632 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "panels": [],
+      "title": "Queue State",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Current number of messages in the ready index. This includes scheduled retry backlog that is not yet claimable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)",
+          "instant": true,
+          "legendFormat": "ready",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Ready Depth",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Current number of leased in-flight messages.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_processing{namespace=\"$namespace\"}) or sum(badgerbox_queue_processing)",
+          "instant": true,
+          "legendFormat": "processing",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Processing Depth",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Current dead-letter queue depth.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_dead_letter{namespace=\"$namespace\"}) or sum(badgerbox_queue_dead_letter)",
+          "instant": true,
+          "legendFormat": "dead-letter",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Dead-Letter Depth",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Age of the oldest ready message measured from original enqueue time, not from scheduled availability time.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_oldest_ready_age_seconds{namespace=\"$namespace\"}) or sum(badgerbox_queue_oldest_ready_age_seconds)",
+          "instant": true,
+          "legendFormat": "oldest ready",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest Ready Age",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Age of the oldest in-flight message measured from original enqueue time.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_oldest_processing_age_seconds{namespace=\"$namespace\"}) or sum(badgerbox_queue_oldest_processing_age_seconds)",
+          "instant": true,
+          "legendFormat": "oldest processing",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest Processing Age",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Queue depth history. Ready includes future scheduled retries that have not become claimable yet.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)",
+          "legendFormat": "ready",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_processing{namespace=\"$namespace\"}) or sum(badgerbox_queue_processing)",
+          "legendFormat": "processing",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_queue_dead_letter{namespace=\"$namespace\"}) or sum(badgerbox_queue_dead_letter)",
+          "legendFormat": "dead-letter",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Queue Depths Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 8,
+      "panels": [],
+      "title": "Throughput and Activity",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "End-to-end activity rates from enqueue through retries and dead-lettering.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_enqueue_total{namespace=\"$namespace\",outcome=\"committed\"}[5m]))",
+          "legendFormat": "enqueue committed",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_claim_total{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "claim",
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_process_attempt_total{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "process attempts",
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_requeue_total{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "requeue",
+          "refId": "D"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_dead_letter_total{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "dead-letter",
+          "refId": "E"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_conflict_retry_total{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "conflict retry",
+          "refId": "F"
+        }
+      ],
+      "title": "Request and Queue Activity Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Processing completion rate broken down by outcome.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_process_attempt_total{namespace=\"$namespace\",outcome=\"success\"}[5m]))",
+          "legendFormat": "success",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_process_attempt_total{namespace=\"$namespace\",outcome=\"retried\"}[5m]))",
+          "legendFormat": "retried",
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badgerbox_process_attempt_total{namespace=\"$namespace\",outcome=\"dead_letter\"}[5m]))",
+          "legendFormat": "dead-lettered",
+          "refId": "C"
+        }
+      ],
+      "title": "Process Outcomes",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 11,
+      "panels": [],
+      "title": "Latency and Delay",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Enqueue latency percentiles over the last five minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "title": "Enqueue Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Processing attempt latency percentiles over the last five minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "title": "Process Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Retry delay percentiles for retry-scheduled messages.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_retry_delay_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "retry delay p50",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_retry_delay_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "retry delay p95",
+          "refId": "B"
+        }
+      ],
+      "title": "Retry Delay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Claim timing shows how late claims are relative to AvailableAt and how old messages are at claim time.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_schedule_lag_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "schedule lag p50",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_schedule_lag_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "schedule lag p95",
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_message_age_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "message age p50",
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_message_age_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "message age p95",
+          "refId": "D"
+        }
+      ],
+      "title": "Claim Timing",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "id": 16,
+      "panels": [],
+      "title": "Runtime",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Runtime gauges exported by the processor loop.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_workers_active{namespace=\"$namespace\"}) or sum(badgerbox_workers_active)",
+          "legendFormat": "active workers",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(badgerbox_work_channel_depth{namespace=\"$namespace\"}) or sum(badgerbox_work_channel_depth)",
+          "legendFormat": "work channel depth",
+          "refId": "B"
+        }
+      ],
+      "title": "Workers and Work Channel",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "id": 18,
+      "panels": [],
+      "title": "Badger Storage",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Badger storage size metrics scraped from the producer's /metrics endpoint, where the producer republishes selected expvar values through Prometheus's expvar collector. Filter by directory regex when a process serves multiple stores.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badger_size_bytes_lsm{directory=~\"$directory\"})",
+          "legendFormat": "lsm size",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(badger_size_bytes_vlog{directory=~\"$directory\"})",
+          "legendFormat": "vlog size",
+          "refId": "B"
+        }
+      ],
+      "title": "Badger Storage Size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Badger internal gauges scraped from the producer's /metrics endpoint, where the producer republishes selected expvar values through Prometheus's expvar collector.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(badger_write_pending_num_memtable{directory=~\"$directory\"})",
+          "legendFormat": "pending memtable writes",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(badger_compaction_current_num_lsm)",
+          "legendFormat": "current compactions",
+          "refId": "B"
+        }
+      ],
+      "title": "Badger Pending Writes and Compactions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Representative Badger request counters exported as rates from the producer's /metrics endpoint via Prometheus's expvar collector.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 69
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badger_get_num_user[5m]))",
+          "legendFormat": "user gets",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badger_put_num_user[5m]))",
+          "legendFormat": "user puts",
+          "refId": "B"
+        }
+      ],
+      "title": "Badger User Operation Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Badger write throughput from the producer's /metrics endpoint via Prometheus's expvar collector. Expect no data until the store writes enough user traffic to move the counter.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 69
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(badger_write_bytes_user[5m]))",
+          "legendFormat": "user write bytes/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Badger User Write Throughput",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": [
+    "badgerbox",
+    "demo",
+    "observability"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "demo",
+          "value": "demo"
+        },
+        "description": "badgerbox namespace label to chart",
+        "hide": 0,
+        "label": "Namespace",
+        "name": "namespace",
+        "options": [],
+        "query": "demo",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": ".*",
+          "value": ".*"
+        },
+        "description": "Regex applied to Badger directory labels. Keep .* to include all directories.",
+        "hide": 0,
+        "label": "Badger Directory Regex",
+        "name": "directory",
+        "options": [],
+        "query": ".*",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Badgerbox Demo Observability",
+  "uid": "badgerbox-demo-obsv",
+  "version": 1,
+  "weekStart": ""
+}
