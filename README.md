@@ -6,6 +6,9 @@
 
 The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on [Franz-go](https://github.com/twmb/franz-go).
 
+> [!WARNING]
+> Badger Box is under active development. There is no release yet, and breaking changes are likely until the project reaches an initial stable release.
+
 ## Observability
 
 `badgerbox` supports optional OpenTelemetry metrics and tracing directly in core.
