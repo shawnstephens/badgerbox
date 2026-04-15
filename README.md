@@ -1,5 +1,7 @@
 # Badger Box
 
+[![CI](https://github.com/shawnstephens/badgerbox/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shawnstephens/badgerbox/actions/workflows/ci.yml)
+
 ![badgerbox](image.png)
 
 Badger Box is an embedded, durable outbox library for Go applications. It uses [Badger](https://github.com/dgraph-io/badger) as a fast, embedded key/value store. It stores typed payloads and typed destinations, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
