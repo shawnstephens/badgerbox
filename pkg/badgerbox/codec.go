@@ -8,6 +8,11 @@ type Codec[T any] interface {
 	Unmarshal([]byte) (T, error)
 }
 
+type Serde[M any, D any] struct {
+	Message     Codec[M]
+	Destination Codec[D]
+}
+
 // JSONCodec is the default codec used by the store when no codec is supplied.
 type JSONCodec[T any] struct{}
 

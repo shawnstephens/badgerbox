@@ -3,6 +3,7 @@ package badgerbox
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -376,6 +377,218 @@ func TestTraceCarrierPersistsAcrossReopen(t *testing.T) {
 	}
 	if processSpan.Parent().SpanID() != enqueueSpan.SpanContext().SpanID() {
 		t.Fatalf("process span parent = %s, want %s", processSpan.Parent().SpanID(), enqueueSpan.SpanContext().SpanID())
+	}
+}
+
+func TestStoreQueueSnapshotUsesRuntimeNow(t *testing.T) {
+	t.Parallel()
+
+	base := time.Unix(1_700_000_000, 0).UTC()
+	runtime := newFakeRuntime(base.Add(-10 * time.Minute))
+
+	_, store, cleanup := openTestStoreWithOptions(t, "runtime-snapshot", Serde[testPayload, testDestination]{}, Options{Runtime: runtime})
+	defer cleanup()
+
+	if _, err := store.Enqueue(context.Background(), EnqueueRequest[testPayload, testDestination]{
+		Payload:     testPayload{Name: "processing"},
+		Destination: testDestination{Route: "/processing"},
+	}); err != nil {
+		t.Fatalf("enqueue processing: %v", err)
+	}
+
+	runtime.SetNow(base.Add(-9 * time.Minute))
+	processingClaimed, err := store.claimReadyBatch(context.Background(), runtime.Now(), 1, 20*time.Minute, defaultMaxAttempts)
+	if err != nil {
+		t.Fatalf("claim processing: %v", err)
+	}
+	if len(processingClaimed) != 1 {
+		t.Fatalf("processing claimed = %d, want 1", len(processingClaimed))
+	}
+
+	runtime.SetNow(base.Add(-7 * time.Minute))
+	if _, err := store.Enqueue(context.Background(), EnqueueRequest[testPayload, testDestination]{
+		Payload:     testPayload{Name: "ready"},
+		Destination: testDestination{Route: "/ready"},
+		AvailableAt: base.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("enqueue ready: %v", err)
+	}
+
+	runtime.SetNow(base.Add(-5 * time.Minute))
+	if _, err := store.Enqueue(context.Background(), EnqueueRequest[testPayload, testDestination]{
+		Payload:     testPayload{Name: "dead"},
+		Destination: testDestination{Route: "/dead"},
+	}); err != nil {
+		t.Fatalf("enqueue dead: %v", err)
+	}
+
+	deadClaimed, err := store.claimReadyBatch(context.Background(), runtime.Now(), 1, time.Minute, defaultMaxAttempts)
+	if err != nil {
+		t.Fatalf("claim dead: %v", err)
+	}
+	if len(deadClaimed) != 1 {
+		t.Fatalf("dead claimed = %d, want 1", len(deadClaimed))
+	}
+	if _, err := store.failProcessing(context.Background(), deadClaimed[0].Message.ID, deadClaimed[0].LeaseToken, Permanent(errors.New("stop")), time.Second, time.Second); err != nil {
+		t.Fatalf("dead-letter message: %v", err)
+	}
+
+	runtime.SetNow(base)
+	snapshot, err := store.queueSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("queueSnapshot: %v", err)
+	}
+	if snapshot.ReadyDepth != 1 || snapshot.ProcessingDepth != 1 || snapshot.DeadLetterDepth != 1 {
+		t.Fatalf("unexpected snapshot counts: %#v", snapshot)
+	}
+	if snapshot.OldestReadyAge != 7*time.Minute {
+		t.Fatalf("oldest ready age = %v, want 7m", snapshot.OldestReadyAge)
+	}
+	if snapshot.OldestProcessingAge != 10*time.Minute {
+		t.Fatalf("oldest processing age = %v, want 10m", snapshot.OldestProcessingAge)
+	}
+}
+
+func TestNewPureConstructorDoesNotStartObservability(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFakeRuntime(time.Unix(1_700_000_000, 0))
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	_, store, cleanup := openTestStoreWithOptions(t, "constructor-pure", Serde[testPayload, testDestination]{}, Options{
+		Runtime: runtime,
+		Observability: ObservabilityOptions{
+			MeterProvider: provider,
+		},
+	})
+	defer cleanup()
+
+	if runtime.TickerCount() != 0 {
+		t.Fatalf("constructor created %d tickers, want 0", runtime.TickerCount())
+	}
+	if store.obs.done != nil || store.obs.cancel != nil {
+		t.Fatalf("constructor started observability: done=%v cancel=%v", store.obs.done, store.obs.cancel)
+	}
+}
+
+func TestStartObservabilityStartsOnceAndStopsOnClose(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFakeRuntime(time.Unix(1_700_000_000, 0))
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	_, store, cleanup := openTestStoreWithOptions(t, "start-observability", Serde[testPayload, testDestination]{}, Options{
+		Runtime: runtime,
+		Observability: ObservabilityOptions{
+			MeterProvider: provider,
+			PollInterval:  time.Second,
+		},
+	})
+	defer cleanup()
+
+	var calls atomic.Int32
+	store.obs.queueSnapshot = func(context.Context) (queueSnapshot, error) {
+		calls.Add(1)
+		return queueSnapshot{}, nil
+	}
+
+	if err := store.StartObservability(context.Background()); err != nil {
+		t.Fatalf("StartObservability: %v", err)
+	}
+	if err := store.StartObservability(context.Background()); err != nil {
+		t.Fatalf("StartObservability second call: %v", err)
+	}
+	waitFor(t, func() bool {
+		return runtime.TickerCount() == 1
+	})
+
+	runtime.TickAll()
+	waitFor(t, func() bool {
+		return calls.Load() == 1
+	})
+
+	before := calls.Load()
+	if err := store.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+
+	runtime.TickAll()
+	time.Sleep(10 * time.Millisecond)
+	if calls.Load() != before {
+		t.Fatalf("snapshot calls after close = %d, want %d", calls.Load(), before)
+	}
+}
+
+func TestRecordObservabilitySnapshotReturnsErrorSync(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFakeRuntime(time.Unix(1_700_000_000, 0))
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	expected := errors.New("snapshot failed")
+
+	_, store, cleanup := openTestStoreWithOptions(t, "snapshot-error", Serde[testPayload, testDestination]{}, Options{
+		Runtime: runtime,
+		Observability: ObservabilityOptions{
+			MeterProvider: provider,
+		},
+	})
+	defer cleanup()
+
+	store.obs.queueSnapshot = func(context.Context) (queueSnapshot, error) {
+		return queueSnapshot{}, expected
+	}
+
+	if err := store.RecordObservabilitySnapshot(context.Background()); !errors.Is(err, expected) {
+		t.Fatalf("RecordObservabilitySnapshot err = %v, want %v", err, expected)
+	}
+}
+
+func TestFailureKindAndPositiveDuration(t *testing.T) {
+	t.Parallel()
+
+	if got := positiveDuration(-time.Second); got != 0 {
+		t.Fatalf("positiveDuration(-1s) = %v, want 0", got)
+	}
+
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "nil", err: nil, want: ""},
+		{name: "permanent", err: Permanent(errors.New("stop")), want: "permanent"},
+		{name: "canceled", err: context.Canceled, want: "context"},
+		{name: "deadline", err: context.DeadlineExceeded, want: "context"},
+		{name: "generic", err: errors.New("boom"), want: "error"},
+	}
+
+	for _, tt := range tests {
+		if got := failureKind(tt.err); got != tt.want {
+			t.Fatalf("%s failureKind = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestRecordSnapshotReturnsQueueSnapshotError(t *testing.T) {
+	t.Parallel()
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	expected := errors.New("snapshot failed")
+
+	obs, err := newOTelInstrumentation(ObservabilityOptions{MeterProvider: provider}, "orders", func(context.Context) (queueSnapshot, error) {
+		return queueSnapshot{}, expected
+	})
+	if err != nil {
+		t.Fatalf("newOTelInstrumentation: %v", err)
+	}
+	defer obs.close()
+
+	if err := obs.recordSnapshot(context.Background()); !errors.Is(err, expected) {
+		t.Fatalf("recordSnapshot err = %v, want %v", err, expected)
 	}
 }
 

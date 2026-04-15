@@ -18,6 +18,8 @@ type Producer interface {
 	ProduceSync(context.Context, ...*kgo.Record) kgo.ProduceResults
 }
 
+type Options struct{}
+
 func NewProcessFunc(client *kgo.Client, opts Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
 	if client == nil {
 		return func(context.Context, badgerbox.Message[KafkaMessage, KafkaDestination]) error {
