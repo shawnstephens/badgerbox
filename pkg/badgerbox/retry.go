@@ -21,6 +21,22 @@ const (
 	conflictRetryDelay    = 5 * time.Millisecond
 )
 
+type runtimeDeps struct {
+	now           func() time.Time
+	newLeaseToken func() (string, error)
+	sleep         func(context.Context, time.Duration) error
+}
+
+func defaultRuntimeDeps() runtimeDeps {
+	return runtimeDeps{
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+		newLeaseToken: newLeaseToken,
+		sleep:         sleepContext,
+	}
+}
+
 func normalizeOptions(opts Options) Options {
 	if opts.Namespace == "" {
 		opts.Namespace = defaultNamespace
@@ -59,13 +75,16 @@ func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 	return opts
 }
 
-func withConflictRetry(ctx context.Context, fn func() error) error {
-	return withConflictRetryObserved(ctx, nil, fn)
+func withConflictRetry(ctx context.Context, deps runtimeDeps, fn func() error) error {
+	return withConflictRetryObserved(ctx, deps, nil, fn)
 }
 
-func withConflictRetryObserved(ctx context.Context, onRetry func(), fn func() error) error {
+func withConflictRetryObserved(ctx context.Context, deps runtimeDeps, onRetry func(), fn func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if deps.sleep == nil {
+		deps.sleep = sleepContext
 	}
 
 	for {
@@ -80,13 +99,8 @@ func withConflictRetryObserved(ctx context.Context, onRetry func(), fn func() er
 		if onRetry != nil {
 			onRetry()
 		}
-
-		timer := time.NewTimer(conflictRetryDelay)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
+		if err := deps.sleep(ctx, conflictRetryDelay); err != nil {
+			return err
 		}
 	}
 }
@@ -108,4 +122,28 @@ func retryDelay(base, max time.Duration, attempt int) time.Duration {
 		return max
 	}
 	return delay
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if delay <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

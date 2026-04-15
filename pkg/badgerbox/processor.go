@@ -114,7 +114,7 @@ func (p *Processor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan stru
 
 func (p *Processor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- claimedRecord[M, D]) error {
 	for {
-		claimed, err := p.store.claimReadyBatch(ctx, time.Now().UTC(), p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		claimed, err := p.store.claimReadyBatch(ctx, p.store.deps.now().UTC(), p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func (p *Processor[M, D]) reaperLoop(ctx context.Context) error {
 	defer ticker.Stop()
 
 	for {
-		if _, err := p.store.requeueExpired(ctx, time.Now().UTC()); err != nil {
+		if _, err := p.store.requeueExpired(ctx, p.store.deps.now().UTC()); err != nil {
 			return err
 		}
 
@@ -172,7 +172,7 @@ func (p *Processor[M, D]) workerLoop(ctx context.Context, workCh <-chan claimedR
 
 func (p *Processor[M, D]) processOne(ctx context.Context, work claimedRecord[M, D]) (err error) {
 	ctx, span := p.store.obs.startProcessSpan(ctx, work.Message.ID, work.Message.Attempt, work.Message.MaxAttempts, work.Message.CreatedAt, work.Message.AvailableAt, work.TraceCarrier)
-	start := time.Now().UTC()
+	start := p.store.deps.now().UTC()
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -214,7 +214,7 @@ func (p *Processor[M, D]) processOne(ctx context.Context, work claimedRecord[M, 
 }
 
 func (p *Processor[M, D]) finishProcessing(ctx context.Context, span oteltrace.Span, started time.Time, processErr error, result failProcessingResult) {
-	duration := time.Since(started)
+	duration := p.store.deps.now().UTC().Sub(started)
 
 	switch result.outcome {
 	case metricOutcomeRetried:

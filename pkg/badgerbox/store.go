@@ -28,6 +28,7 @@ type Store[M any, D any] struct {
 	keys   keyspace
 	seq    *badger.Sequence
 	obs    *otelInstrumentation
+	deps   runtimeDeps
 	closed atomic.Bool
 
 	closeOnce sync.Once
@@ -87,6 +88,7 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 		opts:      opts,
 		keys:      newKeyspace(opts.Namespace),
 		seq:       seq,
+		deps:      defaultRuntimeDeps(),
 		listeners: make(map[int]chan struct{}),
 	}
 
@@ -121,12 +123,12 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 		ctx = context.Background()
 	}
 
-	start := time.Now().UTC()
+	start := s.deps.now().UTC()
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
 	traceCtx, traceSpan, traceCarrier := s.obs.startEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
 	var result enqueueResult
-	err := withConflictRetryObserved(ctx, func() {
+	err := withConflictRetryObserved(ctx, s.deps, func() {
 		s.obs.recordConflictRetry(traceCtx)
 		traceSpan.AddEvent("conflict_retry")
 	}, func() error {
@@ -157,7 +159,7 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 		ctx = context.Background()
 	}
 
-	start := time.Now().UTC()
+	start := s.deps.now().UTC()
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
 	traceCtx, traceSpan, traceCarrier := s.obs.startEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
@@ -268,13 +270,13 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 	}
 
 	if at.IsZero() {
-		at = time.Now().UTC()
+		at = s.deps.now().UTC()
 	} else {
 		at = at.UTC()
 	}
 
 	var requeued bool
-	err := withConflictRetryObserved(ctx, func() {
+	err := withConflictRetryObserved(ctx, s.deps, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -360,7 +362,7 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	}
 	id := MessageID(nextID)
 
-	now := time.Now().UTC()
+	now := s.deps.now().UTC()
 	availableAt := normalizedAvailableAt(now, req.AvailableAt)
 
 	payloadBytes, err := s.serde.Message.Marshal(req.Payload)
@@ -407,7 +409,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 	claimed := make([]claimedRecord[M, D], 0, batchSize)
 	now = now.UTC()
 
-	err := withConflictRetryObserved(ctx, func() {
+	err := withConflictRetryObserved(ctx, s.deps, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		claimed = claimed[:0]
@@ -466,7 +468,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 				record.Status = recordStatusProcessing
 				record.LeaseUntilUnix = now.Add(leaseDuration).UnixNano()
 
-				token, err := newLeaseToken()
+				token, err := s.deps.newLeaseToken()
 				if err != nil {
 					return err
 				}
@@ -513,7 +515,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 }
 
 func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken string) error {
-	return withConflictRetryObserved(ctx, func() {
+	return withConflictRetryObserved(ctx, s.deps, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -541,8 +543,8 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 
 func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseToken string, processErr error, retryBase, retryMax time.Duration) (failProcessingResult, error) {
 	var result failProcessingResult
-	now := time.Now().UTC()
-	err := withConflictRetryObserved(ctx, func() {
+	now := s.deps.now().UTC()
+	err := withConflictRetryObserved(ctx, s.deps, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -614,7 +616,7 @@ func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time) (int, e
 	var requeued int
 	now = now.UTC()
 
-	err := withConflictRetryObserved(ctx, func() {
+	err := withConflictRetryObserved(ctx, s.deps, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		requeued = 0
