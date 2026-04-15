@@ -19,5 +19,5 @@ const (
 	DefaultPublishTimeout   = 2 * time.Second
 	DefaultBadgerGCInterval = time.Minute
 
-	DefaultBadgerGCDiscardRatio = 0.5
+	DefaultBadgerGCDiscardRatio = 0.1
 )
