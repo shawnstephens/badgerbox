@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:9464"]
+  - job_name: badger-expvar
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:18080"]

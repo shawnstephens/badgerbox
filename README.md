@@ -6,6 +6,17 @@
 
 The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on [Franz-go](https://github.com/twmb/franz-go).
 
+## Observability
+
+`badgerbox` supports optional OpenTelemetry metrics and tracing directly in core.
+
+- Observability is opt-in.
+- Enqueue and processing traces can be linked across the durable queue boundary.
+- Queue depth, processing, retry, dead-letter, and tracing metrics are supported in core.
+- The demo producer also republishes selected Badger `expvar` metrics on `/metrics` with Prometheus's expvar collector for Badger-specific storage metrics.
+
+See [OBSERVABILITY.md](/Users/shawn/Development/go/badgerbox/OBSERVABILITY.md) for setup, metric and trace details, and the local OTEL Collector + Grafana + Tempo demo stack.
+
 ## Guarantees and constraints
 
 - Delivery is at-least-once. Your `ProcessFunc` must be idempotent.
@@ -94,29 +105,23 @@ Prefix roles:
 - `ob/<namespace>/dlq/` stores dead-letter records for failed messages.
 - `ob/<namespace>/seq/message-id` is the Badger sequence key used to allocate message IDs.
 
-## Roadmap
-1. Add pluggable Metrics and Tracing providers and supply OTEL implementation.
-2. Define/improve retry/DLQ re-enqueue documentation/examples.
-
 ## Install
 
 ```bash
 go get github.com/shawnstephens/badgerbox
 ```
 
-The demo lives in its own module under `cmd/badgerbox-demo`. Run it from that directory:
+The demo lives in its own module under `demo`. Run it from that directory:
 
 ```bash
-cd cmd/badgerbox-demo
+cd demo
 go run . --help
 ```
 
-If you want to run the demo from the repo root, create a local `go.work` file that includes both modules. `go.work` is gitignored in this repo, so this is a local convenience only:
+The repo includes a checked-in `go.work` file for local development, so you can also run the demo from the repo root:
 
 ```bash
-go work init .
-go work use ./cmd/badgerbox-demo
-go run ./cmd/badgerbox-demo --help
+go run ./demo --help
 ```
 
 ## Demo binary
@@ -130,17 +135,17 @@ The demo binary runs three separate processes:
 Default workflow:
 
 ```bash
-(cd cmd/badgerbox-demo && go run . kafka)
-(cd cmd/badgerbox-demo && go run . producer)
-(cd cmd/badgerbox-demo && go run . consumer)
+(cd demo && go run . kafka)
+(cd demo && go run . producer)
+(cd demo && go run . consumer)
 ```
 
-With a local `go.work` file, the same flow can be run from the repo root:
+From the repo root, the same flow can be run as:
 
 ```bash
-go run ./cmd/badgerbox-demo kafka
-go run ./cmd/badgerbox-demo producer
-go run ./cmd/badgerbox-demo consumer
+go run ./demo kafka
+go run ./demo producer
+go run ./demo consumer
 ```
 
 Defaults are chosen so you do not need to pass flags for the common case:
@@ -166,7 +171,7 @@ Every flag also supports an environment variable with the `BADGERBOX_DEMO_` pref
 ```bash
 BADGERBOX_DEMO_ENQUEUE_PARALLELISM=4 \
 BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
-(cd cmd/badgerbox-demo && go run . producer)
+(cd demo && go run . producer)
 ```
 
 The `kafka` process owns the Testcontainers Kafka broker. Its state file is preserved on shutdown so the producer can start later, keep retrying against the stored broker metadata, and reconnect after Kafka restarts on a new mapped port. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
@@ -185,12 +190,12 @@ Offline retry demo:
 
 Using repo-local commands, that flow is:
 
-1. `(cd cmd/badgerbox-demo && go run . kafka)`
+1. `(cd demo && go run . kafka)`
 2. Stop it with `Ctrl+C`
-3. `(cd cmd/badgerbox-demo && go run . producer)`
+3. `(cd demo && go run . producer)`
 4. Watch repeated `phase=warning event=publish_failed` lines while messages continue to enqueue
-5. `(cd cmd/badgerbox-demo && go run . kafka)`
-6. `(cd cmd/badgerbox-demo && go run . consumer)`
+5. `(cd demo && go run . kafka)`
+6. `(cd demo && go run . consumer)`
 7. Watch the producer reconnect and drain the backlog
 
 The producer follows the preserved state file by default. If Kafka restarts with a new mapped port, the producer reloads the state file after a publish failure, rebuilds its Kafka client, and resumes publishing on the next retry. The producer still requires some broker source at startup, either from flags, environment variables, or the preserved state file.
@@ -378,5 +383,5 @@ go test -tags=integration ./...
 Run the demo module tests separately:
 
 ```bash
-(cd cmd/badgerbox-demo && go test ./...)
+(cd demo && go test ./...)
 ```

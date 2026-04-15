@@ -1,0 +1,7 @@
+.git
+.demo
+**/.DS_Store
+**/.cache
+**/node_modules
+**/dist
+**/tmp

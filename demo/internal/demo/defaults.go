@@ -18,6 +18,8 @@ const (
 	DefaultLeaseDuration    = 30 * time.Second
 	DefaultPublishTimeout   = 2 * time.Second
 	DefaultBadgerGCInterval = time.Minute
+	DefaultOTelServiceName  = "badgerbox-demo-producer"
+	DefaultExpvarListenAddr = "0.0.0.0:18080"
 
 	DefaultBadgerGCDiscardRatio = 0.1
 )

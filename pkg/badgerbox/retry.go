@@ -60,6 +60,10 @@ func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 }
 
 func withConflictRetry(ctx context.Context, fn func() error) error {
+	return withConflictRetryObserved(ctx, nil, fn)
+}
+
+func withConflictRetryObserved(ctx context.Context, onRetry func(), fn func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -72,6 +76,9 @@ func withConflictRetry(ctx context.Context, fn func() error) error {
 		err := fn()
 		if !errors.Is(err, badger.ErrConflict) {
 			return err
+		}
+		if onRetry != nil {
+			onRetry()
 		}
 
 		timer := time.NewTimer(conflictRetryDelay)
