@@ -2,7 +2,7 @@
 
 ![badgerbox](image.png)
 
-`badgerbox` is an embedded, durable outbox library for Go applications. It uses [Badger](https://github.com/dgraph-io/badger) as a fast, embedded key/value store. It stores typed payloads and typed destinations, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
+Badger Box is an embedded, durable outbox library for Go applications. It uses [Badger](https://github.com/dgraph-io/badger) as a fast, embedded key/value store. It stores typed payloads and typed destinations, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
 
 The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on [Franz-go](https://github.com/twmb/franz-go).
 
@@ -21,7 +21,7 @@ The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on 
 - Inject `badgerbox.Options.Runtime` in tests when you need deterministic time, retry, ticker, or lease-token behavior.
 - The demo producer also republishes selected Badger `expvar` metrics on `/metrics` with Prometheus's expvar collector for Badger-specific storage metrics.
 
-See [OBSERVABILITY.md](/Users/shawn/Development/go/badgerbox/OBSERVABILITY.md) for setup, metric and trace details, and the local OTEL Collector + Grafana + Tempo demo stack.
+See [OBSERVABILITY.md](./OBSERVABILITY.md) for setup, metric and trace details, and the local OTEL Collector + Grafana + Tempo demo stack.
 
 ## Guarantees and constraints
 
