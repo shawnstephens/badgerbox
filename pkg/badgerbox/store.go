@@ -2,11 +2,8 @@ package badgerbox
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,15 +18,22 @@ const (
 
 var emptyValue = []byte{}
 
+type Options struct {
+	Namespace     string
+	IDLeaseSize   uint64
+	Observability ObservabilityOptions
+	Runtime       Runtime
+}
+
 type Store[M any, D any] struct {
-	db     *badger.DB
-	serde  Serde[M, D]
-	opts   Options
-	keys   keyspace
-	seq    *badger.Sequence
-	obs    *otelInstrumentation
-	deps   runtimeDeps
-	closed atomic.Bool
+	db      *badger.DB
+	serde   Serde[M, D]
+	opts    Options
+	keys    keyspace
+	seq     *badger.Sequence
+	obs     *otelInstrumentation
+	runtime Runtime
+	closed  atomic.Bool
 
 	closeOnce sync.Once
 
@@ -69,6 +73,27 @@ type failProcessingResult struct {
 	retryDelay time.Duration
 }
 
+func normalizeOptions(opts Options) Options {
+	if opts.Namespace == "" {
+		opts.Namespace = defaultNamespace
+	}
+	if opts.IDLeaseSize == 0 {
+		opts.IDLeaseSize = defaultIDLeaseSize
+	}
+	if opts.Runtime == nil {
+		opts.Runtime = SystemRuntime{}
+	}
+	opts.Observability = normalizeObservabilityOptions(opts.Observability)
+	return opts
+}
+
+func normalizedAvailableAt(now time.Time, availableAt time.Time) time.Time {
+	if availableAt.IsZero() {
+		return now.UTC()
+	}
+	return availableAt.UTC()
+}
+
 func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M, D], error) {
 	if db == nil {
 		return nil, ErrNilDB
@@ -88,7 +113,7 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 		opts:      opts,
 		keys:      newKeyspace(opts.Namespace),
 		seq:       seq,
-		deps:      defaultRuntimeDeps(),
+		runtime:   opts.Runtime,
 		listeners: make(map[int]chan struct{}),
 	}
 
@@ -115,6 +140,20 @@ func (s *Store[M, D]) Close() error {
 	return err
 }
 
+func (s *Store[M, D]) StartObservability(ctx context.Context) error {
+	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	return s.obs.start(ctx, s.runtime, s.opts.Observability.PollInterval)
+}
+
+func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
+	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	return s.obs.recordSnapshot(ctx)
+}
+
 func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -123,12 +162,12 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 		ctx = context.Background()
 	}
 
-	start := s.deps.now().UTC()
+	start := s.runtime.Now().UTC()
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
 	traceCtx, traceSpan, traceCarrier := s.obs.startEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
 	var result enqueueResult
-	err := withConflictRetryObserved(ctx, s.deps, func() {
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(traceCtx)
 		traceSpan.AddEvent("conflict_retry")
 	}, func() error {
@@ -146,7 +185,7 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 
 	s.obs.setMessageSpanAttributes(traceSpan, result.record.ID, result.record.Attempt, result.record.MaxAttempts, time.Unix(0, result.record.CreatedAtUnix).UTC(), time.Unix(0, result.record.AvailableAtUnix).UTC())
 	s.obs.endSpan(traceSpan, metricOutcomeCommitted)
-	s.obs.recordEnqueueCommitted(traceCtx, time.Since(start))
+	s.obs.recordEnqueueCommitted(traceCtx, positiveDuration(s.runtime.Now().UTC().Sub(start)))
 	s.notifyListeners()
 	return result.id, nil
 }
@@ -159,7 +198,7 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 		ctx = context.Background()
 	}
 
-	start := s.deps.now().UTC()
+	start := s.runtime.Now().UTC()
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
 	traceCtx, traceSpan, traceCarrier := s.obs.startEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
@@ -172,7 +211,7 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 
 	s.obs.setMessageSpanAttributes(traceSpan, result.record.ID, result.record.Attempt, result.record.MaxAttempts, time.Unix(0, result.record.CreatedAtUnix).UTC(), time.Unix(0, result.record.AvailableAtUnix).UTC())
 	s.obs.endSpan(traceSpan, metricOutcomePrepared)
-	s.obs.recordEnqueuePrepared(traceCtx, time.Since(start))
+	s.obs.recordEnqueuePrepared(traceCtx, positiveDuration(s.runtime.Now().UTC().Sub(start)))
 	return result.id, nil
 }
 
@@ -270,13 +309,13 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 	}
 
 	if at.IsZero() {
-		at = s.deps.now().UTC()
+		at = s.runtime.Now().UTC()
 	} else {
 		at = at.UTC()
 	}
 
 	var requeued bool
-	err := withConflictRetryObserved(ctx, s.deps, func() {
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -362,7 +401,7 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	}
 	id := MessageID(nextID)
 
-	now := s.deps.now().UTC()
+	now := s.runtime.Now().UTC()
 	availableAt := normalizedAvailableAt(now, req.AvailableAt)
 
 	payloadBytes, err := s.serde.Message.Marshal(req.Payload)
@@ -409,7 +448,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 	claimed := make([]claimedRecord[M, D], 0, batchSize)
 	now = now.UTC()
 
-	err := withConflictRetryObserved(ctx, s.deps, func() {
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		claimed = claimed[:0]
@@ -468,7 +507,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 				record.Status = recordStatusProcessing
 				record.LeaseUntilUnix = now.Add(leaseDuration).UnixNano()
 
-				token, err := s.deps.newLeaseToken()
+				token, err := s.runtime.NewLeaseToken()
 				if err != nil {
 					return err
 				}
@@ -515,7 +554,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 }
 
 func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken string) error {
-	return withConflictRetryObserved(ctx, s.deps, func() {
+	return withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -543,8 +582,8 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 
 func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseToken string, processErr error, retryBase, retryMax time.Duration) (failProcessingResult, error) {
 	var result failProcessingResult
-	now := s.deps.now().UTC()
-	err := withConflictRetryObserved(ctx, s.deps, func() {
+	now := s.runtime.Now().UTC()
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -616,7 +655,7 @@ func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time) (int, e
 	var requeued int
 	now = now.UTC()
 
-	err := withConflictRetryObserved(ctx, s.deps, func() {
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
 		requeued = 0
@@ -815,14 +854,6 @@ func (s *Store[M, D]) notifyListeners() {
 		default:
 		}
 	}
-}
-
-func newLeaseToken() (string, error) {
-	var data [16]byte
-	if _, err := rand.Read(data[:]); err != nil {
-		return "", fmt.Errorf("badgerbox: generate lease token: %w", err)
-	}
-	return hex.EncodeToString(data[:]), nil
 }
 
 func cloneBytes(data []byte) []byte {

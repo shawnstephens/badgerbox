@@ -32,7 +32,7 @@ const (
 
 const defaultInstrumentationName = "github.com/shawnstephens/badgerbox"
 
-const metricsPollInterval = 5 * time.Second
+const defaultObservabilityPollInterval = 5 * time.Second
 
 type ObservabilityOptions struct {
 	MeterProvider  metric.MeterProvider
@@ -40,6 +40,7 @@ type ObservabilityOptions struct {
 	Propagator     propagation.TextMapPropagator
 	MeterName      string
 	TracerName     string
+	PollInterval   time.Duration
 }
 
 type queueSnapshot struct {
@@ -59,7 +60,7 @@ func (s *Store[M, D]) queueSnapshot(ctx context.Context) (queueSnapshot, error) 
 	}
 
 	var snapshot queueSnapshot
-	now := time.Now().UTC()
+	now := s.runtime.Now().UTC()
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -145,6 +146,13 @@ func (s *Store[M, D]) queueSnapshot(ctx context.Context) (queueSnapshot, error) 
 	return snapshot, err
 }
 
+func normalizeObservabilityOptions(opts ObservabilityOptions) ObservabilityOptions {
+	if opts.PollInterval <= 0 {
+		opts.PollInterval = defaultObservabilityPollInterval
+	}
+	return opts
+}
+
 func failureKind(err error) string {
 	switch {
 	case err == nil:
@@ -167,13 +175,6 @@ func cloneStringMap(values map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
-}
-
-func normalizedAvailableAt(now time.Time, availableAt time.Time) time.Time {
-	if availableAt.IsZero() {
-		return now.UTC()
-	}
-	return availableAt.UTC()
 }
 
 func positiveDuration(value time.Duration) time.Duration {
@@ -222,6 +223,8 @@ type otelInstrumentation struct {
 }
 
 func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSnapshot func(context.Context) (queueSnapshot, error)) (*otelInstrumentation, error) {
+	opts = normalizeObservabilityOptions(opts)
+
 	tracerName := opts.TracerName
 	if tracerName == "" {
 		tracerName = defaultInstrumentationName
@@ -312,14 +315,6 @@ func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSn
 		return nil, err
 	}
 
-	if err := inst.recordSnapshot(context.Background()); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	inst.cancel = cancel
-	inst.done = make(chan struct{})
-	go inst.pollSnapshots(ctx)
-
 	return inst, nil
 }
 
@@ -328,6 +323,7 @@ func (o *otelInstrumentation) close() error {
 	cancel := o.cancel
 	done := o.done
 	o.cancel = nil
+	o.done = nil
 	o.closeMu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -338,17 +334,61 @@ func (o *otelInstrumentation) close() error {
 	return o.closeErr
 }
 
-func (o *otelInstrumentation) pollSnapshots(ctx context.Context) {
-	defer close(o.done)
+func (o *otelInstrumentation) start(ctx context.Context, runtime Runtime, pollInterval time.Duration) error {
+	if o.readyDepth == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if runtime == nil {
+		runtime = SystemRuntime{}
+	}
+	if pollInterval <= 0 {
+		pollInterval = defaultObservabilityPollInterval
+	}
 
-	ticker := time.NewTicker(metricsPollInterval)
+	o.closeMu.Lock()
+	if o.done != nil {
+		select {
+		case <-o.done:
+			o.done = nil
+			o.cancel = nil
+		default:
+			o.closeMu.Unlock()
+			return nil
+		}
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	o.cancel = cancel
+	o.done = done
+	o.closeMu.Unlock()
+
+	go o.pollSnapshots(runCtx, runtime, pollInterval, done)
+	return nil
+}
+
+func (o *otelInstrumentation) pollSnapshots(ctx context.Context, runtime Runtime, pollInterval time.Duration, done chan struct{}) {
+	defer func() {
+		close(done)
+		o.closeMu.Lock()
+		if o.done == done {
+			o.done = nil
+			o.cancel = nil
+		}
+		o.closeMu.Unlock()
+	}()
+
+	ticker := runtime.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			if err := o.recordSnapshot(ctx); err != nil {
 				o.closeMu.Lock()
 				o.closeErr = errors.Join(o.closeErr, err)
@@ -359,6 +399,9 @@ func (o *otelInstrumentation) pollSnapshots(ctx context.Context) {
 }
 
 func (o *otelInstrumentation) recordSnapshot(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if o.readyDepth == nil {
 		return nil
 	}

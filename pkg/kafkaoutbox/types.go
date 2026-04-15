@@ -10,5 +10,3 @@ type KafkaMessage struct {
 	Headers map[string][]byte `json:"headers,omitempty"`
 	Value   []byte            `json:"value"`
 }
-
-type Options struct{}

@@ -4,6 +4,10 @@
 
 - If you do not configure observability, `badgerbox` behaves exactly as before.
 - Configure observability by passing an OTEL meter provider and tracer provider in `badgerbox.ObservabilityOptions`.
+- `badgerbox.New(...)` is a pure constructor. It does not record a snapshot or start background polling.
+- `Processor.Run(ctx)` records an initial snapshot and starts observability polling automatically before worker loops begin.
+- If you are using a store without a processor, call `store.RecordObservabilitySnapshot(ctx)` once and then `store.StartObservability(ctx)` to enable queue polling metrics.
+- For deterministic tests, inject a custom `badgerbox.Options.Runtime`.
 - Trace context is persisted with each enqueued record, so enqueue and process spans stay linked across the durable queue boundary.
 - `badgerbox` core does not bridge Badger's `expvar` metrics. If you want Badger's own storage metrics, expose `/debug/vars` from your process and, if you want Prometheus-format output, register Prometheus's expvar collector in that same process.
 
@@ -133,6 +137,8 @@ func main() {
 	}
 	defer store.Close()
 
+	// Processor.Run handles the initial snapshot and polling startup.
+
 	processor, err := badgerbox.NewProcessor(store, func(ctx context.Context, msg badgerbox.Message[string, string]) error {
 		if msg.Payload == "fail" {
 			return errors.New("retry me")
@@ -153,6 +159,17 @@ func main() {
 	if err := processor.Run(ctx); err != nil {
 		log.Fatal(err)
 	}
+}
+```
+
+If you want queue-depth polling metrics without running a processor, start observability explicitly after constructing the store:
+
+```go
+if err := store.RecordObservabilitySnapshot(ctx); err != nil {
+	log.Fatal(err)
+}
+if err := store.StartObservability(ctx); err != nil {
+	log.Fatal(err)
 }
 ```
 
