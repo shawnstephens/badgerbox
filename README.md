@@ -126,6 +126,43 @@ The demo binary runs three separate processes:
 2. `producer` opens Badger, continuously enqueues messages into badgerbox, runs the badgerbox processor, and publishes to Kafka. It can start before Kafka is available and will keep retrying until the broker comes back.
 3. `consumer` connects to the same Kafka broker and prints consumed messages.
 
+### Podman setup for Testcontainers
+
+The `kafka` demo command starts Kafka through Testcontainers. If you want to use Podman instead of Docker, configure Testcontainers for Podman before running the demo or the Kafka integration suite.
+
+Start the Podman socket service:
+
+```bash
+podman system service --time=0 &
+```
+
+Then configure Testcontainers using one of these approaches:
+
+- Enable Podman's Docker compatibility feature.
+- Or create `~/.testcontainers.properties` and set `docker.host` using the values from the Podman Desktop guide:
+
+```properties
+# macOS
+docker.host=unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')
+
+# Linux
+docker.host=unix://${XDG_RUNTIME_DIR}/podman/podman.sock
+```
+
+If you use the macOS configuration above, run:
+
+```bash
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+If you run Podman in rootless mode, you may also need:
+
+```bash
+export TESTCONTAINERS_RYUK_DISABLED=true
+```
+
+Source: [Podman Desktop: Setup Testcontainers with Podman](https://podman-desktop.io/tutorial/testcontainers-with-podman#setup-testcontainers-with-podman).
+
 Default workflow:
 
 ```bash
@@ -382,7 +419,7 @@ Run the unit suite:
 go test ./...
 ```
 
-Run the Kafka integration suite with Docker available:
+Run the Kafka integration suite with a Testcontainers-compatible container runtime available. Docker works by default, and Podman works after the setup described in [Podman setup for Testcontainers](#podman-setup-for-testcontainers):
 
 ```bash
 go test -tags=integration ./...
