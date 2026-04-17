@@ -11,20 +11,6 @@ The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on 
 > [!WARNING]
 > Badger Box is under active development. There is no release yet, and breaking changes are likely until the project reaches an initial stable release.
 
-## Observability
-
-`badgerbox` supports optional OpenTelemetry metrics and tracing directly in core.
-
-- Observability is opt-in.
-- `badgerbox.New(...)` is a pure constructor. It does not start background polling or record an initial snapshot.
-- `Processor.Run(ctx)` records one initial snapshot and starts observability polling automatically. If you are not running a processor, call `store.RecordObservabilitySnapshot(ctx)` and `store.StartObservability(ctx)` yourself.
-- Enqueue and processing traces can be linked across the durable queue boundary.
-- Queue depth, processing, retry, dead-letter, and tracing metrics are supported in core.
-- Inject `badgerbox.Options.Runtime` in tests when you need deterministic time, retry, ticker, or lease-token behavior.
-- The demo producer also republishes selected Badger `expvar` metrics on `/metrics` with Prometheus's expvar collector for Badger-specific storage metrics.
-
-See [OBSERVABILITY.md](./docs/OBSERVABILITY.md) for setup, metric and trace details, and the local OTEL Collector + Grafana + Tempo demo stack.
-
 ## Guarantees and constraints
 
 - Delivery is at-least-once. Your `ProcessFunc` must be idempotent.
@@ -373,6 +359,20 @@ func main() {
 	}
 }
 ```
+
+## Observability
+
+`badgerbox` supports optional OpenTelemetry metrics and tracing directly in core.
+
+- Observability is opt-in.
+- `badgerbox.New(...)` is a pure constructor. It does not start background polling or record an initial snapshot.
+- `Processor.Run(ctx)` records one initial snapshot and starts observability polling automatically. If you are not running a processor, call `store.RecordObservabilitySnapshot(ctx)` and `store.StartObservability(ctx)` yourself.
+- Enqueue and processing traces can be linked across the durable queue boundary.
+- Queue depth, processing, retry, dead-letter, and tracing metrics are supported in core.
+- Inject `badgerbox.Options.Runtime` in tests when you need deterministic time, retry, ticker, or lease-token behavior.
+- The demo producer also republishes selected Badger `expvar` metrics on `/metrics` with Prometheus's expvar collector for Badger-specific storage metrics.
+
+See [OBSERVABILITY.md](./docs/OBSERVABILITY.md) for setup, metric and trace details, and the local OTEL Collector + Grafana + Tempo demo stack.
 
 ## Testing
 
