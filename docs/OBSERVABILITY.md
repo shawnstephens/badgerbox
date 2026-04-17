@@ -380,6 +380,8 @@ go run . consumer
 
 On the provisioned `Badgerbox Demo Observability` dashboard with the `Prometheus` datasource:
 
+![Badgerbox demo Grafana dashboard](./images/demo_grafana_dashboard.png)
+
 - Queue state panels show ready, processing, and dead-letter depths plus oldest queue ages.
 - Throughput panels show enqueue, claim, process, retry, dead-letter, and conflict retry rates.
 - Latency panels show enqueue and process p50/p95, retry delay, schedule lag, and message age at claim time.
