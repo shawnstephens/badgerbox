@@ -68,3 +68,35 @@ func TestResolveKafkaTargetPrefersExplicitFlagsOverState(t *testing.T) {
 		t.Fatalf("unexpected topic source %q", target.TopicSource)
 	}
 }
+
+func TestNewProducerCommandIncludesBadgerMemoryFlags(t *testing.T) {
+	t.Parallel()
+
+	cmd := newProducerCommand()
+	flagNames := make(map[string]struct{})
+	for _, flag := range cmd.Flags {
+		for _, name := range flag.Names() {
+			flagNames[name] = struct{}{}
+		}
+	}
+
+	wantFlags := []string{
+		"badger-sync-writes",
+		"badger-memtable-size",
+		"badger-num-memtables",
+		"badger-num-level-zero-tables",
+		"badger-num-level-zero-tables-stall",
+		"badger-num-compactors",
+		"badger-base-table-size",
+		"badger-value-log-file-size",
+		"badger-block-cache-size",
+		"badger-index-cache-size",
+		"badger-value-threshold",
+	}
+
+	for _, name := range wantFlags {
+		if _, ok := flagNames[name]; !ok {
+			t.Fatalf("producer flag %q not found", name)
+		}
+	}
+}
