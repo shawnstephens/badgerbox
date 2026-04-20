@@ -13,6 +13,11 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
+type Publisher interface {
+	Publish(context.Context, badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error
+	Close() error
+}
+
 type producerClient interface {
 	ProduceSync(context.Context, *kgo.Record) error
 	Close() error
@@ -28,6 +33,29 @@ func (c *franzProducerClient) ProduceSync(ctx context.Context, record *kgo.Recor
 
 func (c *franzProducerClient) Close() error {
 	c.client.Close()
+	return nil
+}
+
+type LoggingPublisher struct {
+	logger *Logger
+}
+
+func NewLoggingPublisher(logger *Logger) *LoggingPublisher {
+	return &LoggingPublisher{logger: logger}
+}
+
+func (p *LoggingPublisher) Publish(_ context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+	if msg.Destination.Topic == "" {
+		return badgerbox.Permanent(kafkaoutbox.ErrTopicRequired)
+	}
+
+	if p.logger != nil {
+		p.logger.Printf("publish", "event=logged msg_id=%d key=%s topic=%s attempt=%d payload_bytes=%d header_count=%d", msg.ID, string(msg.Payload.Key), msg.Destination.Topic, msg.Attempt, len(msg.Payload.Value), len(msg.Payload.Headers))
+	}
+	return nil
+}
+
+func (p *LoggingPublisher) Close() error {
 	return nil
 }
 

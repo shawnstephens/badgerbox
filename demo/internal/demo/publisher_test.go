@@ -188,3 +188,51 @@ func TestReloadingPublisherPublishLogsAttemptMetadata(t *testing.T) {
 		t.Fatalf("expected attempt metadata in log, got %q", logs)
 	}
 }
+
+func TestLoggingPublisherPublishLogsSummary(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	logger := NewLogger(&out, string(ColorNever))
+	publisher := NewLoggingPublisher(logger)
+
+	err := publisher.Publish(context.Background(), badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+		ID:      77,
+		Attempt: 4,
+		Payload: kafkaoutbox.KafkaMessage{
+			Key:   []byte("demo-key"),
+			Value: []byte(`{"message":"hello"}`),
+			Headers: map[string][]byte{
+				"demo-source": []byte("badgerbox-demo"),
+				"sequence":    []byte("77"),
+			},
+		},
+		Destination: kafkaoutbox.KafkaDestination{Topic: "demo-topic"},
+	})
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	logs := out.String()
+	if !strings.Contains(logs, "event=logged") {
+		t.Fatalf("expected logged event, got %q", logs)
+	}
+	if !strings.Contains(logs, "msg_id=77") || !strings.Contains(logs, "attempt=4") {
+		t.Fatalf("expected message metadata, got %q", logs)
+	}
+	if !strings.Contains(logs, "key=demo-key") || !strings.Contains(logs, "topic=demo-topic") {
+		t.Fatalf("expected key and topic, got %q", logs)
+	}
+	if !strings.Contains(logs, "payload_bytes=19") || !strings.Contains(logs, "header_count=2") {
+		t.Fatalf("expected payload/header summary, got %q", logs)
+	}
+}
+
+func TestLoggingPublisherCloseNoop(t *testing.T) {
+	t.Parallel()
+
+	publisher := NewLoggingPublisher(nil)
+	if err := publisher.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}

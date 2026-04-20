@@ -85,7 +85,7 @@ func newProducerCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:  "producer",
-		Usage: "Run badgerbox enqueueing and processing in one process, publishing to Kafka until stopped",
+		Usage: "Run badgerbox enqueueing and processing in one process, publishing to Kafka or demo logs until stopped",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "state-file",
@@ -102,6 +102,11 @@ func newProducerCommand() *cli.Command {
 				Name:    "topic",
 				Usage:   "Kafka topic; defaults to the shared state file, then badgerbox-demo",
 				Sources: cli.EnvVars("BADGERBOX_DEMO_TOPIC"),
+			},
+			&cli.BoolFlag{
+				Name:    "logging-producer",
+				Usage:   "Log produced messages instead of publishing to Kafka; demo-only bottleneck check",
+				Sources: cli.EnvVars("BADGERBOX_DEMO_LOGGING_PRODUCER"),
 			},
 			&cli.StringFlag{
 				Name:    "db-path",
@@ -198,6 +203,12 @@ func newProducerCommand() *cli.Command {
 				Usage:   "Number of badgerbox processor workers",
 				Value:   4,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PROCESSOR_CONCURRENCY"),
+			},
+			&cli.IntFlag{
+				Name:    "processor-claim-batch-size",
+				Usage:   "Maximum number of ready records to claim in one processor batch",
+				Value:   32,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_PROCESSOR_CLAIM_BATCH_SIZE"),
 			},
 			&cli.DurationFlag{
 				Name:    "retry-base-delay",
@@ -382,8 +393,9 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 
 	logger := demo.NewLogger(os.Stdout, cmd.String("color"))
 	stateFile := cmd.String("state-file")
+	loggingProducer := cmd.Bool("logging-producer")
 
-	target, err := resolveKafkaTarget(cmd.String("brokers"), cmd.String("topic"), stateFile)
+	target, err := resolveProducerTarget(cmd.String("brokers"), cmd.String("topic"), stateFile, loggingProducer)
 	if err != nil {
 		return err
 	}
@@ -401,6 +413,10 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	processorConcurrency := cmd.Int("processor-concurrency")
 	if processorConcurrency < 1 {
 		return errors.New("processor-concurrency must be at least 1")
+	}
+	processorClaimBatchSize := cmd.Int("processor-claim-batch-size")
+	if processorClaimBatchSize < 1 {
+		return errors.New("processor-claim-batch-size must be at least 1")
 	}
 	retryBaseDelay := cmd.Duration("retry-base-delay")
 	if retryBaseDelay <= 0 {
@@ -471,7 +487,16 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("build badger options: %w", err)
 	}
 
-	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
+	publishTransport := "kafka"
+	if loggingProducer {
+		publishTransport = "logging"
+	}
+	brokerSummary := demo.ShortBrokerList(target.Brokers)
+	if brokerSummary == "" {
+		brokerSummary = "-"
+	}
+
+	logger.Printf("startup", "command=producer publish_transport=%s brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d processor_claim_batch_size=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", publishTransport, brokerSummary, target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, processorClaimBatchSize, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
 
 	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
 	if err != nil {
@@ -538,7 +563,12 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		logger.Printf("ready", "event=backlog pending_ready=0 namespace=%s db_path=%s", namespace, dbPath)
 	}
 
-	publisher := demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger)
+	var publisher demo.Publisher
+	if loggingProducer {
+		publisher = demo.NewLoggingPublisher(logger)
+	} else {
+		publisher = demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger)
+	}
 	defer publisher.Close()
 
 	processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
@@ -551,12 +581,15 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 			logProcessFailure(logger, time.Now().UTC(), msg, err, retryBaseDelay, retryMaxDelay)
 			return err
 		}
-		logger.Printf("publish", "event=success msg_id=%d key=%s topic=%s", msg.ID, key, msg.Destination.Topic)
+		if !loggingProducer {
+			logger.Printf("publish", "event=success msg_id=%d key=%s topic=%s", msg.ID, key, msg.Destination.Topic)
+		}
 		return nil
 	}
 
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
 		Concurrency:    processorConcurrency,
+		ClaimBatchSize: processorClaimBatchSize,
 		PollInterval:   pollInterval,
 		LeaseDuration:  leaseDuration,
 		RetryBaseDelay: retryBaseDelay,
@@ -733,6 +766,13 @@ type kafkaTarget struct {
 	TopicSource   string
 }
 
+func resolveProducerTarget(brokersValue, topicValue, stateFile string, loggingProducer bool) (kafkaTarget, error) {
+	if loggingProducer {
+		return resolveLoggingProducerTarget(topicValue, stateFile)
+	}
+	return resolveKafkaTarget(brokersValue, topicValue, stateFile)
+}
+
 func resolveKafkaTarget(brokersValue, topicValue, stateFile string) (kafkaTarget, error) {
 	target := kafkaTarget{}
 	var state *demo.State
@@ -773,6 +813,50 @@ func resolveKafkaTarget(brokersValue, topicValue, stateFile string) (kafkaTarget
 	target.BrokersSource = brokersSource
 	target.TopicSource = topicSource
 	return target, nil
+}
+
+func resolveLoggingProducerTarget(topicValue, stateFile string) (kafkaTarget, error) {
+	target := kafkaTarget{
+		BrokersSource: "disabled",
+	}
+
+	topic := topicValue
+	topicSource := "flags-env"
+	if topic == "" {
+		stateTopic, found, err := readOptionalStateTopic(stateFile)
+		if err != nil {
+			return target, fmt.Errorf("read state file %q: %w", stateFile, err)
+		}
+		if found && stateTopic != "" {
+			topic = stateTopic
+			topicSource = "state-file"
+		}
+	}
+	if topic == "" {
+		topic = demo.DefaultTopic
+		topicSource = "default"
+	}
+
+	target.Topic = topic
+	target.TopicSource = topicSource
+	return target, nil
+}
+
+func readOptionalStateTopic(path string) (string, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("read state file: %w", err)
+	}
+
+	var state demo.State
+	if err := json.Unmarshal(data, &state); err != nil {
+		return "", false, fmt.Errorf("decode state file: %w", err)
+	}
+
+	return state.Topic, true, nil
 }
 
 func prettyValue(data []byte) string {
