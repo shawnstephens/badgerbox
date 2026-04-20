@@ -23,7 +23,7 @@ func StartExpvarServer(listenAddr string) (*http.Server, string, <-chan error, e
 	}
 
 	registry := prometheus.NewRegistry()
-	if err := registry.Register(collectors.NewExpvarCollector(badgerExpvarExports())); err != nil {
+	if err := registry.Register(collectors.NewExpvarCollector(expvarMetricExports())); err != nil {
 		_ = listener.Close()
 		return nil, "", nil, err
 	}
@@ -49,8 +49,14 @@ func StartExpvarServer(listenAddr string) (*http.Server, string, <-chan error, e
 	return server, listener.Addr().String(), errCh, nil
 }
 
-func badgerExpvarExports() map[string]*prometheus.Desc {
+func expvarMetricExports() map[string]*prometheus.Desc {
 	return map[string]*prometheus.Desc{
+		"memstats": prometheus.NewDesc(
+			"go_expvar_memstats",
+			"Go runtime.MemStats fields exported from expvar.",
+			[]string{"stat"},
+			nil,
+		),
 		"badger_get_num_user": prometheus.NewDesc(
 			"badger_get_num_user",
 			"Badger user get operations exported from expvar.",

@@ -95,6 +95,12 @@ func TestStartExpvarServerServesPrometheusBadgerMetrics(t *testing.T) {
 	}
 
 	metrics := string(body)
+	if !strings.Contains(metrics, "go_expvar_memstats{stat=\"Alloc\"}") {
+		t.Fatalf("expected go_expvar_memstats Alloc in /metrics, got %q", metrics)
+	}
+	if !strings.Contains(metrics, "go_expvar_memstats{stat=\"NumGC\"}") {
+		t.Fatalf("expected go_expvar_memstats NumGC in /metrics, got %q", metrics)
+	}
 	if !strings.Contains(metrics, "badger_get_num_user 7") {
 		t.Fatalf("expected badger_get_num_user in /metrics, got %q", metrics)
 	}
