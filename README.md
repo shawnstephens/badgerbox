@@ -179,6 +179,14 @@ go run ./demo producer
 go run ./demo consumer
 ```
 
+For producer-side bottleneck checks, you can bypass Kafka entirely and log each publish instead:
+
+```bash
+go run ./demo producer --logging-producer
+```
+
+This demo-only mode skips Kafka client creation and broker resolution, logs `phase=publish event=logged` lines instead of sending records to Kafka, and is intended for comparing demo producer overhead against the Kafka path.
+
 Defaults are chosen so you do not need to pass flags for the common case:
 
 - shared state file: `./.demo/badgerbox-demo/state.json`
