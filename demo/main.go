@@ -81,6 +81,8 @@ func newKafkaCommand() *cli.Command {
 }
 
 func newProducerCommand() *cli.Command {
+	badgerDefaults := demo.DefaultBadgerOptions("")
+
 	return &cli.Command{
 		Name:  "producer",
 		Usage: "Run badgerbox enqueueing and processing in one process, publishing to Kafka until stopped",
@@ -106,6 +108,72 @@ func newProducerCommand() *cli.Command {
 				Usage:   "Badger directory path",
 				Value:   demo.DefaultBadgerPath,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_DB_PATH"),
+			},
+			&cli.StringFlag{
+				Name:        "badger-memtable-size",
+				Usage:       "Override Badger MemTableSize with a human-readable size like 32MiB or 128MB",
+				DefaultText: demo.FormatBytes(badgerDefaults.MemTableSize),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_MEMTABLE_SIZE"),
+			},
+			&cli.IntFlag{
+				Name:        "badger-num-memtables",
+				Usage:       "Override Badger NumMemtables",
+				DefaultText: fmt.Sprintf("%d", badgerDefaults.NumMemtables),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_NUM_MEMTABLES"),
+			},
+			&cli.IntFlag{
+				Name:        "badger-num-level-zero-tables",
+				Usage:       "Override Badger NumLevelZeroTables",
+				DefaultText: fmt.Sprintf("%d", badgerDefaults.NumLevelZeroTables),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_NUM_LEVEL_ZERO_TABLES"),
+			},
+			&cli.IntFlag{
+				Name:        "badger-num-level-zero-tables-stall",
+				Usage:       "Override Badger NumLevelZeroTablesStall",
+				DefaultText: fmt.Sprintf("%d", badgerDefaults.NumLevelZeroTablesStall),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_NUM_LEVEL_ZERO_TABLES_STALL"),
+			},
+			&cli.IntFlag{
+				Name:        "badger-num-compactors",
+				Usage:       "Override Badger NumCompactors",
+				DefaultText: fmt.Sprintf("%d", badgerDefaults.NumCompactors),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_NUM_COMPACTORS"),
+			},
+			&cli.StringFlag{
+				Name:        "badger-base-table-size",
+				Usage:       "Override Badger BaseTableSize with a human-readable size like 2MiB",
+				DefaultText: demo.FormatBytes(badgerDefaults.BaseTableSize),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_BASE_TABLE_SIZE"),
+			},
+			&cli.StringFlag{
+				Name:        "badger-value-log-file-size",
+				Usage:       "Override Badger ValueLogFileSize with a human-readable size like 512MiB or 1GiB",
+				DefaultText: fmt.Sprintf("%d bytes (~%s)", badgerDefaults.ValueLogFileSize, demo.FormatBytes(badgerDefaults.ValueLogFileSize)),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_VALUE_LOG_FILE_SIZE"),
+			},
+			&cli.StringFlag{
+				Name:        "badger-block-cache-size",
+				Usage:       "Override Badger BlockCacheSize with a human-readable size like 64MiB",
+				DefaultText: demo.FormatBytes(badgerDefaults.BlockCacheSize),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_BLOCK_CACHE_SIZE"),
+			},
+			&cli.StringFlag{
+				Name:        "badger-index-cache-size",
+				Usage:       "Override Badger IndexCacheSize with a human-readable size like 128MiB; 0 keeps all indices in memory",
+				DefaultText: "0",
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_INDEX_CACHE_SIZE"),
+			},
+			&cli.StringFlag{
+				Name:        "badger-value-threshold",
+				Usage:       "Override Badger ValueThreshold with a human-readable size like 64KiB or 1MiB",
+				DefaultText: demo.FormatBytes(badgerDefaults.ValueThreshold),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_VALUE_THRESHOLD"),
+			},
+			&cli.BoolFlag{
+				Name:        "badger-sync-writes",
+				Usage:       "Enable Badger SyncWrites for the extra-durable fsync-on-write path",
+				DefaultText: fmt.Sprintf("%t", badgerDefaults.SyncWrites),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_SYNC_WRITES"),
 			},
 			&cli.StringFlag{
 				Name:    "namespace",
@@ -375,7 +443,35 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 	expvarListenAddr := cmd.String("expvar-listen-addr")
 
-	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, producerID, otelConfig.Endpoint, expvarListenAddr)
+	badgerOpts, err := demo.BuildBadgerOptions(dbPath, demo.BadgerOptionsOverrides{
+		SyncWritesSet:              cmd.IsSet("badger-sync-writes"),
+		SyncWrites:                 cmd.Bool("badger-sync-writes"),
+		MemTableSizeSet:            cmd.IsSet("badger-memtable-size"),
+		MemTableSize:               cmd.String("badger-memtable-size"),
+		NumMemtablesSet:            cmd.IsSet("badger-num-memtables"),
+		NumMemtables:               cmd.Int("badger-num-memtables"),
+		NumLevelZeroTablesSet:      cmd.IsSet("badger-num-level-zero-tables"),
+		NumLevelZeroTables:         cmd.Int("badger-num-level-zero-tables"),
+		NumLevelZeroTablesStallSet: cmd.IsSet("badger-num-level-zero-tables-stall"),
+		NumLevelZeroTablesStall:    cmd.Int("badger-num-level-zero-tables-stall"),
+		NumCompactorsSet:           cmd.IsSet("badger-num-compactors"),
+		NumCompactors:              cmd.Int("badger-num-compactors"),
+		BaseTableSizeSet:           cmd.IsSet("badger-base-table-size"),
+		BaseTableSize:              cmd.String("badger-base-table-size"),
+		ValueLogFileSizeSet:        cmd.IsSet("badger-value-log-file-size"),
+		ValueLogFileSize:           cmd.String("badger-value-log-file-size"),
+		BlockCacheSizeSet:          cmd.IsSet("badger-block-cache-size"),
+		BlockCacheSize:             cmd.String("badger-block-cache-size"),
+		IndexCacheSizeSet:          cmd.IsSet("badger-index-cache-size"),
+		IndexCacheSize:             cmd.String("badger-index-cache-size"),
+		ValueThresholdSet:          cmd.IsSet("badger-value-threshold"),
+		ValueThreshold:             cmd.String("badger-value-threshold"),
+	})
+	if err != nil {
+		return fmt.Errorf("build badger options: %w", err)
+	}
+
+	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
 
 	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
 	if err != nil {
@@ -411,7 +507,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("create badger directory: %w", err)
 	}
 
-	db, err := badger.Open(badger.DefaultOptions(dbPath).WithLogger(nil).WithMetricsEnabled(true))
+	db, err := badger.Open(badgerOpts)
 	if err != nil {
 		return fmt.Errorf("open badger: %w", err)
 	}

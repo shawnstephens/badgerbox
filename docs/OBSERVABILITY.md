@@ -239,7 +239,7 @@ Current meanings:
 
 ## Badger `expvar`
 
-If you want Badger's own storage and engine metrics, expose `/debug/vars` from the process that owns the Badger DB and register Prometheus's expvar collector there.
+If you want Badger's own storage and engine metrics, or default Go `runtime.Memstats`, expose `/debug/vars` from the process that owns the Badger DB and register Prometheus's expvar collector there.
 
 For example, in an application that already owns the HTTP server:
 
@@ -256,6 +256,12 @@ import (
 func main() {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewExpvarCollector(map[string]*prometheus.Desc{
+		"memstats": prometheus.NewDesc(
+			"go_expvar_memstats",
+			"Go runtime.MemStats fields exported from expvar.",
+			[]string{"stat"},
+			nil,
+		),
 		"badger_size_bytes_lsm": prometheus.NewDesc(
 			"badger_size_bytes_lsm",
 			"Badger LSM size in bytes exported from expvar.",
@@ -309,7 +315,7 @@ It starts:
 - Prometheus
 - Tempo
 - Grafana
-- A Prometheus scrape path to the demo producer's `/metrics`, where the producer converts selected Badger `expvar` metrics with `collectors.NewExpvarCollector`
+- A Prometheus scrape path to the demo producer's `/metrics`, where the producer converts selected Badger `expvar` metrics plus Go `runtime.Memstats` from default expvar with `collectors.NewExpvarCollector`
 
 The Collector and Tempo OTLP receivers are explicitly bound to `0.0.0.0` in this repo's config. Their default OTLP receiver binding is not suitable for this demo because traffic arrives from outside the container.
 
@@ -385,7 +391,7 @@ On the provisioned `Badgerbox Demo Observability` dashboard with the `Prometheus
 - Queue state panels show ready, processing, and dead-letter depths plus oldest queue ages.
 - Throughput panels show enqueue, claim, process, retry, dead-letter, and conflict retry rates.
 - Latency panels show enqueue and process p50/p95, retry delay, schedule lag, and message age at claim time.
-- Runtime panels show active workers and buffered work channel depth.
+- Runtime panels show active workers, buffered work channel depth, Go heap memory, runtime memory overhead, heap activity, and GC summary gauges from default expvar `memstats`.
 - Badger panels show storage and engine metrics from the producer's `/metrics` endpoint, where the producer republishes selected Badger `expvar` values through Prometheus's expvar collector.
 
 In Explore with the Prometheus datasource, useful raw queries are:
@@ -396,6 +402,9 @@ In Explore with the Prometheus datasource, useful raw queries are:
 - `rate(badgerbox_process_attempt_total{namespace="demo"}[1m])`
 - `rate(badgerbox_dead_letter_total{namespace="demo"}[5m])`
 - `histogram_quantile(0.95, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace="demo"}[5m])))`
+- `go_expvar_memstats{stat="HeapAlloc"}`
+- `go_expvar_memstats{stat="Sys"}`
+- `time() - (go_expvar_memstats{stat="LastGC"} / 1e9)`
 - `badger_size_bytes_lsm`
 - `badger_size_bytes_vlog`
 
@@ -448,6 +457,11 @@ Missing Badger metrics:
 - Verify Prometheus is scraping the producer's `/metrics` endpoint.
 - Verify Badger was opened with metrics enabled. Badger defaults to enabled.
 - Remember that some Badger metrics stay zero until the corresponding storage path is exercised.
+
+Missing Go runtime memstats:
+
+- Verify the demo producer's `/metrics` endpoint includes `go_expvar_memstats`.
+- Verify Prometheus is scraping the producer's `/metrics` endpoint.
 
 Duplicate processing traces:
 

@@ -209,6 +209,9 @@ The `kafka` process owns the Testcontainers Kafka broker. Its state file is pres
 
 The producer also runs Badger value-log GC periodically with a discard ratio of `0.5`. Adjust the interval with `--badger-gc-interval` or `BADGERBOX_DEMO_BADGER_GC_INTERVAL`.
 
+For the demo producer's Badger memory flags and direct tuning guidance, see [MEMORY.md](./docs/MEMORY.md).
+Use `--badger-sync-writes` or `BADGERBOX_DEMO_BADGER_SYNC_WRITES=true` to enable Badger's `SyncWrites` durability path. It is disabled by default.
+
 Offline retry demo:
 
 1. `badgerbox-demo kafka`
@@ -232,6 +235,8 @@ Using repo-local commands, that flow is:
 The producer follows the preserved state file by default. If Kafka restarts with a new mapped port, the producer reloads the state file after a publish failure, rebuilds its Kafka client, and resumes publishing on the next retry. The producer still requires some broker source at startup, either from flags, environment variables, or the preserved state file.
 
 ## Generic producer example
+
+These examples keep Badger's defaults for brevity. If you want to tune Badger memory directly in code, see [MEMORY.md](./docs/MEMORY.md).
 
 ```go
 package main
@@ -332,6 +337,8 @@ if err := processor.Run(context.Background()); err != nil {
 ```
 
 ## Kafka example
+
+The same direct Badger tuning patterns apply here; see [MEMORY.md](./docs/MEMORY.md) for concrete `badger.DefaultOptions(...).WithX(...)` examples.
 
 ```go
 package main
