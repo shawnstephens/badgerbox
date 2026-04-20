@@ -81,6 +81,7 @@ func TestNewProducerCommandIncludesBadgerMemoryFlags(t *testing.T) {
 	}
 
 	wantFlags := []string{
+		"badger-sync-writes",
 		"badger-memtable-size",
 		"badger-num-memtables",
 		"badger-num-level-zero-tables",

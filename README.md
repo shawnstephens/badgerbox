@@ -210,6 +210,7 @@ The `kafka` process owns the Testcontainers Kafka broker. Its state file is pres
 The producer also runs Badger value-log GC periodically with a discard ratio of `0.5`. Adjust the interval with `--badger-gc-interval` or `BADGERBOX_DEMO_BADGER_GC_INTERVAL`.
 
 For the demo producer's Badger memory flags and direct tuning guidance, see [MEMORY.md](./docs/MEMORY.md).
+Use `--badger-sync-writes` or `BADGERBOX_DEMO_BADGER_SYNC_WRITES=true` to enable Badger's `SyncWrites` durability path. It is disabled by default.
 
 Offline retry demo:
 

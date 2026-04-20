@@ -17,6 +17,9 @@ const (
 )
 
 type BadgerOptionsOverrides struct {
+	SyncWritesSet bool
+	SyncWrites    bool
+
 	MemTableSizeSet bool
 	MemTableSize    string
 
@@ -61,6 +64,10 @@ func FormatBytes(size int64) string {
 
 func BuildBadgerOptions(path string, overrides BadgerOptionsOverrides) (badger.Options, error) {
 	opts := DefaultBadgerOptions(path)
+
+	if overrides.SyncWritesSet {
+		opts = opts.WithSyncWrites(overrides.SyncWrites)
+	}
 
 	if overrides.MemTableSizeSet {
 		size, err := parseBadgerSizeFlag("badger-memtable-size", overrides.MemTableSize)

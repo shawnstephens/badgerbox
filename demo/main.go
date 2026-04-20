@@ -169,6 +169,12 @@ func newProducerCommand() *cli.Command {
 				DefaultText: demo.FormatBytes(badgerDefaults.ValueThreshold),
 				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_VALUE_THRESHOLD"),
 			},
+			&cli.BoolFlag{
+				Name:        "badger-sync-writes",
+				Usage:       "Enable Badger SyncWrites for the extra-durable fsync-on-write path",
+				DefaultText: fmt.Sprintf("%t", badgerDefaults.SyncWrites),
+				Sources:     cli.EnvVars("BADGERBOX_DEMO_BADGER_SYNC_WRITES"),
+			},
 			&cli.StringFlag{
 				Name:    "namespace",
 				Usage:   "Badgerbox namespace",
@@ -438,6 +444,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	expvarListenAddr := cmd.String("expvar-listen-addr")
 
 	badgerOpts, err := demo.BuildBadgerOptions(dbPath, demo.BadgerOptionsOverrides{
+		SyncWritesSet:              cmd.IsSet("badger-sync-writes"),
+		SyncWrites:                 cmd.Bool("badger-sync-writes"),
 		MemTableSizeSet:            cmd.IsSet("badger-memtable-size"),
 		MemTableSize:               cmd.String("badger-memtable-size"),
 		NumMemtablesSet:            cmd.IsSet("badger-num-memtables"),
@@ -463,7 +471,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("build badger options: %w", err)
 	}
 
-	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
+	logger.Printf("startup", "command=producer brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", demo.ShortBrokerList(target.Brokers), target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
 
 	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
 	if err != nil {

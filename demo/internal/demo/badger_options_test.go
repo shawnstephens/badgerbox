@@ -179,6 +179,50 @@ func TestBuildBadgerOptionsAppliesEachOverride(t *testing.T) {
 	}
 }
 
+func TestBuildBadgerOptionsSyncWritesOverrides(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir()
+
+	tests := []struct {
+		name       string
+		overrides  BadgerOptionsOverrides
+		wantSyncOn bool
+	}{
+		{
+			name: "sync writes enabled",
+			overrides: BadgerOptionsOverrides{
+				SyncWritesSet: true,
+				SyncWrites:    true,
+			},
+			wantSyncOn: true,
+		},
+		{
+			name: "sync writes explicitly disabled",
+			overrides: BadgerOptionsOverrides{
+				SyncWritesSet: true,
+				SyncWrites:    false,
+			},
+			wantSyncOn: false,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := BuildBadgerOptions(path, tc.overrides)
+			if err != nil {
+				t.Fatalf("BuildBadgerOptions() error = %v", err)
+			}
+			if got.SyncWrites != tc.wantSyncOn {
+				t.Fatalf("SyncWrites = %t, want %t", got.SyncWrites, tc.wantSyncOn)
+			}
+		})
+	}
+}
+
 func TestBuildBadgerOptionsParsesSizeFormats(t *testing.T) {
 	t.Parallel()
 
@@ -349,6 +393,9 @@ func assertBadgerOptionsEqual(t *testing.T, got, want badger.Options) {
 	}
 	if got.ValueDir != want.ValueDir {
 		t.Fatalf("ValueDir = %q, want %q", got.ValueDir, want.ValueDir)
+	}
+	if got.SyncWrites != want.SyncWrites {
+		t.Fatalf("SyncWrites = %t, want %t", got.SyncWrites, want.SyncWrites)
 	}
 	if got.MemTableSize != want.MemTableSize {
 		t.Fatalf("MemTableSize = %d, want %d", got.MemTableSize, want.MemTableSize)
