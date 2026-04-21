@@ -3,6 +3,7 @@ package demo
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
@@ -17,6 +18,23 @@ import (
 type OTelConfig struct {
 	Endpoint    string
 	ServiceName string
+}
+
+var latencyHistogramBoundaries = []float64{
+	0.0005,
+	0.001,
+	0.0025,
+	0.005,
+	0.01,
+	0.025,
+	0.05,
+	0.1,
+	0.25,
+	0.5,
+	1,
+	2.5,
+	5,
+	10,
 }
 
 func (c OTelConfig) Enabled() bool {
@@ -59,6 +77,8 @@ func SetupOTel(ctx context.Context, cfg OTelConfig) (badgerbox.ObservabilityOpti
 	meterProvider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(5*time.Second))),
+		sdkmetric.WithView(latencyHistogramView("badgerbox_enqueue_duration_seconds")),
+		sdkmetric.WithView(latencyHistogramView("badgerbox_process_duration_seconds")),
 	)
 	traceProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
@@ -77,4 +97,15 @@ func SetupOTel(ctx context.Context, cfg OTelConfig) (badgerbox.ObservabilityOpti
 		)
 	}
 	return obs, shutdown, nil
+}
+
+func latencyHistogramView(name string) sdkmetric.View {
+	return sdkmetric.NewView(
+		sdkmetric.Instrument{Name: name, Kind: sdkmetric.InstrumentKindHistogram},
+		sdkmetric.Stream{
+			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: slices.Clone(latencyHistogramBoundaries),
+			},
+		},
+	)
 }
