@@ -191,10 +191,11 @@ type otelInstrumentation struct {
 	tracer     oteltrace.Tracer
 	propagator propagation.TextMapPropagator
 
-	closeMu  sync.Mutex
-	closeErr error
-	cancel   context.CancelFunc
-	done     chan struct{}
+	closeMu            sync.Mutex
+	closeErr           error
+	cancel             context.CancelFunc
+	done               chan struct{}
+	metricRegistration metric.Registration
 
 	activeWorkers atomic.Int64
 	workDepth     atomic.Int64
@@ -213,6 +214,9 @@ type otelInstrumentation struct {
 	retryDelay      metric.Float64Histogram
 	claimBatchSize  metric.Int64Histogram
 
+	enqueueDurationMax metric.Float64ObservableGauge
+	processDurationMax metric.Float64ObservableGauge
+
 	readyDepth          metric.Int64Gauge
 	processingDepth     metric.Int64Gauge
 	deadLetterDepth     metric.Int64Gauge
@@ -220,6 +224,68 @@ type otelInstrumentation struct {
 	workChannelDepth    metric.Int64Gauge
 	oldestReadyAge      metric.Float64Gauge
 	oldestProcessingAge metric.Float64Gauge
+
+	enqueueDurationMaxTracker durationMaxTracker
+	processDurationMaxTracker durationMaxTracker
+}
+
+type queueMetricKey struct {
+	namespace string
+	outcome   string
+	mode      string
+	failure   string
+}
+
+type durationMaxPoint struct {
+	attrs []attribute.KeyValue
+	value float64
+}
+
+type durationMaxTracker struct {
+	mu     sync.Mutex
+	points map[queueMetricKey]durationMaxPoint
+}
+
+func (t *durationMaxTracker) record(key queueMetricKey, attrs []attribute.KeyValue, duration time.Duration) {
+	if duration <= 0 {
+		return
+	}
+
+	value := duration.Seconds()
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.points == nil {
+		t.points = make(map[queueMetricKey]durationMaxPoint)
+	}
+
+	current, ok := t.points[key]
+	if ok && current.value >= value {
+		return
+	}
+
+	t.points[key] = durationMaxPoint{
+		attrs: append([]attribute.KeyValue(nil), attrs...),
+		value: value,
+	}
+}
+
+func (t *durationMaxTracker) snapshotAndReset() []durationMaxPoint {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if len(t.points) == 0 {
+		return nil
+	}
+
+	points := make([]durationMaxPoint, 0, len(t.points))
+	for _, point := range t.points {
+		points = append(points, point)
+	}
+	t.points = nil
+
+	return points
 }
 
 func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSnapshot func(context.Context) (queueSnapshot, error)) (*otelInstrumentation, error) {
@@ -293,6 +359,12 @@ func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSn
 	if inst.claimBatchSize, err = meter.Int64Histogram("badgerbox_claim_batch_size"); err != nil {
 		return nil, err
 	}
+	if inst.enqueueDurationMax, err = meter.Float64ObservableGauge("badgerbox_enqueue_duration_seconds_max"); err != nil {
+		return nil, err
+	}
+	if inst.processDurationMax, err = meter.Float64ObservableGauge("badgerbox_process_duration_seconds_max"); err != nil {
+		return nil, err
+	}
 	if inst.readyDepth, err = meter.Int64Gauge("badgerbox_queue_ready"); err != nil {
 		return nil, err
 	}
@@ -314,6 +386,17 @@ func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSn
 	if inst.oldestProcessingAge, err = meter.Float64Gauge("badgerbox_queue_oldest_processing_age_seconds"); err != nil {
 		return nil, err
 	}
+	if inst.metricRegistration, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		for _, point := range inst.enqueueDurationMaxTracker.snapshotAndReset() {
+			observer.ObserveFloat64(inst.enqueueDurationMax, point.value, metric.WithAttributes(point.attrs...))
+		}
+		for _, point := range inst.processDurationMaxTracker.snapshotAndReset() {
+			observer.ObserveFloat64(inst.processDurationMax, point.value, metric.WithAttributes(point.attrs...))
+		}
+		return nil
+	}, inst.enqueueDurationMax, inst.processDurationMax); err != nil {
+		return nil, err
+	}
 
 	return inst, nil
 }
@@ -322,16 +405,22 @@ func (o *otelInstrumentation) close() error {
 	o.closeMu.Lock()
 	cancel := o.cancel
 	done := o.done
+	registration := o.metricRegistration
 	o.cancel = nil
 	o.done = nil
+	o.metricRegistration = nil
 	o.closeMu.Unlock()
 	if cancel != nil {
 		cancel()
 		<-done
 	}
+	var unregisterErr error
+	if registration != nil {
+		unregisterErr = registration.Unregister()
+	}
 	o.closeMu.Lock()
 	defer o.closeMu.Unlock()
-	return o.closeErr
+	return errors.Join(o.closeErr, unregisterErr)
 }
 
 func (o *otelInstrumentation) start(ctx context.Context, runtime Runtime, pollInterval time.Duration) error {
@@ -451,6 +540,10 @@ func (o *otelInstrumentation) recordEnqueue(ctx context.Context, outcome string,
 	o.enqueueTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 	if duration > 0 {
 		o.enqueueDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attrs...))
+		o.enqueueDurationMaxTracker.record(queueMetricKey{
+			namespace: o.namespace,
+			outcome:   outcome,
+		}, attrs, duration)
 	}
 }
 
@@ -496,6 +589,11 @@ func (o *otelInstrumentation) recordProcessOutcome(ctx context.Context, outcome,
 	o.processTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 	if duration > 0 {
 		o.processDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attrs...))
+		o.processDurationMaxTracker.record(queueMetricKey{
+			namespace: o.namespace,
+			outcome:   outcome,
+			failure:   failure,
+		}, attrs, duration)
 	}
 }
 
