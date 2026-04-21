@@ -710,7 +710,7 @@
     },
     {
       "datasource": "Prometheus",
-      "description": "Enqueue latency percentiles over the last five minutes.",
+      "description": "Enqueue latency max and percentiles over the last five minutes.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -787,15 +787,45 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
-          "legendFormat": "p50",
+          "expr": "max(max_over_time(badgerbox_enqueue_duration_seconds_max{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "max",
           "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.999, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p99.9",
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
         },
         {
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
           "legendFormat": "p95",
-          "refId": "B"
+          "refId": "D"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.90, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p90",
+          "refId": "E"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p75",
+          "refId": "F"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_enqueue_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "G"
         }
       ],
       "title": "Enqueue Latency",
@@ -803,7 +833,7 @@
     },
     {
       "datasource": "Prometheus",
-      "description": "Processing attempt latency percentiles over the last five minutes.",
+      "description": "Processing attempt latency max and percentiles over the last five minutes.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -880,15 +910,45 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
-          "legendFormat": "p50",
+          "expr": "max(max_over_time(badgerbox_process_duration_seconds_max{namespace=\"$namespace\"}[5m]))",
+          "legendFormat": "max",
           "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.999, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p99.9",
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
         },
         {
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
           "legendFormat": "p95",
-          "refId": "B"
+          "refId": "D"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.90, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p90",
+          "refId": "E"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.75, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p75",
+          "refId": "F"
+        },
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "G"
         }
       ],
       "title": "Process Latency",
