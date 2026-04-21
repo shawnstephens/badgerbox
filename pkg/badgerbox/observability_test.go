@@ -3,6 +3,7 @@ package badgerbox
 import (
 	"context"
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -81,6 +82,78 @@ func TestOTelInstrumentationExportsCoreMetrics(t *testing.T) {
 	}
 	if count := float64HistogramCountWithAttrs(collected, "badgerbox_retry_delay_seconds", attribute.String("namespace", "orders"), attribute.String("mode", metricModeRetry)); count != 1 {
 		t.Fatalf("retry delay count = %d, want 1", count)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeCommitted)); !almostEqualFloat64(got, 0.003) {
+		t.Fatalf("enqueue duration max = %f, want 0.003", got)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeSuccess)); !almostEqualFloat64(got, 0.008) {
+		t.Fatalf("process duration max = %f, want 0.008", got)
+	}
+}
+
+func TestOTelInstrumentationDurationMaxMetricsResetBetweenCollections(t *testing.T) {
+	t.Parallel()
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	obs, err := newOTelInstrumentation(ObservabilityOptions{MeterProvider: provider}, "orders", nil)
+	if err != nil {
+		t.Fatalf("new instrumentation: %v", err)
+	}
+	defer obs.close()
+
+	obs.recordEnqueueCommitted(context.Background(), 3*time.Millisecond)
+	obs.recordEnqueueCommitted(context.Background(), 7*time.Millisecond)
+	obs.recordEnqueuePrepared(context.Background(), 5*time.Millisecond)
+	obs.recordProcessSuccess(context.Background(), 8*time.Millisecond)
+	obs.recordProcessRetried(context.Background(), errors.New("retry"), 11*time.Millisecond)
+	obs.recordProcessDeadLetter(context.Background(), Permanent(errors.New("stop")), 6*time.Millisecond)
+
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatalf("collect first interval: %v", err)
+	}
+
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeCommitted)); !almostEqualFloat64(got, 0.007) {
+		t.Fatalf("enqueue committed max = %f, want 0.007", got)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomePrepared)); !almostEqualFloat64(got, 0.005) {
+		t.Fatalf("enqueue prepared max = %f, want 0.005", got)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeSuccess)); !almostEqualFloat64(got, 0.008) {
+		t.Fatalf("process success max = %f, want 0.008", got)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeRetried), attribute.String("failure_kind", "error")); !almostEqualFloat64(got, 0.011) {
+		t.Fatalf("process retried max = %f, want 0.011", got)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeDeadLetter), attribute.String("failure_kind", "permanent")); !almostEqualFloat64(got, 0.006) {
+		t.Fatalf("process dead-letter max = %f, want 0.006", got)
+	}
+
+	collected = metricdata.ResourceMetrics{}
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatalf("collect empty interval: %v", err)
+	}
+	if got := float64GaugePointCountWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders")); got != 0 {
+		t.Fatalf("enqueue max points after reset = %d, want 0", got)
+	}
+	if got := float64GaugePointCountWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders")); got != 0 {
+		t.Fatalf("process max points after reset = %d, want 0", got)
+	}
+
+	obs.recordEnqueueCommitted(context.Background(), 4*time.Millisecond)
+	obs.recordProcessSuccess(context.Background(), 2*time.Millisecond)
+
+	collected = metricdata.ResourceMetrics{}
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatalf("collect second interval: %v", err)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeCommitted)); !almostEqualFloat64(got, 0.004) {
+		t.Fatalf("enqueue committed max after reset = %f, want 0.004", got)
+	}
+	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeSuccess)); !almostEqualFloat64(got, 0.002) {
+		t.Fatalf("process success max after reset = %f, want 0.002", got)
 	}
 }
 
@@ -664,6 +737,25 @@ func float64GaugeValueWithAttrs(metrics metricdata.ResourceMetrics, name string,
 	return 0
 }
 
+func float64GaugePointCountWithAttrs(metrics metricdata.ResourceMetrics, name string, want ...attribute.KeyValue) int {
+	count := 0
+	for _, scope := range metrics.ScopeMetrics {
+		for _, metric := range scope.Metrics {
+			if metric.Name != name {
+				continue
+			}
+			if data, ok := metric.Data.(metricdata.Gauge[float64]); ok {
+				for _, point := range data.DataPoints {
+					if attributeSetHasAll(point.Attributes, want...) {
+						count++
+					}
+				}
+			}
+		}
+	}
+	return count
+}
+
 func float64HistogramCountWithAttrs(metrics metricdata.ResourceMetrics, name string, want ...attribute.KeyValue) uint64 {
 	for _, scope := range metrics.ScopeMetrics {
 		for _, metric := range scope.Metrics {
@@ -705,4 +797,8 @@ func spanHasAttribute(span sdktrace.ReadOnlySpan, want attribute.KeyValue) bool 
 		}
 	}
 	return false
+}
+
+func almostEqualFloat64(got, want float64) bool {
+	return math.Abs(got-want) <= 1e-9
 }
