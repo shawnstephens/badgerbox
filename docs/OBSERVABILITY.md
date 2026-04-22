@@ -326,6 +326,40 @@ The Collector and Tempo OTLP receivers are explicitly bound to `0.0.0.0` in this
 
 Grafana also provisions the demo metrics dashboard automatically from [demo/observability/grafana/dashboards/badgerbox-demo-observability.json](/Users/shawn/Development/go/badgerbox/demo/observability/grafana/dashboards/badgerbox-demo-observability.json).
 
+```mermaid
+flowchart LR
+    Producer["badgerbox-demo producer"]
+    Prometheus["Prometheus"]
+    Grafana["Grafana"]
+
+    subgraph OTelPath["OTEL path"]
+        direction LR
+        Instrumentation["badgerbox core OTEL instrumentation\nbadgerbox_* metrics + traces"]
+        Collector["OTEL Collector\nOTLP receivers\nlocalhost:4318 / 4317"]
+        CollectorMetrics["Collector Prometheus exporter\notel-collector:9464"]
+        Tempo["Tempo"]
+    end
+
+    subgraph ExpvarPath["expvar scrape path"]
+        direction LR
+        Expvar["producer expvar server\n/debug/vars and /metrics"]
+        ProducerMetrics["Producer /metrics endpoint\nhost.docker.internal:18080/metrics\n(go_expvar_memstats + Badger expvar metrics)"]
+    end
+
+    Producer --> Instrumentation
+    Producer --> Expvar
+    Instrumentation -->|OTLP metrics + traces| Collector
+    Collector -->|traces pipeline| Tempo
+    Collector -->|metrics pipeline| CollectorMetrics
+    Expvar --> ProducerMetrics
+    Prometheus -.scrapes .-> CollectorMetrics
+    Prometheus -.scrapes .-> ProducerMetrics
+    Grafana -->|Prometheus datasource| Prometheus
+    Grafana -->|Tempo datasource| Tempo
+```
+
+In the demo stack, traces go through the OTEL Collector to Tempo, and `badgerbox_*` OTEL metrics go through the Collector's Prometheus exporter to Prometheus. Badger `expvar` metrics and Go `runtime.Memstats` bypass the Collector and are scraped directly from the producer's `/metrics` endpoint.
+
 ### Start the stack
 
 ```bash
@@ -393,7 +427,9 @@ On the provisioned `Badgerbox Demo Observability` dashboard with the `Prometheus
 
 ![Badgerbox demo Grafana dashboard](./images/demo_grafana_dashboard.png)
 
-- Queue state panels show ready, processing, and dead-letter depths plus oldest queue ages.
+- Queue state panels show ready, processing, and dead-letter depths, `Ready Drain ETA (5m)` and `Ready Drain ETA (1m)` estimates, plus oldest queue ages.
+- `Ready Drain ETA (5m)` is the smoother estimate. `Ready Drain ETA (1m)` is more responsive but noisier.
+- Both drain ETA panels estimate when the `ready` queue reaches zero from net ready drain rate: claim rate minus committed enqueue rate minus requeue rate. They show `No drain` when that net rate is flat, negative, or unavailable.
 - Throughput panels show enqueue, claim, process, retry, dead-letter, and conflict retry rates.
 - Latency panels show enqueue and process max, p99.9, p99, p95, p90, p75, p50, plus retry delay, schedule lag, and message age at claim time.
 - Runtime panels show active workers, buffered work channel depth, Go heap memory, runtime memory overhead, heap activity, and GC summary gauges from default expvar `memstats`.
@@ -403,6 +439,8 @@ In Explore with the Prometheus datasource, useful raw queries are:
 
 - `badgerbox_queue_ready{namespace="demo"}`
 - `badgerbox_queue_processing{namespace="demo"}`
+- `sum(rate(badgerbox_claim_total{namespace="demo"}[5m])) - sum(rate(badgerbox_enqueue_total{namespace="demo",outcome="committed"}[5m])) - sum(rate(badgerbox_requeue_total{namespace="demo"}[5m]))`
+- `sum(rate(badgerbox_claim_total{namespace="demo"}[1m])) - sum(rate(badgerbox_enqueue_total{namespace="demo",outcome="committed"}[1m])) - sum(rate(badgerbox_requeue_total{namespace="demo"}[1m]))`
 - `rate(badgerbox_enqueue_total{namespace="demo"}[1m])`
 - `rate(badgerbox_process_attempt_total{namespace="demo"}[1m])`
 - `rate(badgerbox_dead_letter_total{namespace="demo"}[5m])`

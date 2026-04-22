@@ -386,7 +386,7 @@ func TestProcessorRecoversPanic(t *testing.T) {
 	assertMessageDeleted(t, store)
 }
 
-func TestProcessorRunPropagatesInitialSnapshotFailure(t *testing.T) {
+func TestProcessorRunIgnoresSnapshotFailuresAtStartup(t *testing.T) {
 	t.Parallel()
 
 	runtime := newFakeRuntime(time.Unix(1_700_000_000, 0))
@@ -413,12 +413,12 @@ func TestProcessorRunPropagatesInitialSnapshotFailure(t *testing.T) {
 		t.Fatalf("NewProcessor: %v", err)
 	}
 
-	if err := processor.Run(context.Background()); !errors.Is(err, expected) {
-		t.Fatalf("Run err = %v, want %v", err, expected)
-	}
-	if runtime.TickerCount() != 0 {
-		t.Fatalf("unexpected tickers started after snapshot failure: %d", runtime.TickerCount())
-	}
+	cancel, done := runProcessor(processor)
+	defer stopProcessor(t, cancel, done)
+
+	waitFor(t, func() bool {
+		return runtime.TickerCount() == 3
+	})
 }
 
 func TestProcessorRunAdvancesFromRuntimeTickers(t *testing.T) {

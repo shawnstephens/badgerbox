@@ -23,19 +23,22 @@ import (
 )
 
 func main() {
-	cmd := &cli.Command{
+	if err := newRootCommand().Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "badgerbox-demo: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func newRootCommand() *cli.Command {
+	return &cli.Command{
 		Name:  "badgerbox-demo",
 		Usage: "Run a local badgerbox + Kafka demo with producer and consumer processes",
 		Commands: []*cli.Command{
 			newKafkaCommand(),
 			newProducerCommand(),
+			newRepairQueueStateCommand(),
 			newConsumerCommand(),
 		},
-	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "badgerbox-demo: %v\n", err)
-		os.Exit(1)
 	}
 }
 
@@ -312,6 +315,29 @@ func newConsumerCommand() *cli.Command {
 	}
 }
 
+func newRepairQueueStateCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "repair-queue-state",
+		Usage: "Rebuild badgerbox queue-state metadata for an existing namespace; stop producers and processors first",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "db-path",
+				Usage:   "Badger directory path",
+				Value:   demo.DefaultBadgerPath,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_DB_PATH"),
+			},
+			&cli.StringFlag{
+				Name:    "namespace",
+				Usage:   "Badgerbox namespace",
+				Value:   demo.DefaultNamespace,
+				Sources: cli.EnvVars("BADGERBOX_DEMO_NAMESPACE"),
+			},
+			colorFlag(demo.ColorAuto),
+		},
+		Action: runRepairQueueState,
+	}
+}
+
 func colorFlag(defaultMode demo.ColorMode) *cli.StringFlag {
 	return &cli.StringFlag{
 		Name:    "color",
@@ -565,15 +591,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer store.Close()
 
-	readyCount, err := demo.CountReadyMessages(db, namespace)
-	if err != nil {
-		return err
-	}
-	if readyCount > 0 {
-		logger.Printf("warning", "event=backlog_detected pending_ready=%d namespace=%s db_path=%s note=%q", readyCount, namespace, dbPath, "older ready records will be processed before newly enqueued ones")
-	} else {
-		logger.Printf("ready", "event=backlog pending_ready=0 namespace=%s db_path=%s", namespace, dbPath)
-	}
+	logger.Printf("ready", "event=backlog_preflight skipped=true namespace=%s db_path=%s note=%q", namespace, dbPath, "exact startup backlog scans are disabled; run `badgerbox-demo repair-queue-state` before large legacy DB startups")
 
 	var publisher demo.Publisher
 	if loggingProducer {
@@ -711,6 +729,44 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	logger.Printf("shutdown", "command=producer produced=%d", sequence.Load())
+	return nil
+}
+
+func runRepairQueueState(ctx context.Context, cmd *cli.Command) error {
+	runCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	logger := demo.NewLogger(os.Stdout, cmd.String("color"))
+	dbPath := cmd.String("db-path")
+	namespace := cmd.String("namespace")
+
+	logger.Printf("startup", "command=repair-queue-state db_path=%s namespace=%s", dbPath, namespace)
+
+	if err := os.MkdirAll(dbPath, 0o755); err != nil {
+		return fmt.Errorf("create badger directory: %w", err)
+	}
+
+	db, err := badger.Open(demo.DefaultBadgerOptions(dbPath))
+	if err != nil {
+		return fmt.Errorf("open badger: %w", err)
+	}
+	defer db.Close()
+
+	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
+		db,
+		badgerbox.Serde[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{},
+		badgerbox.Options{Namespace: namespace},
+	)
+	if err != nil {
+		return fmt.Errorf("new store: %w", err)
+	}
+	defer store.Close()
+
+	if err := store.RepairQueueState(runCtx); err != nil {
+		return fmt.Errorf("repair queue state: %w", err)
+	}
+
+	logger.Printf("ready", "command=repair-queue-state repaired=true db_path=%s namespace=%s", dbPath, namespace)
 	return nil
 }
 

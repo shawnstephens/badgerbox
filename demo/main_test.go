@@ -187,3 +187,34 @@ func TestNewProducerCommandIncludesBadgerMemoryFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestNewRootCommandIncludesRepairQueueStateCommand(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCommand()
+	for _, subcommand := range cmd.Commands {
+		if subcommand.Name == "repair-queue-state" {
+			return
+		}
+	}
+
+	t.Fatal("root command does not include repair-queue-state")
+}
+
+func TestNewRepairQueueStateCommandIncludesRequiredFlags(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRepairQueueStateCommand()
+	flagNames := make(map[string]struct{})
+	for _, flag := range cmd.Flags {
+		for _, name := range flag.Names() {
+			flagNames[name] = struct{}{}
+		}
+	}
+
+	for _, name := range []string{"db-path", "namespace"} {
+		if _, ok := flagNames[name]; !ok {
+			t.Fatalf("repair-queue-state flag %q not found", name)
+		}
+	}
+}
