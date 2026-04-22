@@ -246,6 +246,11 @@ func newProducerCommand() *cli.Command {
 				Value:   demo.DefaultBadgerGCInterval,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_BADGER_GC_INTERVAL"),
 			},
+			&cli.BoolFlag{
+				Name:    "badger-compact-on-startup",
+				Usage:   "Block startup to run Badger Flatten plus one-shot value-log GC; use only when this producer is the sole owner of the DB",
+				Sources: cli.EnvVars("BADGERBOX_DEMO_BADGER_COMPACT_ON_STARTUP"),
+			},
 			&cli.StringFlag{
 				Name:    "producer-id",
 				Usage:   "Logical producer identifier used in keys and logs",
@@ -445,6 +450,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	if badgerGCInterval <= 0 {
 		return errors.New("badger-gc-interval must be greater than 0")
 	}
+	badgerCompactOnStartup := cmd.Bool("badger-compact-on-startup")
 	producerID := cmd.String("producer-id")
 	if producerID == "" {
 		host, _ := os.Hostname()
@@ -496,7 +502,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		brokerSummary = "-"
 	}
 
-	logger.Printf("startup", "command=producer publish_transport=%s brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d processor_claim_batch_size=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", publishTransport, brokerSummary, target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, processorClaimBatchSize, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
+	logger.Printf("startup", "command=producer publish_transport=%s brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d processor_claim_batch_size=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_compact_on_startup=%t badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", publishTransport, brokerSummary, target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, processorClaimBatchSize, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerCompactOnStartup, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
 
 	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
 	if err != nil {
@@ -537,6 +543,12 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("open badger: %w", err)
 	}
 	defer db.Close()
+
+	if badgerCompactOnStartup {
+		if err := demo.RunStartupCompaction(db, dbPath, badgerOpts.NumCompactors, logger); err != nil {
+			return fmt.Errorf("run startup compaction: %w", err)
+		}
+	}
 
 	go demo.RunValueLogGC(runCtx, db, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, logger)
 
