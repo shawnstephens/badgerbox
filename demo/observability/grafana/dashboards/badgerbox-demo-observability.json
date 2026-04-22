@@ -67,7 +67,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 1
       },
@@ -133,8 +133,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 8,
+        "w": 6,
+        "x": 6,
         "y": 1
       },
       "id": 3,
@@ -199,8 +199,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
         "y": 1
       },
       "id": 4,
@@ -230,6 +230,158 @@
         }
       ],
       "title": "Dead-Letter Depth",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Smoothed estimate to drain the ready queue from the current five-minute net ready drain rate. No drain means the rate is flat, negative, or currently unavailable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "No drain"
+                }
+              },
+              "type": "special"
+            }
+          ],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "((((((sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)) or on() vector(0)) / ((sum(rate(badgerbox_claim_total{namespace=\"$namespace\"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace=\"$namespace\",outcome=\"committed\"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace=\"$namespace\"}[5m])) or on() vector(0)))) and on() (((sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)) or on() vector(0)) > 0) and on() (((sum(rate(badgerbox_claim_total{namespace=\"$namespace\"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace=\"$namespace\",outcome=\"committed\"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace=\"$namespace\"}[5m])) or on() vector(0))) > 0)) or ((((sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)) or on() vector(0)) == 0) * 0)))",
+          "instant": true,
+          "legendFormat": "ready drain eta 5m",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Ready Drain ETA (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Faster but noisier estimate to drain the ready queue from the current one-minute net ready drain rate. No drain means the rate is flat, negative, or currently unavailable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "No drain"
+                }
+              },
+              "type": "special"
+            }
+          ],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 5
+      },
+      "id": 31,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "((((((sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)) or on() vector(0)) / ((sum(rate(badgerbox_claim_total{namespace=\"$namespace\"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace=\"$namespace\",outcome=\"committed\"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace=\"$namespace\"}[1m])) or on() vector(0)))) and on() (((sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)) or on() vector(0)) > 0) and on() (((sum(rate(badgerbox_claim_total{namespace=\"$namespace\"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace=\"$namespace\",outcome=\"committed\"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace=\"$namespace\"}[1m])) or on() vector(0))) > 0)) or ((((sum(badgerbox_queue_ready{namespace=\"$namespace\"}) or sum(badgerbox_queue_ready)) or on() vector(0)) == 0) * 0)))",
+          "instant": true,
+          "legendFormat": "ready drain eta 1m",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Ready Drain ETA (1m)",
       "type": "stat"
     },
     {
@@ -265,8 +417,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 12,
-        "x": 0,
+        "w": 8,
+        "x": 8,
         "y": 5
       },
       "id": 5,
@@ -331,8 +483,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 16,
         "y": 5
       },
       "id": 6,

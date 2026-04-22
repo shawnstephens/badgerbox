@@ -10,24 +10,7 @@ import (
 func TestLatencyPanelsUseExpandedPercentilesAndMaxQueries(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join("observability", "grafana", "dashboards", "badgerbox-demo-observability.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read dashboard JSON: %v", err)
-	}
-
-	var dashboard struct {
-		Panels []struct {
-			Title   string `json:"title"`
-			Targets []struct {
-				Expr         string `json:"expr"`
-				LegendFormat string `json:"legendFormat"`
-			} `json:"targets"`
-		} `json:"panels"`
-	}
-	if err := json.Unmarshal(data, &dashboard); err != nil {
-		t.Fatalf("unmarshal dashboard JSON: %v", err)
-	}
+	dashboard := readDashboard(t)
 
 	tests := []struct {
 		title   string
@@ -82,6 +65,68 @@ func TestLatencyPanelsUseExpandedPercentilesAndMaxQueries(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestQueueStatePanelsIncludeReadyDrainETAs(t *testing.T) {
+	t.Parallel()
+
+	dashboard := readDashboard(t)
+	tests := []struct {
+		title    string
+		wantExpr string
+	}{
+		{
+			title:    "Ready Drain ETA (5m)",
+			wantExpr: `((((((sum(badgerbox_queue_ready{namespace="$namespace"}) or sum(badgerbox_queue_ready)) or on() vector(0)) / ((sum(rate(badgerbox_claim_total{namespace="$namespace"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace="$namespace",outcome="committed"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace="$namespace"}[5m])) or on() vector(0)))) and on() (((sum(badgerbox_queue_ready{namespace="$namespace"}) or sum(badgerbox_queue_ready)) or on() vector(0)) > 0) and on() (((sum(rate(badgerbox_claim_total{namespace="$namespace"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace="$namespace",outcome="committed"}[5m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace="$namespace"}[5m])) or on() vector(0))) > 0)) or ((((sum(badgerbox_queue_ready{namespace="$namespace"}) or sum(badgerbox_queue_ready)) or on() vector(0)) == 0) * 0)))`,
+		},
+		{
+			title:    "Ready Drain ETA (1m)",
+			wantExpr: `((((((sum(badgerbox_queue_ready{namespace="$namespace"}) or sum(badgerbox_queue_ready)) or on() vector(0)) / ((sum(rate(badgerbox_claim_total{namespace="$namespace"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace="$namespace",outcome="committed"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace="$namespace"}[1m])) or on() vector(0)))) and on() (((sum(badgerbox_queue_ready{namespace="$namespace"}) or sum(badgerbox_queue_ready)) or on() vector(0)) > 0) and on() (((sum(rate(badgerbox_claim_total{namespace="$namespace"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_enqueue_total{namespace="$namespace",outcome="committed"}[1m])) or on() vector(0)) - (sum(rate(badgerbox_requeue_total{namespace="$namespace"}[1m])) or on() vector(0))) > 0)) or ((((sum(badgerbox_queue_ready{namespace="$namespace"}) or sum(badgerbox_queue_ready)) or on() vector(0)) == 0) * 0)))`,
+		},
+	}
+
+	for _, tt := range tests {
+		panel := findDashboardPanel(t, dashboard.Panels, tt.title)
+		if len(panel.Targets) != 1 {
+			t.Fatalf("%s target count = %d, want 1", tt.title, len(panel.Targets))
+		}
+		if panel.Targets[0].Expr != tt.wantExpr {
+			t.Fatalf("%s expr = %q, want %q", tt.title, panel.Targets[0].Expr, tt.wantExpr)
+		}
+	}
+}
+
+func readDashboard(t *testing.T) struct {
+	Panels []struct {
+		Title   string `json:"title"`
+		Targets []struct {
+			Expr         string `json:"expr"`
+			LegendFormat string `json:"legendFormat"`
+		} `json:"targets"`
+	} `json:"panels"`
+} {
+	t.Helper()
+
+	path := filepath.Join("observability", "grafana", "dashboards", "badgerbox-demo-observability.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read dashboard JSON: %v", err)
+	}
+
+	var dashboard struct {
+		Panels []struct {
+			Title   string `json:"title"`
+			Targets []struct {
+				Expr         string `json:"expr"`
+				LegendFormat string `json:"legendFormat"`
+			} `json:"targets"`
+		} `json:"panels"`
+	}
+	if err := json.Unmarshal(data, &dashboard); err != nil {
+		t.Fatalf("unmarshal dashboard JSON: %v", err)
+	}
+
+	return dashboard
 }
 
 func findDashboardPanel(t *testing.T, panels []struct {
