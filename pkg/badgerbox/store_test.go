@@ -360,6 +360,9 @@ func TestStoreGuardsAndHelpers(t *testing.T) {
 		if err := store.RecordObservabilitySnapshot(context.Background()); !errors.Is(err, ErrStoreClosed) {
 			t.Fatalf("RecordObservabilitySnapshot err = %v, want %v", err, ErrStoreClosed)
 		}
+		if err := store.RepairQueueState(context.Background()); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("RepairQueueState err = %v, want %v", err, ErrStoreClosed)
+		}
 	})
 
 	t.Run("ListDeadLettersZeroLimit", func(t *testing.T) {

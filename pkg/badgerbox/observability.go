@@ -52,6 +52,13 @@ type queueSnapshot struct {
 }
 
 func (s *Store[M, D]) queueSnapshot(ctx context.Context) (queueSnapshot, error) {
+	if s.queueStateEnabled() {
+		return s.queueSnapshotFast(ctx)
+	}
+	return s.queueSnapshotLegacy(ctx)
+}
+
+func (s *Store[M, D]) queueSnapshotLegacy(ctx context.Context) (queueSnapshot, error) {
 	if err := s.ensureOpen(); err != nil {
 		return queueSnapshot{}, err
 	}
@@ -140,6 +147,42 @@ func (s *Store[M, D]) queueSnapshot(ctx context.Context) (queueSnapshot, error) 
 		}
 		if oldestProcessingCreated > 0 {
 			snapshot.OldestProcessingAge = now.Sub(time.Unix(0, oldestProcessingCreated).UTC())
+		}
+		return nil
+	})
+	return snapshot, err
+}
+
+func (s *Store[M, D]) queueSnapshotFast(ctx context.Context) (queueSnapshot, error) {
+	if err := s.ensureOpen(); err != nil {
+		return queueSnapshot{}, err
+	}
+	if err := ctxErr(ctx); err != nil {
+		return queueSnapshot{}, err
+	}
+
+	now := s.runtime.Now().UTC()
+	var snapshot queueSnapshot
+	err := s.db.View(func(txn *badger.Txn) error {
+		counters, err := s.loadQueueStateCounters(txn)
+		if err != nil {
+			return err
+		}
+		snapshot = counters
+
+		if snapshot.ReadyDepth > 0 {
+			oldestReadyAge, err := s.oldestReadyAgeFromCreatedIndex(ctx, txn, now)
+			if err != nil {
+				return err
+			}
+			snapshot.OldestReadyAge = oldestReadyAge
+		}
+		if snapshot.ProcessingDepth > 0 {
+			oldestProcessingAge, err := s.oldestProcessingAgeFromCreatedIndex(ctx, txn, now)
+			if err != nil {
+				return err
+			}
+			snapshot.OldestProcessingAge = oldestProcessingAge
 		}
 		return nil
 	})
