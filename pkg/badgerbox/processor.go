@@ -85,9 +85,6 @@ func (p *Processor[M, D]) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if err := p.store.RecordObservabilitySnapshot(runCtx); err != nil {
-		return err
-	}
 	if err := p.store.StartObservability(runCtx); err != nil {
 		return err
 	}
