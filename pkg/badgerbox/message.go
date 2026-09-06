@@ -1,10 +1,23 @@
 package badgerbox
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 type MessageID uint64
 
+func (id MessageID) String() string { return strconv.FormatUint(uint64(id), 10) }
+
+type MessageState string
+
+const (
+	MessageStateReady      MessageState = "ready"
+	MessageStateProcessing MessageState = "processing"
+)
+
 type Message[M any, D any] struct {
+	State       MessageState
 	ID          MessageID
 	Payload     M
 	Destination D

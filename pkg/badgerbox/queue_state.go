@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	queueStateVersion    = byte(1)
+	queueStateVersion    = byte(2)
 	queueStateShardCount = 64
 )
 
@@ -67,7 +67,7 @@ func (s *Store[M, D]) loadQueueStateStatus() (bool, error) {
 				return err
 			}
 			if len(value) != 1 || value[0] != queueStateVersion {
-				return fmt.Errorf("badgerbox: unsupported queue-state metadata version")
+				return ErrIncompatibleFormat
 			}
 			versionPresent = true
 			return nil
@@ -81,7 +81,7 @@ func (s *Store[M, D]) loadQueueStateStatus() (bool, error) {
 		defer it.Close()
 
 		prefixes := [][]byte{
-			s.keys.messagePrefix,
+			[]byte("ob/" + s.opts.Namespace + "/"),
 			s.keys.readyPrefix,
 			s.keys.processingPrefix,
 			s.keys.deadLetterPrefix,
@@ -102,7 +102,7 @@ func (s *Store[M, D]) loadQueueStateStatus() (bool, error) {
 		return true, nil
 	}
 	if namespaceHasData {
-		return false, nil
+		return false, ErrIncompatibleFormat
 	}
 
 	if err := s.db.Update(func(txn *badger.Txn) error {

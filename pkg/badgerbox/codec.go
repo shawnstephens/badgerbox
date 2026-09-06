@@ -3,6 +3,8 @@ package badgerbox
 import "encoding/json"
 
 // Codec serializes and deserializes a generic type for durable storage.
+// Implementations must be safe for concurrent calls. Encoded bytes are opaque;
+// reopen each namespace with codecs compatible with its persisted records.
 type Codec[T any] interface {
 	Marshal(T) ([]byte, error)
 	Unmarshal([]byte) (T, error)

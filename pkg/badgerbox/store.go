@@ -1,9 +1,12 @@
 package badgerbox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,8 +15,8 @@ import (
 )
 
 const (
-	recordStatusPending    = "pending"
-	recordStatusProcessing = "processing"
+	recordStatusPending    = MessageStateReady
+	recordStatusProcessing = MessageStateProcessing
 )
 
 var emptyValue = []byte{}
@@ -52,7 +55,7 @@ type storedRecord struct {
 	AvailableAtUnix  int64             `json:"available_at_unix_nano"`
 	Attempt          int               `json:"attempt"`
 	MaxAttempts      int               `json:"max_attempts"`
-	Status           string            `json:"status"`
+	Status           MessageState      `json:"status"`
 	LeaseToken       string            `json:"lease_token,omitempty"`
 	LeaseUntilUnix   int64             `json:"lease_until_unix_nano,omitempty"`
 }
@@ -103,25 +106,18 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 	opts = normalizeOptions(opts)
 	serde = normalizeSerde(serde)
 
-	seq, err := db.GetSequence(newKeyspace(opts.Namespace).sequenceKey, opts.IDLeaseSize)
+	if strings.Contains(opts.Namespace, "/") {
+		return nil, ErrInvalidNamespace
+	}
+	store := &Store[M, D]{db: db, serde: serde, opts: opts, keys: newKeyspace(opts.Namespace), runtime: opts.Runtime, listeners: make(map[int]chan struct{})}
+	if err := store.initializeQueueState(); err != nil {
+		return nil, err
+	}
+	seq, err := db.GetSequence(store.keys.sequenceKey, opts.IDLeaseSize)
 	if err != nil {
 		return nil, err
 	}
-
-	store := &Store[M, D]{
-		db:        db,
-		serde:     serde,
-		opts:      opts,
-		keys:      newKeyspace(opts.Namespace),
-		seq:       seq,
-		runtime:   opts.Runtime,
-		listeners: make(map[int]chan struct{}),
-	}
-
-	if err := store.initializeQueueState(); err != nil {
-		_ = seq.Release()
-		return nil, err
-	}
+	store.seq = seq
 
 	store.obs, err = newOTelInstrumentation(opts.Observability, opts.Namespace, store.queueSnapshot)
 	if err != nil {
@@ -150,11 +146,17 @@ func (s *Store[M, D]) StartObservability(ctx context.Context) error {
 	if err := s.ensureOpen(); err != nil {
 		return err
 	}
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
 	return s.obs.start(ctx, s.runtime, s.opts.Observability.PollInterval)
 }
 
 func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
 	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	if err := ctxErr(ctx); err != nil {
 		return err
 	}
 	return s.obs.recordSnapshot(ctx)
@@ -164,8 +166,8 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	if err := ctxErr(ctx); err != nil {
+		return 0, err
 	}
 
 	start := s.runtime.Now().UTC()
@@ -850,19 +852,27 @@ func (s *Store[M, D]) loadRecord(txn *badger.Txn, id MessageID) (storedRecord, e
 	if err != nil {
 		return record, err
 	}
-
 	value, err := item.ValueCopy(nil)
 	if err != nil {
 		return record, err
 	}
-	if err := json.Unmarshal(value, &record); err != nil {
+	if err = json.Unmarshal(value, &record); err != nil {
 		return record, err
 	}
-	if record.Status == "" {
-		record.Status = recordStatusPending
+	var fields map[string]json.RawMessage
+	if err = json.Unmarshal(value, &fields); err != nil {
+		return record, err
 	}
-	if record.ID == 0 {
-		record.ID = id
+	for _, key := range []string{"id", "status", "payload_bytes", "destination_bytes"} {
+		if _, ok := fields[key]; !ok {
+			return record, fmt.Errorf("badgerbox: missing record field %s", key)
+		}
+	}
+	if bytes.Equal(fields["id"], []byte("null")) || record.ID != id {
+		return record, fmt.Errorf("badgerbox: record identity differs from key %d", id)
+	}
+	if record.Status != MessageStateReady && record.Status != MessageStateProcessing {
+		return record, fmt.Errorf("badgerbox: invalid record state %q", record.Status)
 	}
 	return record, nil
 }
@@ -895,6 +905,7 @@ func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error
 		AvailableAt: time.Unix(0, record.AvailableAtUnix).UTC(),
 		Attempt:     record.Attempt,
 		MaxAttempts: record.MaxAttempts,
+		State:       record.Status,
 	}, nil
 }
 
@@ -972,7 +983,7 @@ func cloneBytes(data []byte) []byte {
 
 func ctxErr(ctx context.Context) error {
 	if ctx == nil {
-		return nil
+		return ErrNilContext
 	}
 	return ctx.Err()
 }
