@@ -127,7 +127,7 @@ func TestProcessorConcurrentWorkersProcessDistinctMessages(t *testing.T) {
 		return nil
 	}, ProcessorOptions{
 		Concurrency:    4,
-		ClaimBatchSize: total,
+		ClaimBatchSize: 1,
 		PollInterval:   5 * time.Millisecond,
 		LeaseDuration:  200 * time.Millisecond,
 	})
