@@ -22,7 +22,7 @@ jobs:
           cache: true
           cache-dependency-path: |
             go.sum
-            demo/go.sum
+            cmd/badgerbox-demo/go.sum
 
       - name: Build root module
         run: go build ./...
@@ -31,11 +31,11 @@ jobs:
         run: go test ./...
 
       - name: Build demo module
-        working-directory: demo
+        working-directory: cmd/badgerbox-demo
         run: go build ./...
 
       - name: Test demo module
-        working-directory: demo
+        working-directory: cmd/badgerbox-demo
         run: go test ./...
 
   integration:
@@ -53,7 +53,7 @@ jobs:
           cache: true
           cache-dependency-path: |
             go.sum
-            demo/go.sum
+            cmd/badgerbox-demo/go.sum
 
       - name: Run integration tests
         run: go test -tags=integration ./...

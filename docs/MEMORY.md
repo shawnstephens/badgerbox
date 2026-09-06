@@ -53,7 +53,7 @@ The demo producer treats every memory flag as an override. If you omit a flag or
 Example demo producer command:
 
 ```bash
-go run ./demo producer \
+go run ./cmd/badgerbox-demo producer \
   --badger-index-cache-size 128MiB \
   --badger-block-cache-size 64MiB \
   --badger-memtable-size 32MiB \
@@ -68,7 +68,7 @@ The same overrides can be passed with environment variables:
 BADGERBOX_DEMO_BADGER_INDEX_CACHE_SIZE=128MiB \
 BADGERBOX_DEMO_BADGER_BLOCK_CACHE_SIZE=64MiB \
 BADGERBOX_DEMO_BADGER_MEMTABLE_SIZE=32MiB \
-go run ./demo producer
+go run ./cmd/badgerbox-demo producer
 ```
 
 ## Direct Go examples

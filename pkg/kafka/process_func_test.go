@@ -1,4 +1,4 @@
-package kafkaoutbox
+package kafka
 
 import (
 	"context"

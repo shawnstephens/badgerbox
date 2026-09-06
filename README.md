@@ -6,7 +6,7 @@
 
 Badger Box is an embedded, durable outbox library for Go applications. It uses [Badger](https://github.com/dgraph-io/badger) as a fast, embedded key/value store. It stores typed payloads and typed destinations, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
 
-The project also ships a Kafka-specific adapter in `./pkg/kafkaoutbox` built on [Franz-go](https://github.com/twmb/franz-go).
+The project also ships a Kafka-specific adapter in `./pkg/kafka` built on [Franz-go](https://github.com/twmb/franz-go).
 
 > [!WARNING]
 > Badger Box is under active development. There is no release yet, and breaking changes are likely until the project reaches an initial stable release.
@@ -45,7 +45,7 @@ flowchart LR
     producer["Store.Enqueue / EnqueueTx"]
     processor["Processor<br/>(dispatcher + workers + reaper)"]
     handler["ProcessFunc"]
-    kafka["kafkaoutbox.NewProcessFunc"]
+    kafka["kafka.NewProcessFunc"]
 
     subgraph badger["Badger DB"]
         msg["msg/<id><br/>canonical record"]
@@ -105,17 +105,17 @@ Prefix roles:
 go get github.com/shawnstephens/badgerbox
 ```
 
-The demo lives in its own module under `demo`. Run it from that directory:
+The demo lives in its own module under `cmd/badgerbox-demo`. Run it from that directory:
 
 ```bash
-cd demo
+cd cmd/badgerbox-demo
 go run . --help
 ```
 
-The repo includes a checked-in `go.work` file for local development, so you can also run the demo from the repo root:
+For optional workspace development, run `go work init . ./cmd/badgerbox-demo` once at the repository root. The workspace file is local and ignored by Git. You can then run the demo from the root:
 
 ```bash
-go run ./demo --help
+go run ./cmd/badgerbox-demo --help
 ```
 
 ## Demo binary
@@ -166,23 +166,23 @@ Source: [Podman Desktop: Setup Testcontainers with Podman](https://podman-deskto
 Default workflow:
 
 ```bash
-(cd demo && go run . kafka)
-(cd demo && go run . producer)
-(cd demo && go run . consumer)
+(cd cmd/badgerbox-demo && go run . kafka)
+(cd cmd/badgerbox-demo && go run . producer)
+(cd cmd/badgerbox-demo && go run . consumer)
 ```
 
 From the repo root, the same flow can be run as:
 
 ```bash
-go run ./demo kafka
-go run ./demo producer
-go run ./demo consumer
+go run ./cmd/badgerbox-demo kafka
+go run ./cmd/badgerbox-demo producer
+go run ./cmd/badgerbox-demo consumer
 ```
 
 For producer-side bottleneck checks, you can bypass Kafka entirely and log each publish instead:
 
 ```bash
-go run ./demo producer --logging-producer
+go run ./cmd/badgerbox-demo producer --logging-producer
 ```
 
 This demo-only mode skips Kafka client creation and broker resolution, logs `phase=publish event=logged` lines instead of sending records to Kafka, and is intended for comparing demo producer overhead against the Kafka path.
@@ -210,7 +210,7 @@ Every flag also supports an environment variable with the `BADGERBOX_DEMO_` pref
 ```bash
 BADGERBOX_DEMO_ENQUEUE_PARALLELISM=4 \
 BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
-(cd demo && go run . producer)
+(cd cmd/badgerbox-demo && go run . producer)
 ```
 
 The `kafka` process owns the Testcontainers Kafka broker. Its state file is preserved on shutdown so the producer can start later, keep retrying against the stored broker metadata, and reconnect after Kafka restarts on a new mapped port. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
@@ -232,12 +232,12 @@ Offline retry demo:
 
 Using repo-local commands, that flow is:
 
-1. `(cd demo && go run . kafka)`
+1. `(cd cmd/badgerbox-demo && go run . kafka)`
 2. Stop it with `Ctrl+C`
-3. `(cd demo && go run . producer)`
+3. `(cd cmd/badgerbox-demo && go run . producer)`
 4. Watch repeated `phase=warning event=publish_failed` lines while messages continue to enqueue
-5. `(cd demo && go run . kafka)`
-6. `(cd demo && go run . consumer)`
+5. `(cd cmd/badgerbox-demo && go run . kafka)`
+6. `(cd cmd/badgerbox-demo && go run . consumer)`
 7. Watch the producer reconnect and drain the backlog
 
 The producer follows the preserved state file by default. If Kafka restarts with a new mapped port, the producer reloads the state file after a publish failure, rebuilds its Kafka client, and resumes publishing on the next retry. The producer still requires some broker source at startup, either from flags, environment variables, or the preserved state file.
@@ -356,7 +356,7 @@ import (
 	"log"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -368,9 +368,9 @@ func main() {
 	}
 	defer db.Close()
 
-	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
+	store, err := badgerbox.New[kafka.KafkaMessage, kafka.KafkaDestination](
 		db,
-		badgerbox.Serde[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{},
+		badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{},
 		badgerbox.Options{Namespace: "kafka"},
 	)
 	if err != nil {
@@ -384,21 +384,21 @@ func main() {
 	}
 	defer client.Close()
 
-	processFn := kafkaoutbox.NewProcessFunc(client, kafkaoutbox.Options{})
+	processFn := kafka.NewProcessFunc(client, kafka.Options{})
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
-		Payload: kafkaoutbox.KafkaMessage{
+	_, err = store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
+		Payload: kafka.KafkaMessage{
 			Key:   []byte("order-1"),
 			Value: []byte(`{"status":"created"}`),
 			Headers: map[string][]byte{
 				"type": []byte("order.created"),
 			},
 		},
-		Destination: kafkaoutbox.KafkaDestination{
+		Destination: kafka.KafkaDestination{
 			Topic: "orders.created",
 		},
 	})
@@ -443,5 +443,5 @@ go test -tags=integration ./...
 Run the demo module tests separately:
 
 ```bash
-(cd demo && go test ./...)
+(cd cmd/badgerbox-demo && go test ./...)
 ```

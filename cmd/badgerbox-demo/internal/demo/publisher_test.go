@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -127,13 +127,13 @@ func TestReloadingPublisherPublishReloadsClientAfterFailure(t *testing.T) {
 		}, nil
 	}
 
-	err := publisher.Publish(context.Background(), badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+	err := publisher.Publish(context.Background(), badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{
 		ID: 42,
-		Payload: kafkaoutbox.KafkaMessage{
+		Payload: kafka.KafkaMessage{
 			Key:   []byte("demo-key"),
 			Value: []byte("demo-value"),
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: "demo-topic"},
+		Destination: kafka.KafkaDestination{Topic: "demo-topic"},
 	})
 	if err == nil {
 		t.Fatal("expected publish error")
@@ -166,15 +166,15 @@ func TestReloadingPublisherPublishLogsAttemptMetadata(t *testing.T) {
 		}, nil
 	}
 
-	err := publisher.Publish(context.Background(), badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+	err := publisher.Publish(context.Background(), badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{
 		ID:          42,
 		Attempt:     3,
 		MaxAttempts: 10,
-		Payload: kafkaoutbox.KafkaMessage{
+		Payload: kafka.KafkaMessage{
 			Key:   []byte("demo-key"),
 			Value: []byte("demo-value"),
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: "demo-topic"},
+		Destination: kafka.KafkaDestination{Topic: "demo-topic"},
 	})
 	if err == nil {
 		t.Fatal("expected publish error")
@@ -196,10 +196,10 @@ func TestLoggingPublisherPublishLogsSummary(t *testing.T) {
 	logger := NewLogger(&out, string(ColorNever))
 	publisher := NewLoggingPublisher(logger)
 
-	err := publisher.Publish(context.Background(), badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+	err := publisher.Publish(context.Background(), badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{
 		ID:      77,
 		Attempt: 4,
-		Payload: kafkaoutbox.KafkaMessage{
+		Payload: kafka.KafkaMessage{
 			Key:   []byte("demo-key"),
 			Value: []byte(`{"message":"hello"}`),
 			Headers: map[string][]byte{
@@ -207,7 +207,7 @@ func TestLoggingPublisherPublishLogsSummary(t *testing.T) {
 				"sequence":    []byte("77"),
 			},
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: "demo-topic"},
+		Destination: kafka.KafkaDestination{Topic: "demo-topic"},
 	})
 	if err != nil {
 		t.Fatalf("Publish() error = %v", err)

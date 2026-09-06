@@ -3,15 +3,15 @@ package main
 import (
 	"time"
 
-	"github.com/shawnstephens/badgerbox/demo/internal/demo"
+	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 )
 
 func logProcessFailure(
 	logger *demo.Logger,
 	now time.Time,
-	msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination],
+	msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination],
 	err error,
 	retryBaseDelay, retryMaxDelay time.Duration,
 ) {

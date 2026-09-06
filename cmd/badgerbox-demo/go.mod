@@ -1,4 +1,4 @@
-module github.com/shawnstephens/badgerbox/demo
+module github.com/shawnstephens/badgerbox/cmd/badgerbox-demo
 
 go 1.24.0
 
@@ -95,4 +95,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/shawnstephens/badgerbox => ..
+replace github.com/shawnstephens/badgerbox => ../..

@@ -1,6 +1,6 @@
 //go:build integration
 
-package kafkaoutbox_test
+package kafka_test
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -41,20 +41,20 @@ func BenchmarkProcessorToKafka10KB(b *testing.B) {
 			defer cleanup()
 
 			for i := 0; i < b.N; i++ {
-				if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
-					Payload: kafkaoutbox.KafkaMessage{
+				if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
+					Payload: kafka.KafkaMessage{
 						Key:   []byte(fmt.Sprintf("key-%d", i)),
 						Value: payload,
 					},
-					Destination: kafkaoutbox.KafkaDestination{Topic: topic},
+					Destination: kafka.KafkaDestination{Topic: topic},
 				}); err != nil {
 					b.Fatalf("enqueue %d: %v", i, err)
 				}
 			}
 
-			baseFn := kafkaoutbox.NewProcessFunc(producer, kafkaoutbox.Options{})
+			baseFn := kafka.NewProcessFunc(producer, kafka.Options{})
 			var processed atomic.Int64
-			processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+			processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 				err := baseFn(ctx, msg)
 				if err == nil {
 					processed.Add(1)

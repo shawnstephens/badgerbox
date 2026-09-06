@@ -9,12 +9,12 @@ import (
 	"sync"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type Publisher interface {
-	Publish(context.Context, badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error
+	Publish(context.Context, badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error
 	Close() error
 }
 
@@ -44,9 +44,9 @@ func NewLoggingPublisher(logger *Logger) *LoggingPublisher {
 	return &LoggingPublisher{logger: logger}
 }
 
-func (p *LoggingPublisher) Publish(_ context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+func (p *LoggingPublisher) Publish(_ context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 	if msg.Destination.Topic == "" {
-		return badgerbox.Permanent(kafkaoutbox.ErrTopicRequired)
+		return badgerbox.Permanent(kafka.ErrTopicRequired)
 	}
 
 	if p.logger != nil {
@@ -109,9 +109,9 @@ func (p *ReloadingPublisher) Close() error {
 	return err
 }
 
-func (p *ReloadingPublisher) Publish(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+func (p *ReloadingPublisher) Publish(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 	if msg.Destination.Topic == "" {
-		return badgerbox.Permanent(kafkaoutbox.ErrTopicRequired)
+		return badgerbox.Permanent(kafka.ErrTopicRequired)
 	}
 
 	client, brokers, err := p.ensureClient()
@@ -211,7 +211,7 @@ func (p *ReloadingPublisher) ensureClient() (producerClient, []string, error) {
 	return p.client, append([]string(nil), p.brokers...), nil
 }
 
-func buildKafkaRecord(msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) *kgo.Record {
+func buildKafkaRecord(msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) *kgo.Record {
 	record := &kgo.Record{
 		Topic: msg.Destination.Topic,
 		Key:   cloneBytes(msg.Payload.Key),
