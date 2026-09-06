@@ -114,8 +114,10 @@ func positiveDuration(value time.Duration) time.Duration {
 }
 
 type otelInstrumentation struct {
-	namespace     string
-	queueSnapshot func(context.Context) (queueSnapshot, error)
+	claimTooBig    metric.Int64Counter
+	claimRetrySize metric.Int64Histogram
+	namespace      string
+	queueSnapshot  func(context.Context) (queueSnapshot, error)
 
 	tracer     oteltrace.Tracer
 	propagator propagation.TextMapPropagator
@@ -250,6 +252,15 @@ func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSn
 		meterName = defaultInstrumentationName
 	}
 	meter := opts.MeterProvider.Meter(meterName)
+	var extraErr error
+	inst.claimTooBig, extraErr = meter.Int64Counter("badgerbox_claim_transaction_too_big_total")
+	if extraErr != nil {
+		return nil, extraErr
+	}
+	inst.claimRetrySize, extraErr = meter.Int64Histogram("badgerbox_claim_retry_size")
+	if extraErr != nil {
+		return nil, extraErr
+	}
 
 	var err error
 	if inst.enqueueTotal, err = meter.Int64Counter("badgerbox_enqueue_total"); err != nil {
@@ -652,4 +663,13 @@ func namespaceAttributes(namespace string) []attribute.KeyValue {
 		return nil
 	}
 	return []attribute.KeyValue{attribute.String("namespace", namespace)}
+}
+
+func (o *otelInstrumentation) recordClaimTransactionTooBig(ctx context.Context, size int) {
+	if o.claimTooBig != nil {
+		o.claimTooBig.Add(ctx, 1, metric.WithAttributes(namespaceAttributes(o.namespace)...))
+		if size > 0 {
+			o.claimRetrySize.Record(ctx, int64(size), metric.WithAttributes(namespaceAttributes(o.namespace)...))
+		}
+	}
 }

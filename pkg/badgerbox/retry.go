@@ -9,16 +9,17 @@ import (
 )
 
 const (
-	defaultNamespace      = "default"
-	defaultIDLeaseSize    = 128
-	defaultConcurrency    = 4
-	defaultClaimBatchSize = 32
-	defaultPollInterval   = 250 * time.Millisecond
-	defaultLeaseDuration  = 30 * time.Second
-	defaultRetryBaseDelay = 1 * time.Second
-	defaultRetryMaxDelay  = 1 * time.Minute
-	defaultMaxAttempts    = 10
-	conflictRetryDelay    = 5 * time.Millisecond
+	defaultNamespace       = "default"
+	defaultIDLeaseSize     = 128
+	defaultConcurrency     = 4
+	defaultRequeuePageSize = 64
+	defaultClaimBatchSize  = 32
+	defaultPollInterval    = 250 * time.Millisecond
+	defaultLeaseDuration   = 30 * time.Second
+	defaultRetryBaseDelay  = 1 * time.Second
+	defaultRetryMaxDelay   = 1 * time.Minute
+	defaultMaxAttempts     = 10
+	conflictRetryDelay     = 5 * time.Millisecond
 )
 
 func withConflictRetry(ctx context.Context, runtime Runtime, fn func() error) error {
