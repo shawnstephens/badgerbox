@@ -312,7 +312,7 @@ Badger caveats still apply:
 
 ## Local Demo Stack
 
-The repo includes a local OTEL-to-Grafana pipeline under [demo/observability](/Users/shawn/Development/go/badgerbox/demo/observability).
+The repo includes a local OTEL-to-Grafana pipeline under [deployments/observability](deployments/observability).
 
 It starts:
 
@@ -324,7 +324,7 @@ It starts:
 
 The Collector and Tempo OTLP receivers are explicitly bound to `0.0.0.0` in this repo's config. Their default OTLP receiver binding is not suitable for this demo because traffic arrives from outside the container.
 
-Grafana also provisions the demo metrics dashboard automatically from [demo/observability/grafana/dashboards/badgerbox-demo-observability.json](/Users/shawn/Development/go/badgerbox/demo/observability/grafana/dashboards/badgerbox-demo-observability.json).
+Grafana also provisions the demo metrics dashboard automatically from [deployments/observability/grafana/dashboards/badgerbox-demo-observability.json](deployments/observability/grafana/dashboards/badgerbox-demo-observability.json).
 
 ```mermaid
 flowchart LR
@@ -363,7 +363,7 @@ In the demo stack, traces go through the OTEL Collector to Tempo, and `badgerbox
 ### Start the stack
 
 ```bash
-cd /Users/shawn/Development/go/badgerbox/demo/observability
+cd deployments/observability
 docker compose up -d
 ```
 
@@ -387,7 +387,7 @@ The local stack auto-loads the dashboard into the `Badgerbox Demo` folder in Gra
 If you want to import it into another Grafana instance:
 
 1. Open Grafana and go to `Dashboards` -> `New` -> `Import`.
-2. Upload [demo/observability/grafana/dashboards/badgerbox-demo-observability.json](/Users/shawn/Development/go/badgerbox/demo/observability/grafana/dashboards/badgerbox-demo-observability.json).
+2. Upload [deployments/observability/grafana/dashboards/badgerbox-demo-observability.json](deployments/observability/grafana/dashboards/badgerbox-demo-observability.json).
 3. When Grafana asks for a datasource, choose `Prometheus`.
 
 The dashboard uses two variables:
@@ -400,14 +400,14 @@ The dashboard uses two variables:
 Start Kafka:
 
 ```bash
-cd /Users/shawn/Development/go/badgerbox/demo
+cd cmd/badgerbox-demo
 go run . kafka
 ```
 
 Start the OTEL-enabled producer:
 
 ```bash
-cd /Users/shawn/Development/go/badgerbox/demo
+cd cmd/badgerbox-demo
 BADGERBOX_DEMO_OTEL_ENDPOINT=localhost:4318 \
 BADGERBOX_DEMO_OTEL_SERVICE_NAME=badgerbox-demo-producer \
 BADGERBOX_DEMO_EXPVAR_LISTEN_ADDR=0.0.0.0:18080 \
@@ -417,7 +417,7 @@ go run . producer
 Optionally start the consumer:
 
 ```bash
-cd /Users/shawn/Development/go/badgerbox/demo
+cd cmd/badgerbox-demo
 go run . consumer
 ```
 

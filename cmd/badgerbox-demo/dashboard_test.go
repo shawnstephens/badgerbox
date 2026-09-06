@@ -107,7 +107,7 @@ func readDashboard(t *testing.T) struct {
 } {
 	t.Helper()
 
-	path := filepath.Join("observability", "grafana", "dashboards", "badgerbox-demo-observability.json")
+	path := filepath.Join("..", "..", "deployments", "observability", "grafana", "dashboards", "badgerbox-demo-observability.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read dashboard JSON: %v", err)

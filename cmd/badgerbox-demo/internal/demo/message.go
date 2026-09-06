@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 )
 
 type Payload struct {
@@ -16,7 +16,7 @@ type Payload struct {
 	EnqueuedAt time.Time `json:"enqueued_at"`
 }
 
-func BuildKafkaMessage(topic, producerID string, worker int, sequence uint64) (kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination, error) {
+func BuildKafkaMessage(topic, producerID string, worker int, sequence uint64) (kafka.KafkaMessage, kafka.KafkaDestination, error) {
 	payload := Payload{
 		Sequence:   sequence,
 		ProducerID: producerID,
@@ -26,11 +26,11 @@ func BuildKafkaMessage(topic, producerID string, worker int, sequence uint64) (k
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return kafkaoutbox.KafkaMessage{}, kafkaoutbox.KafkaDestination{}, err
+		return kafka.KafkaMessage{}, kafka.KafkaDestination{}, err
 	}
 
 	key := fmt.Sprintf("%s-%06d", producerID, sequence)
-	return kafkaoutbox.KafkaMessage{
+	return kafka.KafkaMessage{
 			Key:   []byte(key),
 			Value: data,
 			Headers: map[string][]byte{
@@ -40,6 +40,6 @@ func BuildKafkaMessage(topic, producerID string, worker int, sequence uint64) (k
 				"sequence":       []byte(fmt.Sprintf("%d", sequence)),
 			},
 		},
-		kafkaoutbox.KafkaDestination{Topic: topic},
+		kafka.KafkaDestination{Topic: topic},
 		nil
 }

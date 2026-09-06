@@ -1,4 +1,4 @@
-package kafkaoutbox
+package kafka
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	ErrNilClient     = errors.New("kafkaoutbox: client is nil")
-	ErrTopicRequired = errors.New("kafkaoutbox: topic is required")
+	ErrNilClient     = errors.New("kafka: client is nil")
+	ErrTopicRequired = errors.New("kafka: topic is required")
 )
 
 type Producer interface {

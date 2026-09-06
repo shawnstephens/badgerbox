@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shawnstephens/badgerbox/demo/internal/demo"
+	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 )
 
 func TestLogProcessFailureRetryable(t *testing.T) {
@@ -19,14 +19,14 @@ func TestLogProcessFailureRetryable(t *testing.T) {
 	logger := demo.NewLogger(&out, string(demo.ColorNever))
 	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
 
-	logProcessFailure(logger, now, badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+	logProcessFailure(logger, now, badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{
 		ID:          101,
 		Attempt:     2,
 		MaxAttempts: 10,
-		Payload: kafkaoutbox.KafkaMessage{
+		Payload: kafka.KafkaMessage{
 			Key: []byte("demo-key"),
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: "demo-topic"},
+		Destination: kafka.KafkaDestination{Topic: "demo-topic"},
 	}, errors.New("broker unavailable"), 1*time.Second, 5*time.Second)
 
 	logs := out.String()
@@ -53,14 +53,14 @@ func TestLogProcessFailureTerminal(t *testing.T) {
 	var out bytes.Buffer
 	logger := demo.NewLogger(&out, string(demo.ColorNever))
 
-	logProcessFailure(logger, time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC), badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+	logProcessFailure(logger, time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC), badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{
 		ID:          202,
 		Attempt:     5,
 		MaxAttempts: 5,
-		Payload: kafkaoutbox.KafkaMessage{
+		Payload: kafka.KafkaMessage{
 			Key: []byte("demo-key"),
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: "demo-topic"},
+		Destination: kafka.KafkaDestination{Topic: "demo-topic"},
 	}, errors.New("broker unavailable"), 1*time.Second, 5*time.Second)
 
 	logs := out.String()

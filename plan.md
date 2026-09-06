@@ -3,7 +3,7 @@
 ## Summary
 Build a Go module named `badgerbox` that provides a durable outbox backed by `github.com/dgraph-io/badger/v4`. Place all library code under `./pkg`:
 - core package: `./pkg/badgerbox`
-- Kafka adapter package: `./pkg/kafkaoutbox`
+- Kafka adapter package: `./pkg/kafka`
 
 The first version should support:
 - an embedded producer API that writes messages into Badger
@@ -106,7 +106,7 @@ Recovery behavior:
 Do not use Badger TTL for scheduling or retention. Keep scheduling explicit in record data and indexes.
 
 ## Kafka adapter and Kafka-specific types
-Create package `pkg/kafkaoutbox` with Kafka-only types and adapter logic.
+Create package `pkg/kafka` with Kafka-only types and adapter logic.
 
 Kafka-specific structs:
 - `type KafkaDestination struct { Topic string; Partition *int32 }`
@@ -124,7 +124,7 @@ Kafka adapter behavior:
 - return retryable errors for transient produce failures
 - preserve `badgerbox.Permanent(err)` behavior if callers choose to wrap adapter errors
 
-Do not add Kafka concepts to `pkg/badgerbox`. All Kafka routing, keys, headers, and record shaping belong in `pkg/kafkaoutbox`.
+Do not add Kafka concepts to `pkg/badgerbox`. All Kafka routing, keys, headers, and record shaping belong in `pkg/kafka`.
 
 Suggested file layout:
 - `pkg/badgerbox/message.go`
@@ -134,16 +134,16 @@ Suggested file layout:
 - `pkg/badgerbox/keys.go`
 - `pkg/badgerbox/errors.go`
 - `pkg/badgerbox/retry.go`
-- `pkg/kafkaoutbox/types.go`
-- `pkg/kafkaoutbox/process_func.go`
+- `pkg/kafka/types.go`
+- `pkg/kafka/process_func.go`
 
 ## Documentation and test plan
 Create a `README.md` that includes:
-- import examples using `.../pkg/badgerbox` and `.../pkg/kafkaoutbox`
+- import examples using `.../pkg/badgerbox` and `.../pkg/kafka`
 - a generic producer example with custom types such as `OrderEvent` and `HTTPDestination`
 - an enqueue-within-transaction example
 - an embedded processor example with a custom generic `ProcessFunc`
-- a Kafka example using `badgerbox.Store[KafkaMessage, KafkaDestination]` plus `kafkaoutbox.NewProcessFunc`
+- a Kafka example using `badgerbox.Store[KafkaMessage, KafkaDestination]` plus `kafka.NewProcessFunc`
 - an explanation of at-least-once delivery
 - an explanation of Badger’s single-process lock constraint
 - a note that handlers must be idempotent

@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/shawnstephens/badgerbox/demo/internal/demo"
+	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 	"github.com/twmb/franz-go/pkg/kgo"
 	cli "github.com/urfave/cli/v3"
 )
@@ -411,8 +411,8 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	logger.Printf("ready", "command=kafka brokers=%s topic=%s topic_partitions=%d state_file=%s container_id=%s", demo.ShortBrokerList(brokers), topic, topicPartitions, stateFile, container.GetContainerID())
-	logger.Printf("ready", "command=kafka next=\"go run ./demo producer\"")
-	logger.Printf("ready", "command=kafka next=\"go run ./demo consumer\"")
+	logger.Printf("ready", "command=kafka working_directory=cmd/badgerbox-demo next=\"GOWORK=off go run . producer\"")
+	logger.Printf("ready", "command=kafka working_directory=cmd/badgerbox-demo next=\"GOWORK=off go run . consumer\"")
 
 	<-runCtx.Done()
 	return nil
@@ -578,9 +578,9 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 
 	go demo.RunValueLogGC(runCtx, db, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, logger)
 
-	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
+	store, err := badgerbox.New[kafka.KafkaMessage, kafka.KafkaDestination](
 		db,
-		badgerbox.Serde[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{},
+		badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{},
 		badgerbox.Options{
 			Namespace:     namespace,
 			Observability: observability,
@@ -601,7 +601,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer publisher.Close()
 
-	processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+	processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 		key := string(msg.Payload.Key)
 		logger.Printf("process", "event=start msg_id=%d key=%s topic=%s attempt=%d", msg.ID, key, msg.Destination.Topic, msg.Attempt)
 		publishCtx, cancel := context.WithTimeout(ctx, publishTimeout)
@@ -674,7 +674,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 					return
 				}
 
-				id, err := store.Enqueue(runCtx, badgerbox.EnqueueRequest[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
+				id, err := store.Enqueue(runCtx, badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
 					Payload:     payload,
 					Destination: destination,
 				})
@@ -752,9 +752,9 @@ func runRepairQueueState(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer db.Close()
 
-	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
+	store, err := badgerbox.New[kafka.KafkaMessage, kafka.KafkaDestination](
 		db,
-		badgerbox.Serde[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{},
+		badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{},
 		badgerbox.Options{Namespace: namespace},
 	)
 	if err != nil {

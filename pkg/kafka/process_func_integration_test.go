@@ -1,6 +1,6 @@
 //go:build integration
 
-package kafkaoutbox_test
+package kafka_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafkaoutbox"
+	"github.com/shawnstephens/badgerbox/pkg/kafka"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/testcontainers/testcontainers-go"
@@ -41,7 +41,7 @@ func TestKafkaProcessFuncProducesRecord(t *testing.T) {
 	_, store, cleanup := openKafkaStore(t, "produce")
 	defer cleanup()
 
-	processFn := kafkaoutbox.NewProcessFunc(producer, kafkaoutbox.Options{})
+	processFn := kafka.NewProcessFunc(producer, kafka.Options{})
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
 		PollInterval:   10 * time.Millisecond,
 		LeaseDuration:  2 * time.Second,
@@ -55,15 +55,15 @@ func TestKafkaProcessFuncProducesRecord(t *testing.T) {
 	cancel, done := runProcessor(processor)
 	defer stopProcessor(t, cancel, done)
 
-	if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
-		Payload: kafkaoutbox.KafkaMessage{
+	if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
+		Payload: kafka.KafkaMessage{
 			Key:   []byte("order-1"),
 			Value: []byte("created"),
 			Headers: map[string][]byte{
 				"type": []byte("order.created"),
 			},
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: topic},
+		Destination: kafka.KafkaDestination{Topic: topic},
 	}); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -99,9 +99,9 @@ func TestKafkaProcessFuncRetriesThenProducesRecord(t *testing.T) {
 	_, store, cleanup := openKafkaStore(t, "retry")
 	defer cleanup()
 
-	baseFn := kafkaoutbox.NewProcessFunc(producer, kafkaoutbox.Options{})
+	baseFn := kafka.NewProcessFunc(producer, kafka.Options{})
 	var attempts atomic.Int32
-	processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+	processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 		if attempts.Add(1) == 1 {
 			return errors.New("synthetic first failure")
 		}
@@ -121,12 +121,12 @@ func TestKafkaProcessFuncRetriesThenProducesRecord(t *testing.T) {
 	cancel, done := runProcessor(processor)
 	defer stopProcessor(t, cancel, done)
 
-	if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
-		Payload: kafkaoutbox.KafkaMessage{
+	if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
+		Payload: kafka.KafkaMessage{
 			Key:   []byte("order-2"),
 			Value: []byte("retry-success"),
 		},
-		Destination: kafkaoutbox.KafkaDestination{Topic: topic},
+		Destination: kafka.KafkaDestination{Topic: topic},
 	}); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -162,13 +162,13 @@ func TestKafkaOutboxDemoConcurrentFlow(t *testing.T) {
 	_, store, cleanup := openKafkaStore(t, "demo")
 	defer cleanup()
 
-	baseFn := kafkaoutbox.NewProcessFunc(producer, kafkaoutbox.Options{})
+	baseFn := kafka.NewProcessFunc(producer, kafka.Options{})
 	var (
 		activeWorkers atomic.Int32
 		maxActive     atomic.Int32
 		workerCounter atomic.Uint64
 	)
-	processFn := func(ctx context.Context, msg badgerbox.Message[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) error {
+	processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 		workerID := workerCounter.Add(1)
 		key := string(msg.Payload.Key)
 		startedAt := time.Now().UTC()
@@ -210,15 +210,15 @@ func TestKafkaOutboxDemoConcurrentFlow(t *testing.T) {
 		expected[key] = value
 
 		t.Logf("phase=enqueue key=%s topic=%s index=%d", key, topic, i)
-		if _, err := store.Enqueue(ctx, badgerbox.EnqueueRequest[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{
-			Payload: kafkaoutbox.KafkaMessage{
+		if _, err := store.Enqueue(ctx, badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
+			Payload: kafka.KafkaMessage{
 				Key:   []byte(key),
 				Value: []byte(value),
 				Headers: map[string][]byte{
 					"demo-index": []byte(fmt.Sprintf("%d", i)),
 				},
 			},
-			Destination: kafkaoutbox.KafkaDestination{Topic: topic},
+			Destination: kafka.KafkaDestination{Topic: topic},
 		}); err != nil {
 			t.Fatalf("enqueue %d: %v", i, err)
 		}
@@ -292,7 +292,7 @@ func mustKafkaClient(tb testing.TB, brokers []string, opts ...kgo.Opt) *kgo.Clie
 	return client
 }
 
-func openKafkaStore(tb testing.TB, namespace string) (*badger.DB, *badgerbox.Store[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination], func()) {
+func openKafkaStore(tb testing.TB, namespace string) (*badger.DB, *badgerbox.Store[kafka.KafkaMessage, kafka.KafkaDestination], func()) {
 	tb.Helper()
 
 	db, err := badger.Open(badger.DefaultOptions(tb.TempDir()).WithLogger(nil))
@@ -300,9 +300,9 @@ func openKafkaStore(tb testing.TB, namespace string) (*badger.DB, *badgerbox.Sto
 		tb.Fatalf("open badger: %v", err)
 	}
 
-	store, err := badgerbox.New[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination](
+	store, err := badgerbox.New[kafka.KafkaMessage, kafka.KafkaDestination](
 		db,
-		badgerbox.Serde[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]{},
+		badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{},
 		badgerbox.Options{Namespace: namespace},
 	)
 	if err != nil {
@@ -321,7 +321,7 @@ func openKafkaStore(tb testing.TB, namespace string) (*badger.DB, *badgerbox.Sto
 	return db, store, cleanup
 }
 
-func runProcessor(processor *badgerbox.Processor[kafkaoutbox.KafkaMessage, kafkaoutbox.KafkaDestination]) (context.CancelFunc, <-chan error) {
+func runProcessor(processor *badgerbox.Processor[kafka.KafkaMessage, kafka.KafkaDestination]) (context.CancelFunc, <-chan error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {

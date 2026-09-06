@@ -1,4 +1,4 @@
-package kafkaoutbox
+package kafka
 
 type KafkaDestination struct {
 	Topic     string `json:"topic"`
