@@ -17,8 +17,8 @@ const (
 	defaultPollInterval    = 250 * time.Millisecond
 	defaultLeaseDuration   = 30 * time.Second
 	defaultRetryBaseDelay  = 1 * time.Second
-	defaultRetryMaxDelay   = 1 * time.Minute
-	defaultMaxAttempts     = 10
+	defaultRetryMaxDelay   = time.Hour
+	defaultMaxAttempts     = 36
 	conflictRetryDelay     = 5 * time.Millisecond
 )
 

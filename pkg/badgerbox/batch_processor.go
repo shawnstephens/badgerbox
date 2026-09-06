@@ -2,6 +2,8 @@ package badgerbox
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -306,4 +308,225 @@ func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, span oteltr
 	}
 
 	p.store.obs.endSpan(span, result.outcome, oteltrace.WithTimestamp(finished))
+}
+
+func (p *BatchProcessor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan struct{}, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
+	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		if err := p.dispatchAvailable(ctx, workCh, workerSlots); err != nil {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.Chan():
+		case <-notifyCh:
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-workerSlots:
+		}
+
+		claimedAt := p.store.runtime.Now().UTC()
+		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithEffectiveLimit(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		if err != nil {
+			workerSlots <- struct{}{}
+			return err
+		}
+		if len(claimed) == 0 {
+			workerSlots <- struct{}{}
+			return nil
+		}
+		if err := ctxErr(ctx); err != nil {
+			workerSlots <- struct{}{}
+			return p.releaseClaimedBatch(ctx, claimed)
+		}
+
+		p.store.obs.workQueuedBatch(len(claimed))
+		select {
+		case <-ctx.Done():
+			p.store.obs.workDequeuedBatch(len(claimed))
+			workerSlots <- struct{}{}
+			return p.releaseClaimedBatch(ctx, claimed)
+		case workCh <- claimed:
+		}
+
+		if len(claimed) < effectiveBatchSize {
+			return nil
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) releaseClaimedBatch(ctx context.Context, work []claimedRecord[M, D]) error {
+	if len(work) == 0 {
+		return nil
+	}
+
+	settlementCtx, cancel := p.batchSettlementContext(ctx)
+	defer cancel()
+	_, err := p.store.releaseClaimed(settlementCtx, work)
+	return err
+}
+func (p *BatchProcessor[M, D]) releaseQueuedBatch(ctx context.Context, work []claimedRecord[M, D]) error {
+	if len(work) == 0 {
+		return nil
+	}
+
+	p.store.obs.workDequeuedBatch(len(work))
+	return p.releaseClaimedBatch(ctx, work)
+}
+func (p *BatchProcessor[M, D]) workerLoop(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return p.drainQueuedWork(ctx, workCh, workerSlots)
+		case work, ok := <-workCh:
+			if !ok {
+				return nil
+			}
+			if err := ctxErr(ctx); err != nil {
+				releaseErr := p.releaseQueuedBatch(ctx, work)
+				workerSlots <- struct{}{}
+				return releaseErr
+			}
+			err := p.processWorkerBatch(ctx, work)
+			workerSlots <- struct{}{}
+			if err != nil {
+				return err
+			}
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) processWorkerBatch(ctx context.Context, work []claimedRecord[M, D]) error {
+	p.store.obs.workStartedBatch(len(work))
+	defer p.store.obs.workFinished()
+	return p.processBatch(ctx, work)
+}
+func (p *BatchProcessor[M, D]) drainQueuedWork(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
+	for {
+		select {
+		case work, ok := <-workCh:
+			if !ok {
+				return nil
+			}
+			err := p.releaseQueuedBatch(ctx, work)
+			workerSlots <- struct{}{}
+			if err != nil {
+				return err
+			}
+		default:
+			return nil
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if err := p.store.StartObservability(runCtx); err != nil {
+		return err
+	}
+
+	notifyCh := make(chan struct{}, 1)
+	listenerID := p.store.registerListener(notifyCh)
+	defer p.store.unregisterListener(listenerID)
+
+	// workerSlots is the admission limit for durable claims. Each claimed batch
+	// owns one removed token until it is processed or released, so buffering
+	// workCh decouples dispatch from worker scheduling without allowing more than
+	// Concurrency batches to be claimed.
+	workCh := make(chan []claimedRecord[M, D], p.opts.Concurrency)
+	workerSlots := make(chan struct{}, p.opts.Concurrency)
+	for range p.opts.Concurrency {
+		workerSlots <- struct{}{}
+	}
+	errCh := make(chan error, p.opts.Concurrency+2)
+
+	var wg sync.WaitGroup
+	start := func(fn func(context.Context) error) {
+		wg.Go(func() {
+			if err := fn(runCtx); reportableLoopError(runCtx, err) {
+				select {
+				case errCh <- err:
+				default:
+				}
+				cancel()
+			}
+		})
+	}
+
+	start(func(ctx context.Context) error {
+		return p.dispatchLoop(ctx, notifyCh, workCh, workerSlots)
+	})
+	start(func(ctx context.Context) error {
+		return p.reaperLoop(ctx)
+	})
+	for range p.opts.Concurrency {
+		start(func(ctx context.Context) error {
+			return p.workerLoop(ctx, workCh, workerSlots)
+		})
+	}
+
+	var err error
+	select {
+	case err = <-errCh:
+		cancel()
+	case <-ctx.Done():
+		cancel()
+		err = queuedLoopError(errCh)
+	}
+
+	wg.Wait()
+	if drainErr := p.drainQueuedWork(runCtx, workCh, workerSlots); err == nil && drainErr != nil {
+		err = drainErr
+	}
+	if err == nil {
+		err = queuedLoopError(errCh)
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func reportableLoopError(ctx context.Context, err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ctxErr(ctx) == nil
+	}
+	return true
+}
+func queuedLoopError(errCh <-chan error) error {
+	select {
+	case err := <-errCh:
+		return err
+	default:
+		return nil
+	}
+}
+func (p *BatchProcessor[M, D]) reaperLoop(ctx context.Context) error {
+	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
+	defer ticker.Stop()
+	for {
+		if _, err := p.store.requeueExpired(ctx, p.store.runtime.Now().UTC(), p.opts.RequeuePageSize); err != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.Chan():
+		}
+	}
 }
