@@ -48,3 +48,5 @@ var (
 	ErrInvalidNamespace   = errors.New("badgerbox: namespace contains separator")
 	ErrIncompatibleFormat = errors.New("badgerbox: incompatible storage format; use a new directory")
 )
+
+func boxErrorf(format string, args ...any) error { return fmt.Errorf("badgerbox: "+format, args...) }
