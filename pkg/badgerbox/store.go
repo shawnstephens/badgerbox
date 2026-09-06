@@ -29,15 +29,14 @@ type Options struct {
 }
 
 type Store[M any, D any] struct {
-	db              *badger.DB
-	serde           Serde[M, D]
-	opts            Options
-	keys            keyspace
-	seq             *badger.Sequence
-	obs             *otelInstrumentation
-	runtime         Runtime
-	closed          atomic.Bool
-	queueStateReady atomic.Bool
+	db      *badger.DB
+	serde   Serde[M, D]
+	opts    Options
+	keys    keyspace
+	seq     *badger.Sequence
+	obs     *otelInstrumentation
+	runtime Runtime
+	closed  atomic.Bool
 
 	closeOnce sync.Once
 
@@ -373,18 +372,11 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 				if err := txn.Set(s.keys.readyKey(at, record.ID), emptyValue); err != nil {
 					return err
 				}
-				if s.queueStateEnabled() {
-					if err := txn.Set(s.keys.readyCreatedKey(time.Unix(0, record.CreatedAtUnix).UTC(), record.ID), emptyValue); err != nil {
-						return err
-					}
 
-					var deltas queueStateCountDeltas
-					deltas.addReady(record.ID, 1)
-					deltas.addDeadLetter(record.ID, -1)
-					if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
-						return err
-					}
+				if err := txn.Set(s.keys.readyCreatedKey(time.Unix(0, record.CreatedAtUnix).UTC(), record.ID), emptyValue); err != nil {
+					return err
 				}
+
 				if err := txn.Delete(key); err != nil {
 					return err
 				}
@@ -456,16 +448,9 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	if err := txn.Set(s.keys.readyKey(availableAt, id), emptyValue); err != nil {
 		return result, err
 	}
-	if s.queueStateEnabled() {
-		if err := txn.Set(s.keys.readyCreatedKey(now, id), emptyValue); err != nil {
-			return result, err
-		}
 
-		var deltas queueStateCountDeltas
-		deltas.addReady(id, 1)
-		if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
-			return result, err
-		}
+	if err := txn.Set(s.keys.readyCreatedKey(now, id), emptyValue); err != nil {
+		return result, err
 	}
 
 	result = enqueueResult{
@@ -488,7 +473,6 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 			opts.PrefetchValues = false
 			it := txn.NewIterator(opts)
 			defer it.Close()
-			var deltas queueStateCountDeltas
 
 			for it.Seek(s.keys.readyPrefix); it.ValidForPrefix(s.keys.readyPrefix) && len(claimed) < batchSize; it.Next() {
 				if err := ctxErr(ctx); err != nil {
@@ -554,16 +538,13 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 				if err := txn.Set(s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), record.ID), []byte(token)); err != nil {
 					return err
 				}
-				if s.queueStateEnabled() {
-					createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-					if err := txn.Delete(s.keys.readyCreatedKey(createdAt, record.ID)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-						return err
-					}
-					if err := txn.Set(s.keys.processingCreatedKey(createdAt, record.ID), emptyValue); err != nil {
-						return err
-					}
-					deltas.addReady(record.ID, -1)
-					deltas.addProcessing(record.ID, 1)
+
+				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+				if err := txn.Delete(s.keys.readyCreatedKey(createdAt, record.ID)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
+				if err := txn.Set(s.keys.processingCreatedKey(createdAt, record.ID), emptyValue); err != nil {
+					return err
 				}
 
 				message, err := s.recordToMessage(record)
@@ -576,12 +557,6 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 					LeaseToken:   token,
 					TraceCarrier: cloneStringMap(record.TraceCarrier),
 				})
-			}
-
-			if s.queueStateEnabled() {
-				if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
-					return err
-				}
 			}
 
 			return nil
@@ -624,18 +599,12 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 			if err := txn.Delete(s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 				return err
 			}
-			if s.queueStateEnabled() {
-				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return err
-				}
 
-				var deltas queueStateCountDeltas
-				deltas.addProcessing(id, -1)
-				if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
-					return err
-				}
+			createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+			if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
 			}
+
 			return nil
 		})
 	})
@@ -682,19 +651,12 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 				if err := txn.Delete(processingKey); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 					return err
 				}
-				if s.queueStateEnabled() {
-					createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-					if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-						return err
-					}
 
-					var deltas queueStateCountDeltas
-					deltas.addProcessing(id, -1)
-					deltas.addDeadLetter(id, 1)
-					if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
-						return err
-					}
+				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
 				}
+
 				result.outcome = metricOutcomeDeadLetter
 				return nil
 			}
@@ -714,22 +676,15 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 			if err := txn.Set(s.keys.readyKey(time.Unix(0, record.AvailableAtUnix).UTC(), id), emptyValue); err != nil {
 				return err
 			}
-			if s.queueStateEnabled() {
-				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return err
-				}
-				if err := txn.Set(s.keys.readyCreatedKey(createdAt, id), emptyValue); err != nil {
-					return err
-				}
 
-				var deltas queueStateCountDeltas
-				deltas.addProcessing(id, -1)
-				deltas.addReady(id, 1)
-				if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
-					return err
-				}
+			createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+			if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
 			}
+			if err := txn.Set(s.keys.readyCreatedKey(createdAt, id), emptyValue); err != nil {
+				return err
+			}
+
 			result.outcome = metricOutcomeRetried
 			result.retryDelay = delay
 			return nil
@@ -754,7 +709,6 @@ func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time) (int, e
 			opts.PrefetchValues = false
 			it := txn.NewIterator(opts)
 			defer it.Close()
-			var deltas queueStateCountDeltas
 
 			for it.Seek(s.keys.processingPrefix); it.ValidForPrefix(s.keys.processingPrefix); it.Next() {
 				if err := ctxErr(ctx); err != nil {
@@ -807,24 +761,18 @@ func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time) (int, e
 				if err := txn.Set(s.keys.readyKey(now, id), emptyValue); err != nil {
 					return err
 				}
-				if s.queueStateEnabled() {
-					createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-					if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-						return err
-					}
-					if err := txn.Set(s.keys.readyCreatedKey(createdAt, id), emptyValue); err != nil {
-						return err
-					}
-					deltas.addProcessing(id, -1)
-					deltas.addReady(id, 1)
-				}
-				requeued++
-			}
-			if s.queueStateEnabled() {
-				if err := s.applyQueueCountDeltas(txn, deltas); err != nil {
+
+				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 					return err
 				}
+				if err := txn.Set(s.keys.readyCreatedKey(createdAt, id), emptyValue); err != nil {
+					return err
+				}
+
+				requeued++
 			}
+
 			return nil
 		})
 	})
