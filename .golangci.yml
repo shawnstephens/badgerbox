@@ -1,0 +1,13 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [staticcheck]
+        text: "SA1012" # Tests intentionally exercise nil-context guards.

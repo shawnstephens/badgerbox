@@ -445,3 +445,9 @@ Run the demo module tests separately:
 ```bash
 (cd cmd/badgerbox-demo && go test ./...)
 ```
+
+## Development checks
+
+Run `just check` for formatting, builds, lint, and race tests across both modules.
+Run `just test-integration` with a Docker-compatible runtime for Kafka tests.
+`just coverage` and `just benchmark` produce coverage and workload measurements.
