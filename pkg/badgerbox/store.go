@@ -201,8 +201,8 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	if err := ctxErr(ctx); err != nil {
+		return 0, err
 	}
 
 	start := s.runtime.Now().UTC()
