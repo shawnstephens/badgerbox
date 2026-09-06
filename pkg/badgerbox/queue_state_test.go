@@ -151,7 +151,7 @@ func TestQueueStateMetadataTracksDeadLetterRequeue(t *testing.T) {
 	assertQueueStateCounts(t, store, 0, 0, 1)
 
 	runtime.SetNow(runtime.Now().Add(time.Second))
-	if err := store.RequeueDeadLetter(context.Background(), id, runtime.Now()); err != nil {
+	if err := store.RequeueDeadLetter(context.Background(), id, runtime.Now().Add(-time.Second), runtime.Now()); err != nil {
 		t.Fatalf("RequeueDeadLetter: %v", err)
 	}
 
