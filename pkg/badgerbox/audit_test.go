@@ -123,3 +123,19 @@ func TestAuditRejectsMalformedRowsAndBoundsSamples(t *testing.T) {
 		t.Fatalf("nil context: %v", err)
 	}
 }
+
+func TestAuditRejectsMissingCodecEnvelopeFields(t *testing.T) {
+	_, err := decodeAuditRecord(0, []byte(`{"id":0,"status":"ready"}`))
+	if err == nil {
+		t.Fatal("accepted missing codec fields")
+	}
+	_, err = decodeAuditDeadLetter([]byte(`{"failed_at_unix_nano":1,"record":{"id":0,"status":"processing"}}`))
+	if err == nil {
+		t.Fatal("accepted malformed dead-letter envelope")
+	}
+	// Explicit null byte values are legitimate opaque codec output.
+	_, err = decodeAuditRecord(0, []byte(`{"id":0,"status":"ready","payload_bytes":null,"destination_bytes":null}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
