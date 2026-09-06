@@ -411,8 +411,8 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	logger.Printf("ready", "command=kafka brokers=%s topic=%s topic_partitions=%d state_file=%s container_id=%s", demo.ShortBrokerList(brokers), topic, topicPartitions, stateFile, container.GetContainerID())
-	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo producer\"")
-	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo consumer\"")
+	logger.Printf("ready", "command=kafka working_directory=cmd/badgerbox-demo next=\"GOWORK=off go run . producer\"")
+	logger.Printf("ready", "command=kafka working_directory=cmd/badgerbox-demo next=\"GOWORK=off go run . consumer\"")
 
 	<-runCtx.Done()
 	return nil
