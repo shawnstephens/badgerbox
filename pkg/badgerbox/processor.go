@@ -12,14 +12,15 @@ import (
 type ProcessFunc[M any, D any] func(ctx context.Context, msg Message[M, D]) error
 
 type ProcessorOptions struct {
-	Concurrency     int
-	ClaimBatchSize  int
-	PollInterval    time.Duration
-	LeaseDuration   time.Duration
-	RetryBaseDelay  time.Duration
-	RetryMaxDelay   time.Duration
-	MaxAttempts     int
-	RequeuePageSize int
+	Concurrency            int
+	ClaimBatchSize         int
+	PollInterval           time.Duration
+	LeaseDuration          time.Duration
+	RetryBaseDelay         time.Duration
+	RetryMaxDelay          time.Duration
+	MaxAttempts            int
+	RequeuePageSize        int
+	BatchSettlementTimeout time.Duration
 }
 
 type Processor[M any, D any] struct {
@@ -62,6 +63,9 @@ func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 	}
 	if opts.RequeuePageSize <= 0 {
 		opts.RequeuePageSize = defaultRequeuePageSize
+	}
+	if opts.BatchSettlementTimeout <= 0 {
+		opts.BatchSettlementTimeout = 10 * time.Second
 	}
 	return opts
 }
