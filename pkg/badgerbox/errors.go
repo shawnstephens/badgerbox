@@ -68,3 +68,6 @@ func markBatchErrorRetryable(err error) error {
 }
 func (e retryableBatchError) Error() string { return e.err.Error() }
 func (e retryableBatchError) Unwrap() error { return e.err }
+
+var ErrDeadLetterTooLarge = errors.New("badgerbox: dead letter exceeds page byte limit")
+var ErrLiveMessageExists = errors.New("badgerbox: message already exists in live queue")
