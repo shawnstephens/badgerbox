@@ -432,10 +432,30 @@ func decodeAuditDeadLetter(value []byte) (storedDeadLetter, error) {
 	if bytes.Equal(rawFailedAt, []byte("null")) {
 		return storedDeadLetter{}, boxErrorf("dead-letter failed_at_unix_nano is null")
 	}
+
+	var envelope struct {
+		Record json.RawMessage `json:"record"`
+	}
+	if err := json.Unmarshal(value, &envelope); err != nil {
+		return storedDeadLetter{}, err
+	}
+	if _, err := decodeAuditRecord(deadLetter.Record.ID, envelope.Record); err != nil {
+		return storedDeadLetter{}, err
+	}
 	return deadLetter, nil
 }
 
 func decodeAuditRecord(id MessageID, value []byte) (auditRecordView, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(value, &fields); err != nil {
+		return auditRecordView{}, err
+	}
+	for _, field := range []string{"id", "status", "payload_bytes", "destination_bytes"} {
+		if _, ok := fields[field]; !ok {
+			return auditRecordView{}, boxErrorf("record field %s is missing", field)
+		}
+	}
+
 	var record storedRecord
 	if err := json.Unmarshal(value, &record); err != nil {
 		return auditRecordView{}, err
