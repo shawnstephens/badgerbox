@@ -74,3 +74,31 @@ func TestReleaseUndispatchedClaimPreservesAttemptBudget(t *testing.T) {
 		t.Fatalf("released=%+v err=%v", msg, err)
 	}
 }
+
+func TestRunJoinsCallbackBeforeReturning(t *testing.T) {
+	_, s, closeStore := openTestStore[string, string](t, "join-callback", Serde[string, string]{})
+	defer closeStore()
+	if _, err := s.Enqueue(t.Context(), EnqueueRequest[string, string]{}); err != nil {
+		t.Fatal(err)
+	}
+	started, release := make(chan struct{}), make(chan struct{})
+	p, _ := NewBatchProcessor(s, func(ctx context.Context, _ []Message[string, string], _ chan<- BatchProcessResult) error {
+		close(started)
+		<-release
+		return ctx.Err()
+	}, ProcessorOptions{ClaimBatchSize: 1})
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx) }()
+	<-started
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("Run returned before callback completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
