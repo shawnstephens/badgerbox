@@ -35,6 +35,11 @@ func Permanent(err error) error {
 }
 
 func IsPermanent(err error) bool {
+	var retryable retryableBatchError
+	if errors.As(err, &retryable) {
+		return false
+	}
+
 	var target permanentError
 	return errors.As(err, &target)
 }
@@ -50,3 +55,16 @@ var (
 )
 
 func boxErrorf(format string, args ...any) error { return fmt.Errorf("badgerbox: "+format, args...) }
+
+var ErrBatchResultMissing = errors.New("badgerbox: batch process result missing")
+
+type retryableBatchError struct{ err error }
+
+func markBatchErrorRetryable(err error) error {
+	if err == nil {
+		return nil
+	}
+	return retryableBatchError{err: err}
+}
+func (e retryableBatchError) Error() string { return e.err.Error() }
+func (e retryableBatchError) Unwrap() error { return e.err }
