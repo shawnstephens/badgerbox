@@ -140,7 +140,7 @@ func TestKafkaProcessFuncRetriesThenProducesRecord(t *testing.T) {
 	}
 }
 
-func TestKafkaOutboxDemoConcurrentFlow(t *testing.T) {
+func TestKafkaDemoConcurrentFlow(t *testing.T) {
 	ctx := context.Background()
 	brokers := startKafka(t, ctx)
 	topic := fmt.Sprintf("demo-topic-%d", time.Now().UnixNano())
@@ -193,7 +193,7 @@ func TestKafkaOutboxDemoConcurrentFlow(t *testing.T) {
 
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
 		Concurrency:    processorConcurrency,
-		ClaimBatchSize: messageCount,
+		ClaimBatchSize: 1,
 		PollInterval:   5 * time.Millisecond,
 		LeaseDuration:  5 * time.Second,
 		RetryBaseDelay: 20 * time.Millisecond,
