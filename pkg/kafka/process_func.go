@@ -3,7 +3,6 @@ package kafka
 import (
 	"context"
 	"errors"
-	"sort"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -34,29 +33,9 @@ func NewProcessFuncWithProducer(producer Producer, _ Options) badgerbox.ProcessF
 		if producer == nil {
 			return ErrNilClient
 		}
-		if msg.Destination.Topic == "" {
-			return badgerbox.Permanent(ErrTopicRequired)
-		}
-
-		record := &kgo.Record{
-			Topic: msg.Destination.Topic,
-			Key:   cloneBytes(msg.Payload.Key),
-			Value: cloneBytes(msg.Payload.Value),
-		}
-		if msg.Destination.Partition != nil {
-			record.Partition = *msg.Destination.Partition
-		}
-
-		headerKeys := make([]string, 0, len(msg.Payload.Headers))
-		for key := range msg.Payload.Headers {
-			headerKeys = append(headerKeys, key)
-		}
-		sort.Strings(headerKeys)
-		for _, key := range headerKeys {
-			record.Headers = append(record.Headers, kgo.RecordHeader{
-				Key:   key,
-				Value: cloneBytes(msg.Payload.Headers[key]),
-			})
+		record, err := newKafkaRecord(msg)
+		if err != nil {
+			return badgerbox.Permanent(err)
 		}
 
 		return producer.ProduceSync(ctx, record).FirstErr()
