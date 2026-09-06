@@ -54,3 +54,16 @@ func TestDeadLetterBytePagesAndExactRequeue(t *testing.T) {
 		t.Fatalf("final count page: %d %x %v", len(rows), next, err)
 	}
 }
+
+func TestDeadLetterListValidatesEnvelopeBeforeCodec(t *testing.T) {
+	db, s, close := openTestStore[[]byte, []byte](t, "dlq-invalid", Serde[[]byte, []byte]{Message: rejectDecodeCodec{}, Destination: rejectDecodeCodec{}})
+	defer close()
+	if err := db.Update(func(txn *badger.Txn) error {
+		return txn.Set(s.keys.deadLetterKey(time.Now(), 0), []byte(`{"failed_at_unix_nano":1,"record":{"id":0,"status":"processing"}}`))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.ListDeadLetters(t.Context(), 1, nil); err == nil {
+		t.Fatal("malformed envelope accepted")
+	}
+}
