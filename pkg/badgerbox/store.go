@@ -738,10 +738,10 @@ func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error
 }
 
 func (s *Store[M, D]) decodeDeadLetter(data []byte) (DeadLetter[M, D], error) {
-	var encoded storedDeadLetter
 	var result DeadLetter[M, D]
 
-	if err := json.Unmarshal(data, &encoded); err != nil {
+	encoded, err := decodeAuditDeadLetter(data)
+	if err != nil {
 		return result, err
 	}
 
