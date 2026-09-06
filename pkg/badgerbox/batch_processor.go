@@ -26,6 +26,10 @@ type BatchProcessResult struct {
 // BatchProcessResult per claimed message into results. Sending additional results
 // violates the contract and can block after the batch-sized buffer fills.
 //
+// The function must return when its context is canceled. Run joins function
+// invocations before returning; caller-owned asynchronous clients must be flushed
+// and closed after Run returns.
+//
 // The processor owns Badger settlement. It acknowledges, retries, or dead-letters
 // records as results arrive; the batch function must not mutate the store. The
 // results channel is owned by the processor, is buffered to the batch size, and
@@ -51,9 +55,11 @@ type BatchProcessFunc[M any, D any] func(ctx context.Context, messages []Message
 // for one BatchProcessFunc call. Settlement remains per-message even though
 // processing is scheduled per-batch.
 type BatchProcessor[M any, D any] struct {
-	store *Store[M, D]
-	fn    BatchProcessFunc[M, D]
-	opts  ProcessorOptions
+	store     *Store[M, D]
+	fn        BatchProcessFunc[M, D]
+	opts      ProcessorOptions
+	callbacks sync.WaitGroup
+	runMu     sync.Mutex
 }
 
 // NewBatchProcessor builds a BatchProcessor for store and fn.
@@ -109,7 +115,9 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 	}
 
 	processDone := make(chan error, 1)
+	p.callbacks.Add(1)
 	go func() {
+		defer p.callbacks.Done()
 		processDone <- p.invokeBatchProcess(processCtx, messages, resultCh)
 	}()
 
@@ -427,6 +435,10 @@ func (p *BatchProcessor[M, D]) drainQueuedWork(ctx context.Context, workCh <-cha
 	}
 }
 func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
+	if !p.runMu.TryLock() {
+		return boxErrorf("processor is already running")
+	}
+	defer p.runMu.Unlock()
 	if err := ctxErr(ctx); err != nil {
 		return err
 	}
@@ -488,6 +500,7 @@ func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
 	}
 
 	wg.Wait()
+	p.callbacks.Wait()
 	if drainErr := p.drainQueuedWork(runCtx, workCh, workerSlots); err == nil && drainErr != nil {
 		err = drainErr
 	}
