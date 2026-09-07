@@ -13,23 +13,29 @@ var (
 	ErrTopicRequired = errors.New("kafka: topic is required")
 )
 
-type Producer interface {
+type syncProducer interface {
 	ProduceSync(context.Context, ...*kgo.Record) kgo.ProduceResults
 }
 
 type Options struct{}
 
-func NewProcessFunc(client *kgo.Client, opts Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
-	if client == nil {
-		return func(context.Context, badgerbox.Message[KafkaMessage, KafkaDestination]) error {
-			return ErrNilClient
-		}
+// NewProcessFunc validates the client before returning a single-message delivery function.
+func NewProcessFunc(client *kgo.Client, opts Options) (badgerbox.ProcessFunc[KafkaMessage, KafkaDestination], error) {
+	if err := validateClient(client); err != nil {
+		return nil, err
 	}
-	return NewProcessFuncWithProducer(client, opts)
+	return newProcessFunc(client, opts), nil
 }
 
-func NewProcessFuncWithProducer(producer Producer, _ Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
+func newProcessFunc(producer syncProducer, _ Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
 	return func(ctx context.Context, msg badgerbox.Message[KafkaMessage, KafkaDestination]) error {
+		if ctx == nil {
+			return badgerbox.ErrNilContext
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		ctx = badgerbox.ContextForMessage(ctx, msg.ID)
 		if producer == nil {
 			return ErrNilClient
 		}

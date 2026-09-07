@@ -11,10 +11,16 @@ import (
 
 var ErrInvalidPartition = errors.New("kafka: partition must be nonnegative")
 
-// NewBatchProducerFunc schedules asynchronous delivery. Callbacks only report
-// results; durable settlement remains owned by the processor. The producer must
-// invoke each callback once. Install KafkaPartitioner on the client for explicit partitions.
-func NewBatchProducerFunc(producer KafkaAsyncProducer) badgerbox.BatchProcessFunc[KafkaMessage, KafkaDestination] {
+// NewBatchProducerFunc validates the client before scheduling asynchronous delivery.
+// Callbacks only report results; durable settlement remains owned by the processor.
+func NewBatchProducerFunc(client *kgo.Client) (badgerbox.BatchProcessFunc[KafkaMessage, KafkaDestination], error) {
+	if err := validateClient(client); err != nil {
+		return nil, err
+	}
+	return newBatchProducerFunc(client), nil
+}
+
+func newBatchProducerFunc(producer asyncProducer) badgerbox.BatchProcessFunc[KafkaMessage, KafkaDestination] {
 	return func(ctx context.Context, messages []badgerbox.Message[KafkaMessage, KafkaDestination], results chan<- badgerbox.BatchProcessResult) error {
 		if ctx == nil {
 			return badgerbox.ErrNilContext
@@ -42,9 +48,10 @@ func NewBatchProducerFunc(producer KafkaAsyncProducer) badgerbox.BatchProcessFun
 			id := msg.ID
 			started := time.Now()
 			scheduled++
-			producer.Produce(ctx, record, func(_ *kgo.Record, err error) {
+			messageCtx := badgerbox.ContextForMessage(ctx, msg.ID)
+			producer.Produce(messageCtx, record, func(_ *kgo.Record, err error) {
 				if obs != nil {
-					obs.RecordKafkaPromise(context.WithoutCancel(ctx), time.Since(started), err)
+					obs.RecordKafkaPromise(context.WithoutCancel(messageCtx), time.Since(started), err)
 				}
 				results <- badgerbox.BatchProcessResult{ID: id, Err: err}
 			})

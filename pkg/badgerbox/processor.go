@@ -7,15 +7,14 @@ import (
 
 type ProcessFunc[M any, D any] func(context.Context, Message[M, D]) error
 type ProcessorOptions struct {
-	Concurrency            int
-	ClaimBatchSize         int
-	PollInterval           time.Duration
-	LeaseDuration          time.Duration
-	RetryBaseDelay         time.Duration
-	RetryMaxDelay          time.Duration
-	MaxAttempts            int
-	RequeuePageSize        int
-	BatchSettlementTimeout time.Duration
+	Concurrency       int
+	PollInterval      time.Duration
+	LeaseDuration     time.Duration
+	RetryBaseDelay    time.Duration
+	RetryMaxDelay     time.Duration
+	MaxAttempts       int
+	RequeuePageSize   int
+	SettlementTimeout time.Duration
 }
 
 type claimedRecord[M any, D any] struct {
@@ -28,9 +27,6 @@ type claimedRecord[M any, D any] struct {
 func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 	if opts.Concurrency <= 0 {
 		opts.Concurrency = defaultConcurrency
-	}
-	if opts.ClaimBatchSize <= 0 {
-		opts.ClaimBatchSize = defaultClaimBatchSize
 	}
 	if opts.PollInterval <= 0 {
 		opts.PollInterval = defaultPollInterval
@@ -53,14 +49,13 @@ func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 	if opts.RequeuePageSize <= 0 {
 		opts.RequeuePageSize = defaultRequeuePageSize
 	}
-	if opts.BatchSettlementTimeout <= 0 {
-		opts.BatchSettlementTimeout = 10 * time.Second
+	if opts.SettlementTimeout <= 0 {
+		opts.SettlementTimeout = 10 * time.Second
 	}
 	return opts
 }
 
-// Processor adapts a per-message function to the batch engine. Each worker
-// invokes the function sequentially for the messages in its claimed batch.
+// Processor reserves exactly one message for each available worker.
 type Processor[M any, D any] struct{ batch *BatchProcessor[M, D] }
 
 func NewProcessor[M any, D any](store *Store[M, D], fn ProcessFunc[M, D], opts ProcessorOptions) (*Processor[M, D], error) {
@@ -69,13 +64,10 @@ func NewProcessor[M any, D any](store *Store[M, D], fn ProcessFunc[M, D], opts P
 	}
 	batch, err := NewBatchProcessor(store, func(ctx context.Context, messages []Message[M, D], results chan<- BatchProcessResult) error {
 		for _, msg := range messages {
-			if err := ctxErr(ctx); err != nil {
-				return err
-			}
-			results <- BatchProcessResult{ID: msg.ID, Err: invokeOne(ctx, fn, msg)}
+			results <- BatchProcessResult{ID: msg.ID, Err: invokeOne(ContextForMessage(ctx, msg.ID), fn, msg)}
 		}
 		return nil
-	}, opts)
+	}, BatchProcessorOptions{ProcessorOptions: opts, ClaimBatchSize: 1})
 	if err != nil {
 		return nil, err
 	}
