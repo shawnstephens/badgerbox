@@ -5,9 +5,9 @@ services:
     volumes:
       - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "9464:9464"
+      - "127.0.0.1:${BADGERBOX_OTLP_GRPC_PORT:-34317}:4317"
+      - "127.0.0.1:${BADGERBOX_OTLP_HTTP_PORT:-34318}:4318"
+      - "127.0.0.1:${BADGERBOX_COLLECTOR_METRICS_PORT:-39464}:9464"
 
   prometheus:
     image: prom/prometheus:v3.5.0
@@ -16,7 +16,7 @@ services:
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "127.0.0.1:${BADGERBOX_PROMETHEUS_PORT:-39090}:9090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -28,7 +28,7 @@ services:
     volumes:
       - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
     ports:
-      - "3200:3200"
+      - "127.0.0.1:${BADGERBOX_TEMPO_PORT:-33200}:3200"
 
   grafana:
     image: grafana/grafana:12.1.1
@@ -39,7 +39,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${BADGERBOX_GRAFANA_PORT:-33000}:3000"
     depends_on:
       - prometheus
       - tempo

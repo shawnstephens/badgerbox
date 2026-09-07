@@ -14,10 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/shawnstephens/badgerbox/cmd/badgerbox-demo/internal/demo"
+	"github.com/shawnstephens/badgerbox/pkg/adminhttp"
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/shawnstephens/badgerbox/pkg/kafka"
+	"github.com/shawnstephens/badgerbox/pkg/maintenance"
+	"github.com/shawnstephens/badgerbox/pkg/runner"
+	"github.com/shawnstephens/badgerbox/pkg/telemetry"
 	"github.com/twmb/franz-go/pkg/kgo"
 	cli "github.com/urfave/cli/v3"
 )
@@ -208,8 +211,8 @@ func newProducerCommand() *cli.Command {
 			},
 			&cli.IntFlag{
 				Name:    "processor-claim-batch-size",
-				Usage:   "Single-message claim size (must be 1)",
-				Value:   1,
+				Usage:   "Maximum number of ready records to claim in one batch worker",
+				Value:   32,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PROCESSOR_CLAIM_BATCH_SIZE"),
 			},
 			&cli.DurationFlag{
@@ -250,7 +253,7 @@ func newProducerCommand() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:    "badger-compact-on-startup",
-				Usage:   "Block startup to run Badger Flatten plus one-shot value-log GC; use only when this producer is the sole owner of the DB",
+				Usage:   "Run startup Badger Flatten before workers start",
 				Sources: cli.EnvVars("BADGERBOX_DEMO_BADGER_COMPACT_ON_STARTUP"),
 			},
 			&cli.StringFlag{
@@ -260,9 +263,13 @@ func newProducerCommand() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:    "otel-endpoint",
-				Usage:   "OTLP/HTTP collector endpoint host:port; blank disables observability export",
-				Sources: cli.EnvVars("BADGERBOX_DEMO_OTEL_ENDPOINT"),
+				Usage:   "OTLP collector endpoint host:port or URL; blank disables export",
+				Sources: cli.EnvVars("BADGERBOX_DEMO_OTEL_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"),
 			},
+			&cli.StringFlag{Name: "otel-protocol", Value: "http/protobuf", Usage: "OTLP transport: http/protobuf or grpc", Sources: cli.EnvVars("BADGERBOX_DEMO_OTEL_PROTOCOL", "OTEL_EXPORTER_OTLP_PROTOCOL")},
+			&cli.BoolFlag{Name: "otel-insecure", Usage: "Use plaintext OTLP for a local collector", Sources: cli.EnvVars("BADGERBOX_DEMO_OTEL_INSECURE")},
+			&cli.StringFlag{Name: "admin-listen-addr", Value: "127.0.0.1:3031", Usage: "Administration listener; blank disables it", Sources: cli.EnvVars("BADGERBOX_DEMO_ADMIN_LISTEN_ADDR")},
+
 			&cli.StringFlag{
 				Name:    "otel-service-name",
 				Usage:   "OTEL service.name for demo telemetry",
@@ -394,7 +401,7 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func runProducer(ctx context.Context, cmd *cli.Command) error {
+func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	runCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -422,8 +429,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("processor-concurrency must be at least 1")
 	}
 	processorClaimBatchSize := cmd.Int("processor-claim-batch-size")
-	if processorClaimBatchSize != 1 {
-		return errors.New("processor-claim-batch-size must be 1 for single-message processing")
+	if processorClaimBatchSize < 1 {
+		return errors.New("processor-claim-batch-size must be at least 1")
 	}
 	retryBaseDelay := cmd.Duration("retry-base-delay")
 	if retryBaseDelay <= 0 {
@@ -462,7 +469,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		producerID = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
 	otelConfig := demo.OTelConfig{
-		Endpoint:    cmd.String("otel-endpoint"),
+		Endpoint: cmd.String("otel-endpoint"),
+		Protocol: cmd.String("otel-protocol"), Insecure: cmd.Bool("otel-insecure"),
 		ServiceName: cmd.String("otel-service-name"),
 	}
 	expvarListenAddr := cmd.String("expvar-listen-addr")
@@ -536,80 +544,63 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		logger.Printf("ready", "event=expvar enabled=true addr=%s paths=/debug/vars,/metrics", expvarAddr)
 	}
 
-	if err := os.MkdirAll(dbPath, 0o755); err != nil {
-		return fmt.Errorf("create badger directory: %w", err)
-	}
-
-	db, err := badger.Open(badgerOpts)
+	service, err := runner.Open(runCtx, runner.Options{Badger: badgerOpts, Telemetry: observability, Maintenance: maintenance.Options{FlattenOnStartup: badgerCompactOnStartup, ValueLogGCInterval: badgerGCInterval, ValueLogGCDiscardRatio: demo.DefaultBadgerGCDiscardRatio}})
 	if err != nil {
-		return fmt.Errorf("open badger: %w", err)
+		return fmt.Errorf("open runner: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		resultErr = errors.Join(resultErr, service.Shutdown(shutdownCtx))
+	}()
 
-	if badgerCompactOnStartup {
-		if err := demo.RunStartupCompaction(db, dbPath, badgerOpts.NumCompactors, logger); err != nil {
-			return fmt.Errorf("run startup compaction: %w", err)
-		}
-	}
-
-	go demo.RunValueLogGC(runCtx, db, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, logger)
-
-	store, err := badgerbox.New[kafka.KafkaMessage, kafka.KafkaDestination](
-		db,
-		badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{},
-		badgerbox.Options{
-			Namespace:     namespace,
-			Observability: observability,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("new store: %w", err)
-	}
-	defer store.Close()
-
-	var publisher demo.Publisher
+	var publisher demo.BatchPublisher
 	if loggingProducer {
 		publisher = demo.NewLoggingPublisher(logger)
 	} else {
 		publisher = demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger)
 	}
-	defer publisher.Close()
-
-	processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
-		key := string(msg.Payload.Key)
-		logger.Printf("process", "event=start msg_id=%d key=%s topic=%s attempt=%d", msg.ID, key, msg.Destination.Topic, msg.Attempt)
-		publishCtx, cancel := context.WithTimeout(ctx, publishTimeout)
-		err := publisher.Publish(publishCtx, msg)
-		cancel()
-		if err != nil {
-			logProcessFailure(logger, time.Now().UTC(), msg, err, retryBaseDelay, retryMaxDelay)
-			return err
-		}
-		if !loggingProducer {
-			logger.Printf("publish", "event=success msg_id=%d key=%s topic=%s", msg.ID, key, msg.Destination.Topic)
-		}
-		return nil
-	}
-
-	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
-		Concurrency: processorConcurrency,
-
-		PollInterval:   pollInterval,
-		LeaseDuration:  leaseDuration,
-		RetryBaseDelay: retryBaseDelay,
-		RetryMaxDelay:  retryMaxDelay,
-	})
+	deliveryObserver, err := telemetry.NewDeliveryObserver(observability, publishTransport)
 	if err != nil {
-		return fmt.Errorf("new processor: %w", err)
+		_ = publisher.Close()
+		return err
+	}
+	if err := service.RegisterDelivery("primary", runner.DeliveryHooks{Flush: func(ctx context.Context) error {
+		started := time.Now()
+		err := publisher.Flush(ctx)
+		deliveryObserver.ObserveFlush(ctx, time.Since(started), err)
+		return err
+	}, Close: publisher.Close}); err != nil {
+		_ = publisher.Close()
+		return err
 	}
 
-	processorCtx, processorCancel := context.WithCancel(runCtx)
-	defer processorCancel()
-
-	processorDone := make(chan error, 1)
-	go func() {
-		processorDone <- processor.Run(processorCtx)
-	}()
+	processFn := demo.NewBatchProcessFunc(publisher, publishTimeout, logger)
+	store, err := runner.Register(service, badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{}, runner.QueueOptions{
+		Store: badgerbox.Options{Namespace: namespace}, Processor: badgerbox.BatchProcessorOptions{ClaimBatchSize: processorClaimBatchSize, ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: processorConcurrency, PollInterval: pollInterval, LeaseDuration: leaseDuration, RetryBaseDelay: retryBaseDelay, RetryMaxDelay: retryMaxDelay}},
+	}, processFn)
+	if err != nil {
+		return err
+	}
+	adminHandler, err := adminhttp.New(store, adminhttp.Options{Namespace: namespace})
+	if err != nil {
+		return err
+	}
+	adminServer, adminAddr, adminErrCh, err := demo.StartAdminServer(cmd.String("admin-listen-addr"), adminHandler)
+	if err != nil {
+		return err
+	}
+	if adminServer != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			resultErr = errors.Join(resultErr, adminServer.Shutdown(shutdownCtx))
+		}()
+		logger.Printf("ready", "event=admin addr=%s", adminAddr)
+	}
+	if err := service.Start(runCtx); err != nil {
+		return err
+	}
 
 	var sequence atomic.Uint64
 	var wg sync.WaitGroup
@@ -670,20 +661,26 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 
 	select {
 	case err := <-enqueueErrCh:
-		processorCancel()
 		stop()
 		wg.Wait()
 		return err
-	case err := <-processorDone:
+	case err := <-service.Errors():
 		stop()
 		wg.Wait()
 		if err != nil {
 			return fmt.Errorf("processor stopped: %w", err)
 		}
 		return nil
-	case err := <-expvarErrCh:
+	case err := <-adminErrCh:
+		stop()
+		wg.Wait()
 		if err != nil {
-			processorCancel()
+			return fmt.Errorf("admin server stopped: %w", err)
+		}
+
+	case err := <-expvarErrCh:
+		stop()
+		if err != nil {
 			stop()
 			wg.Wait()
 			return fmt.Errorf("expvar server stopped: %w", err)
@@ -692,15 +689,6 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	wg.Wait()
-	processorCancel()
-	select {
-	case err := <-processorDone:
-		if err != nil {
-			return fmt.Errorf("processor stopped: %w", err)
-		}
-	case <-time.After(10 * time.Second):
-		return errors.New("timed out waiting for processor shutdown")
-	}
 
 	logger.Printf("shutdown", "command=producer produced=%d", sequence.Load())
 	return nil
