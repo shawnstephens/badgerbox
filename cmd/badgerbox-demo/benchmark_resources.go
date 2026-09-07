@@ -10,22 +10,37 @@ import (
 )
 
 type benchmarkResources struct {
-	MeasurementsComplete bool     `json:"measurements_complete"`
-	Samples              int      `json:"samples"`
-	PeakRSS              uint64   `json:"sampled_peak_rss_bytes"`
-	PeakHeap             uint64   `json:"sampled_peak_heap_bytes"`
-	PeakDisk             int64    `json:"sampled_peak_apparent_disk_bytes"`
-	FinalDisk            int64    `json:"final_apparent_disk_bytes"`
-	Allocated            uint64   `json:"total_allocated_bytes"`
-	GCCycles             uint32   `json:"gc_cycles"`
-	GCPauseSeconds       float64  `json:"gc_pause_seconds"`
-	CPUSeconds           float64  `json:"cpu_seconds"`
-	CPUCores             float64  `json:"average_cpu_cores"`
-	MeasurementErrors    []string `json:"measurement_errors,omitempty"`
+	StartedAt            time.Time `json:"started_at"`
+	ElapsedSeconds       float64   `json:"elapsed_seconds"`
+	MeasurementsComplete bool      `json:"measurements_complete"`
+	Samples              int       `json:"samples"`
+	PeakRSS              uint64    `json:"sampled_peak_rss_bytes"`
+	PeakHeap             uint64    `json:"sampled_peak_heap_bytes"`
+	PeakDisk             int64     `json:"sampled_peak_apparent_disk_bytes"`
+	FinalDisk            int64     `json:"final_apparent_disk_bytes"`
+	Allocated            uint64    `json:"total_allocated_bytes"`
+	GCCycles             uint32    `json:"gc_cycles"`
+	GCPauseSeconds       float64   `json:"gc_pause_seconds"`
+	CPUSeconds           float64   `json:"cpu_seconds"`
+	CPUCores             float64   `json:"average_cpu_cores"`
+	MeasurementErrors    []string  `json:"measurement_errors,omitempty"`
+}
+
+type benchmarkDiskBreakdown struct {
+	Total int64 `json:"total_bytes"`
+	Vlog  int64 `json:"value_log_bytes"`
+	LSM   int64 `json:"lsm_bytes"`
+	WAL   int64 `json:"wal_bytes"`
+	Other int64 `json:"other_bytes"`
 }
 
 func benchmarkDiskSize(path string) (int64, error) {
-	var total int64
+	disk, err := benchmarkDiskUsage(path)
+	return disk.Total, err
+}
+
+func benchmarkDiskUsage(path string) (benchmarkDiskBreakdown, error) {
+	var disk benchmarkDiskBreakdown
 	err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -43,10 +58,21 @@ func benchmarkDiskSize(path string) (int64, error) {
 		if err != nil {
 			return err
 		}
-		total += info.Size()
+		size := info.Size()
+		disk.Total += size
+		switch filepath.Ext(entry.Name()) {
+		case ".vlog":
+			disk.Vlog += size
+		case ".sst":
+			disk.LSM += size
+		case ".mem":
+			disk.WAL += size
+		default:
+			disk.Other += size
+		}
 		return nil
 	})
-	return total, err
+	return disk, err
 }
 
 type benchmarkSampler struct {
@@ -57,6 +83,7 @@ type benchmarkSampler struct {
 	cpuStart         float64
 	started          time.Time
 	report           benchmarkResources
+	current          benchmarkResourcePoint
 }
 
 func newBenchmarkSampler(path string) *benchmarkSampler {
@@ -83,20 +110,45 @@ func (s *benchmarkSampler) recordError(err error) {
 }
 func (s *benchmarkSampler) sample() {
 	s.report.Samples++
+	point := benchmarkResourcePoint{Timestamp: time.Now().UTC(), ElapsedSeconds: time.Since(s.started).Seconds(), MeasurementsComplete: true}
+	recordError := func(err error) {
+		if err != nil {
+			point.MeasurementsComplete = false
+			s.recordError(err)
+		}
+	}
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
+	point.Heap = mem.HeapAlloc
+	point.Allocated = mem.TotalAlloc - s.base.TotalAlloc
+	point.GCCycles = mem.NumGC - s.base.NumGC
 	s.report.PeakHeap = max(s.report.PeakHeap, mem.HeapAlloc)
 	if s.process != nil {
 		mem, err := s.process.MemoryInfo()
-		s.recordError(err)
+		recordError(err)
 		if err == nil {
+			point.RSS = mem.RSS
 			s.report.PeakRSS = max(s.report.PeakRSS, mem.RSS)
 		}
+		if s.cpuBaselineValid {
+			times, err := s.process.Times()
+			recordError(err)
+			if err == nil {
+				cpu := times.User + times.System - s.cpuStart
+				point.CPUSeconds = &cpu
+			}
+		} else {
+			point.MeasurementsComplete = false
+		}
+	} else {
+		point.MeasurementsComplete = false
 	}
-	disk, err := benchmarkDiskSize(s.path)
-	s.recordError(err)
-	s.report.PeakDisk = max(s.report.PeakDisk, disk)
-	s.report.FinalDisk = disk
+	disk, err := benchmarkDiskUsage(s.path)
+	recordError(err)
+	point.Disk = disk
+	s.report.PeakDisk = max(s.report.PeakDisk, disk.Total)
+	s.report.FinalDisk = disk.Total
+	s.current = point
 }
 func (s *benchmarkSampler) finish() benchmarkResources {
 	s.sample()
@@ -114,5 +166,7 @@ func (s *benchmarkSampler) finish() benchmarkResources {
 		}
 	}
 	s.report.MeasurementsComplete = len(s.report.MeasurementErrors) == 0
+	s.report.ElapsedSeconds = time.Since(s.started).Seconds()
+	s.report.StartedAt = s.started.UTC()
 	return s.report
 }
