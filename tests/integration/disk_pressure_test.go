@@ -186,7 +186,7 @@ func TestFullFilesystemRejectsIntakeAndRecoversRetainedMessages(t *testing.T) {
 			results <- badgerbox.BatchProcessResult{ID: msg.ID}
 		}
 		return nil
-	}, badgerbox.BatchProcessorOptions{ClaimBatchSize: 4, ClaimMaxBytes: 64 << 10, ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: 2, PollInterval: time.Millisecond}})
+	}, badgerbox.BatchProcessorOptions{ClaimBatchSize: 4, ProcessorOptions: badgerbox.ProcessorOptions{ClaimMaxBytes: 64 << 10, Concurrency: 2, PollInterval: time.Millisecond}})
 	if err != nil {
 		t.Fatal(err)
 	}
