@@ -1,5 +1,9 @@
 # Full-filesystem admission test
 
+The [recorded APFS run](benchmarks/2026-09-07-full-filesystem/manifest.json)
+passed with real `ENOSPC`; its unchanged [test output](benchmarks/2026-09-07-full-filesystem/test.log)
+records the capacity, filler size, and verified retained-message count.
+
 The opt-in `resourcefault` test fills a marked disposable filesystem until an
 actual write returns `ENOSPC`. It verifies that the free-space guard rejects
 `Enqueue` and `EnqueueTx`, application writes in the rejected transaction roll

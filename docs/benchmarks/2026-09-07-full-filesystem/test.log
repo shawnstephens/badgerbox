@@ -1,0 +1,6 @@
+=== RUN   TestFullFilesystemRejectsIntakeAndRecoversRetainedMessages
+    disk_pressure_test.go:133: fixture_capacity=536829952 filler_bytes=523239424 free_bytes_after_ENOSPC=11567104
+    disk_pressure_test.go:228: retained_messages_verified=32 rejected_transactions=2 final_retained_messages=0
+--- PASS: TestFullFilesystemRejectsIntakeAndRecoversRetainedMessages (1.14s)
+PASS
+ok  	github.com/shawnstephens/badgerbox/tests/integration	2.298s

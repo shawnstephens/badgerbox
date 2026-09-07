@@ -1,9 +1,8 @@
 # Production-readiness evidence and remaining work
 
-This document tracks the scope of the production-readiness audit. Passing tests
-prove the behaviors they exercise; they do not constitute a blanket production
-certification. The next changes must close the remaining resource-control and
-operational gaps below before that broader claim is made.
+This document tracks the evidence from the production-readiness audit. Passing
+tests prove the behaviors they exercise; deployment capacity and failure budgets
+still require measurement on the target filesystem and downstream service.
 
 ## Verified behaviors
 
@@ -19,34 +18,42 @@ operational gaps below before that broader claim is made.
 | Trustworthy library duration metrics | `internal/instrumentation/histograms_test.go`: units, useful default buckets, explicit application-view override |
 | Unsupported database metric modes rejected | `pkg/telemetry` configuration tests for in-memory DBs and disabled Badger metrics |
 | Reproducible performance comparisons | Demo `benchmark`, `scripts/benchmark/matrix.py`, raw JSON reports and command manifests |
+| Atomic retained-count and canonical-byte quotas | `admission_test.go`: concurrent producers/stores/constructors, rollback, conflicts, restart, exact limits, live CAS, corruption/overflow detection |
+| Safe external capacity checks | `pkg/admission` and `enqueue_guard_test.go`: coalesced cancellable disk probes, fail-closed errors, no pre-admission allocation/writes, continued settlement |
+| Byte-bounded single and batch claims | `claim_bytes_test.go`: mixed sizes, conservative Badger value-log sizing, healthy progress behind a 16 MiB malformed oversized head without loading it |
+| Codec errors/panics remain recoverable | `quarantine_test.go`: opaque bytes preserved, healthy records continue, callback metrics stay truthful |
+| Quarantine preserves capacity and exact recovery | `quarantine_admission_test.go` and `pkg/adminhttp/quarantine_test.go`: reference/ordinary DLQ reconciliation, bounded inspection/replay, changed-source rejection, acknowledgement under intake pressure |
+| Inspectable admission state | `/usage`, quota gauges, and independent bounded audit reconciliation with usage-error telemetry |
+| Full-filesystem admission and recovery | [Disposable APFS fault test](RESOURCE_FAULTS.md): actual `ENOSPC`, both enqueue paths rejected, application transaction rolled back, all 32 retained messages verified after reopening and drain |
+| Sustained ordinary GC | [Three-minute churn evidence](../scripts/benchmark/evidence/2026-09-07-local-churn/INTERPRETATION.md): 90,000 verified deliveries, 601 successful rewrites, bounded timeline and labeled outcomes |
 
 Run `just check` for both modules and `just test-integration` with Docker.
 Integration tests require real dependencies and fail when setup fails. The
 benchmark's local sink and independently consumed Kafka mode must be identified
 separately in reports. Preserve failures as well as successful runs.
 
-## Remaining production work
+## Capacity and failure scope
 
-1. **Hard resource admission.** Core claims are record-count bounded but have no
-   configurable encoded-byte budget. An unusually large batch or expanding
-   application codec can exceed an intended memory budget even when each record
-   is admissible to Badger. Add and test a byte-aware claim budget, including the
-   behavior for a single record larger than the requested budget.
-2. **Backlog and disk exhaustion policy.** There is no atomic queue-count or
-   backlog-byte quota and no built-in free-space admission policy. Specify how
-   producers receive backpressure while workers retain enough space to settle
-   and reclaim existing work. Test simultaneous producers and abrupt capacity
-   changes without dropped or falsely acknowledged messages.
-3. **Operational handling of poison records.** A codec decode failure currently
-   stops the queue. Define a bounded, inspectable quarantine/recovery path that
-   distinguishes application decode failures from corrupt storage metadata.
-   Operators need a way to recover healthy work without deleting undelivered data.
-4. **Sustained churn and failure budgets.** Run longer mixed-size load/outage
-   tests through repeated value-log rotations and GC, under explicit CPU, RSS
-   and disk limits. Measure the drain margin while intake continues. Short
-   finite benchmarks alone cannot prove a stable disk/RSS plateau or an outage
-   SLA. Include retry exhaustion, synchronized retry traffic, full disks and
-   slow/failed synchronization in fault testing.
+Admission limits bound logical retained data; claim budgets bound stored source
+reads. Neither is an RSS or physical-disk cap. Codec expansion, external client
+buffers, compaction, mmap/page cache, and filesystem overhead still need a
+process/container budget. The free-space guard samples available capacity and
+cannot reserve physical space against concurrent writers.
 
-The tuning guide documents current limits and application responsibilities.
-Documentation is not a substitute for the missing controls or their validation.
+The three-minute churn run demonstrates normal reclamation, including repeated
+value-log rotation and successful GC. Its disk peaks still drifted upward, so
+it does not establish a long-term disk plateau. A follow-up benchmark must
+exercise the final controls under explicit CPU and memory limits. Measure drain
+margin with continued intake and repeat on the intended payload distribution.
+
+The full-volume test verifies guarded rejection at real filesystem exhaustion;
+the crash tests separately verify process recovery. They do not inject power
+loss, device failure, or failed synchronization after admission succeeds. The
+library propagates storage errors and requires callers to discard failed
+transactions. Synchronization still depends on the filesystem/device contract.
+
+Delivery remains at least once, retries can synchronize, and an uncooperative
+application callback cannot be terminated by the library. The Kafka tests use
+real brokers but do not certify replicated availability. Select and verify
+deployment-specific durability, ordering, deduplication, and outage budgets
+using [tuning](TUNING.md), [admission](ADMISSION.md), and [quarantine](QUARANTINE.md).
