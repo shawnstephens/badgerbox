@@ -30,6 +30,11 @@ func newBatchProducerFunc(producer asyncProducer) badgerbox.BatchProcessFunc[Kaf
 		}
 		obs := instrumentation.DeliveryFromContext(ctx)
 		scheduled, failed := 0, 0
+		defer func() {
+			if obs != nil {
+				obs.RecordKafkaProduce(context.WithoutCancel(ctx), scheduled, failed)
+			}
+		}()
 		for _, msg := range messages {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -55,9 +60,6 @@ func newBatchProducerFunc(producer asyncProducer) badgerbox.BatchProcessFunc[Kaf
 				}
 				results <- badgerbox.BatchProcessResult{ID: id, Err: err}
 			})
-		}
-		if obs != nil {
-			obs.RecordKafkaProduce(context.WithoutCancel(ctx), scheduled, failed)
 		}
 		return nil
 	}

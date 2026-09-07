@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"github.com/shawnstephens/badgerbox/internal/metricconfig"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"time"
@@ -32,7 +33,7 @@ func NewDeliveryObserver(options Options, name string) (*DeliveryObserver, error
 	if observer.failures, err = meter.Int64Counter("badgerbox_delivery_flush_error_total"); err != nil {
 		return nil, err
 	}
-	if observer.duration, err = meter.Float64Histogram("badgerbox_delivery_flush_duration_seconds"); err != nil {
+	if observer.duration, err = metricconfig.DurationHistogram(meter, "badgerbox_delivery_flush_duration_seconds"); err != nil {
 		return nil, err
 	}
 	return observer, nil

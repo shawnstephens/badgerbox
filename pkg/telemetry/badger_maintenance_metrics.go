@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"github.com/shawnstephens/badgerbox/internal/metricconfig"
 	"github.com/shawnstephens/badgerbox/pkg/maintenance"
 	"strings"
 
@@ -61,7 +62,7 @@ func NewBadgerMaintenanceMetrics(
 	if telemetry.rewrite, err = meter.Int64Counter(badgerMaintenanceRewritesMetric); err != nil {
 		return nil, telemetryErrorf("register Badger maintenance rewrite counter: %w", err)
 	}
-	if telemetry.duration, err = meter.Float64Histogram(badgerMaintenanceDurationMetric); err != nil {
+	if telemetry.duration, err = metricconfig.DurationHistogram(meter, badgerMaintenanceDurationMetric); err != nil {
 		return nil, telemetryErrorf("register Badger maintenance duration histogram: %w", err)
 	}
 	return telemetry, nil

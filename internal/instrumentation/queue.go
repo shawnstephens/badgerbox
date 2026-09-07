@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fmt"
+	"github.com/shawnstephens/badgerbox/internal/metricconfig"
 	"github.com/shawnstephens/badgerbox/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -195,28 +196,28 @@ func NewQueue(opts ObservabilityOptions, namespace string, queueSnapshot func(co
 	if inst.conflictRetryTotal, err = meter.Int64Counter("badgerbox_conflict_retry_total"); err != nil {
 		return nil, err
 	}
-	if inst.enqueueDuration, err = meter.Float64Histogram("badgerbox_enqueue_duration_seconds"); err != nil {
+	if inst.enqueueDuration, err = metricconfig.DurationHistogram(meter, "badgerbox_enqueue_duration_seconds"); err != nil {
 		return nil, err
 	}
-	if inst.processDuration, err = meter.Float64Histogram("badgerbox_process_duration_seconds"); err != nil {
+	if inst.processDuration, err = metricconfig.DurationHistogram(meter, "badgerbox_process_duration_seconds"); err != nil {
 		return nil, err
 	}
-	if inst.scheduleLag, err = meter.Float64Histogram("badgerbox_schedule_lag_seconds"); err != nil {
+	if inst.scheduleLag, err = metricconfig.DurationHistogram(meter, "badgerbox_schedule_lag_seconds"); err != nil {
 		return nil, err
 	}
-	if inst.messageAge, err = meter.Float64Histogram("badgerbox_message_age_seconds"); err != nil {
+	if inst.messageAge, err = metricconfig.DurationHistogram(meter, "badgerbox_message_age_seconds"); err != nil {
 		return nil, err
 	}
-	if inst.retryDelay, err = meter.Float64Histogram("badgerbox_retry_delay_seconds"); err != nil {
+	if inst.retryDelay, err = metricconfig.DurationHistogram(meter, "badgerbox_retry_delay_seconds"); err != nil {
 		return nil, err
 	}
 	if inst.claimBatchSize, err = meter.Int64Histogram("badgerbox_claim_batch_size"); err != nil {
 		return nil, err
 	}
-	if inst.enqueueDurationMax, err = meter.Float64ObservableGauge("badgerbox_enqueue_duration_seconds_max"); err != nil {
+	if inst.enqueueDurationMax, err = meter.Float64ObservableGauge("badgerbox_enqueue_duration_seconds_max", metric.WithUnit("s")); err != nil {
 		return nil, err
 	}
-	if inst.processDurationMax, err = meter.Float64ObservableGauge("badgerbox_process_duration_seconds_max"); err != nil {
+	if inst.processDurationMax, err = meter.Float64ObservableGauge("badgerbox_process_duration_seconds_max", metric.WithUnit("s")); err != nil {
 		return nil, err
 	}
 	if inst.readyDepth, err = meter.Int64Gauge("badgerbox_queue_ready"); err != nil {
@@ -234,10 +235,10 @@ func NewQueue(opts ObservabilityOptions, namespace string, queueSnapshot func(co
 	if inst.workChannelDepth, err = meter.Int64Gauge("badgerbox_work_channel_depth"); err != nil {
 		return nil, err
 	}
-	if inst.oldestReadyAge, err = meter.Float64Gauge("badgerbox_queue_oldest_ready_age_seconds"); err != nil {
+	if inst.oldestReadyAge, err = meter.Float64Gauge("badgerbox_queue_oldest_ready_age_seconds", metric.WithUnit("s")); err != nil {
 		return nil, err
 	}
-	if inst.oldestProcessingAge, err = meter.Float64Gauge("badgerbox_queue_oldest_processing_age_seconds"); err != nil {
+	if inst.oldestProcessingAge, err = meter.Float64Gauge("badgerbox_queue_oldest_processing_age_seconds", metric.WithUnit("s")); err != nil {
 		return nil, err
 	}
 	if inst.metricRegistration, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
