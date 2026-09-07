@@ -46,6 +46,7 @@ throughput. Explicitly enable SyncWrites in every profile when required.
 | `NumCompactors` | 2 | 4 | 4 |
 | Batch processor `Concurrency` | 2 | 4 | 2 |
 | `ClaimBatchSize` | 8 | 32 | 4 |
+| `ProcessorOptions.ClaimMaxBytes` | 2 MiB | 8 MiB | 8 MiB |
 
 Keep the default Level 0 trigger/stall thresholds initially. If you change them,
 the stall threshold must exceed the trigger. `IndexCacheSize=0` keeps all table
@@ -80,9 +81,11 @@ For 4 workers, batches of 32, and 512 KiB payloads, one decoded copy alone is
 64 MiB. Serialization, destination data and client-owned copies add to that.
 The adapter clones bytes before asynchronous delivery. Bound franz-go with
 `kgo.MaxBufferedBytes` and `kgo.MaxBufferedRecords`, especially for shared clients
-and late callbacks. Core claim sizes count records; they are not a configurable
-decoded-byte or process-memory limit. Adaptive transaction shrinking protects
-Badger transaction limits, not arbitrary application codec expansion.
+and late callbacks. Set `ProcessorOptions.ClaimMaxBytes` to bound stored source
+bytes loaded per claim, then multiply by concurrency and your measured codec
+expansion. Oversized sources enter recoverable quarantine without being loaded.
+It is not a decoded-byte or process-memory limit. Adaptive transaction shrinking
+also protects Badger transaction limits. See [claim budgets and quarantine](QUARANTINE.md).
 
 Reduce batch size first for large payloads. Increase enqueue parallelism only
 while accepted throughput improves: each producer can retain an encoded record
