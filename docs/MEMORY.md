@@ -1,10 +1,10 @@
 # Badger Memory Tuning
 
-`badgerbox` accepts a caller-owned `*badger.DB`, so Badger memory tuning still happens at the Badger layer. This repo currently pins `github.com/dgraph-io/badger/v4 v4.9.1`, and the guidance below is written for that version.
+`badgerbox` accepts a caller-owned `*badger.DB`, so Badger memory tuning still happens at the Badger layer. This repo currently pins `github.com/dgraph-io/badger/v4 v4.9.6`, and the guidance below is written for that version.
 
 The demo producer now exposes the main Badger memory knobs as CLI flags and `BADGERBOX_DEMO_...` environment variables, but the same settings can be applied directly in Go with `badger.DefaultOptions(...).WithX(...)`.
 
-## Badger v4.9.1 memory knobs and defaults
+## Badger v4.9.6 memory knobs and defaults
 
 | Option | Default | What it changes | When to tweak it first |
 | --- | --- | --- | --- |
@@ -53,22 +53,23 @@ The demo producer treats every memory flag as an override. If you omit a flag or
 Example demo producer command:
 
 ```bash
-go run ./cmd/badgerbox-demo producer \
+(cd cmd/badgerbox-demo && GOWORK=off go run . producer \
   --badger-index-cache-size 128MiB \
   --badger-block-cache-size 64MiB \
   --badger-memtable-size 32MiB \
   --badger-num-memtables 3 \
   --badger-num-level-zero-tables 3 \
-  --badger-num-level-zero-tables-stall 9
+  --badger-num-level-zero-tables-stall 9)
 ```
 
 The same overrides can be passed with environment variables:
 
 ```bash
+(cd cmd/badgerbox-demo && \
 BADGERBOX_DEMO_BADGER_INDEX_CACHE_SIZE=128MiB \
 BADGERBOX_DEMO_BADGER_BLOCK_CACHE_SIZE=64MiB \
 BADGERBOX_DEMO_BADGER_MEMTABLE_SIZE=32MiB \
-go run ./cmd/badgerbox-demo producer
+GOWORK=off go run . producer)
 ```
 
 ## Direct Go examples

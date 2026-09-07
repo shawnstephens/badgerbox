@@ -1,519 +1,79 @@
 # Observability
 
-`badgerbox` supports fully optional OpenTelemetry metrics and tracing directly in core.
+Badgerbox uses native OpenTelemetry metrics and tracing. The public `telemetry.Options` accepts meter and tracer providers, scope names, a text-map propagator, and a snapshot interval. `badgerbox.Options.Observability` accepts the same options. Providers are caller-owned and may use any compatible exporter.
 
-- If you do not configure observability, `badgerbox` behaves exactly as before.
-- Configure observability by passing an OTEL meter provider and tracer provider in `badgerbox.ObservabilityOptions`.
-- `badgerbox.New(...)` is a pure constructor. It does not record a snapshot or start background polling.
-- `Processor.Run(ctx)` records an initial snapshot and starts observability polling automatically before worker loops begin.
-- If you are using a store without a processor, call `store.RecordObservabilitySnapshot(ctx)` once and then `store.StartObservability(ctx)` to enable queue polling metrics.
-- For deterministic tests, inject a custom `badgerbox.Options.Runtime`.
-- Trace context is persisted with each enqueued record, so enqueue and process spans stay linked across the durable queue boundary.
-- `badgerbox` core does not bridge Badger's `expvar` metrics. If you want Badger's own storage metrics, expose `/debug/vars` from your process and, if you want Prometheus-format output, register Prometheus's expvar collector in that same process.
+The library does not configure global providers. Missing providers disable the corresponding export. Trace context and baggage are persisted in the record envelope and extracted when processing a message after restart. Application payload encoding remains controlled by the injected codec.
 
-## What Is Instrumented
+## Ownership
 
-Metrics:
+Constructing a store registers instruments but starts no polling goroutine. `StartObservability` starts polling once; processors start it automatically. The poller is store-owned and survives cancellation of the context that started it. `Store.Close` cancels and joins it and unregisters its callbacks. Stop intake and join processors before closing stores.
 
-- Queue depths: ready, processing, dead-letter
-- Queue ages: oldest ready, oldest processing
-- Enqueue counts and enqueue latency
-- Claim counts, claim batch sizes, schedule lag, and message age at claim time
-- Processing attempt counts and processing latency
-- Retry counts and retry delay
-- Dead-letter counts
-- Manual dead-letter requeue counts
-- Expired lease requeue counts
-- Conflict retry counts
-- Runtime gauges for active workers and buffered work channel depth
+`runner.Open` registers database and maintenance observers when a meter provider is supplied. One process-wide database collector is permitted because Badger's compaction statistics are process-global. Its callback must be closed before the database or the next collector is created. Directory-size values are refreshed by Badger, typically once per minute; they are not filesystem scans on every queue tick.
 
-Tracing:
+## Queue metrics
 
-- `badgerbox.enqueue`
-- `badgerbox.process`
+Names are fixed across namespaces. Namespace, outcome, mode, and failure are bounded attributes rather than parts of instrument names. Message IDs are span attributes and never metric labels.
 
-Both span types include:
+The existing `badgerbox_enqueue_duration_seconds_max` and `badgerbox_process_duration_seconds_max` gauges use `telemetry.Options.DurationMaxWindow` (zero selects one minute; negative values are invalid). Each queue retains maxima from its current and immediately previous fixed window and exports the larger value per attribute set. Windows advance with time, not collection: multiple readers and repeated collections do not consume observations. Samples remain eligible for between one and two window lengths; older data expires and idle series stop producing points. Configure the window at least as long as the longest reader collection interval. Storage holds at most two maxima per attribute set, independent of event rate. Runner queue options inherit this window when zero, and explicit queue values override the runner setting. These are window maxima, not exact rolling five-minute maxima or lifetime high-water marks.
 
-- `badgerbox.namespace`
-- `badgerbox.message_id`
-- `badgerbox.attempt`
-- `badgerbox.max_attempts`
-- `badgerbox.created_at`
-- `badgerbox.available_at`
-- `badgerbox.outcome`
+| Instruments | Meaning |
+| --- | --- |
+| `badgerbox_enqueue_total`, `badgerbox_enqueue_duration_seconds` | Prepared/committed enqueue operations and latency |
+| `badgerbox_claim_total`, `badgerbox_claim_batch_size` | Claimed messages and batch sizes |
+| `badgerbox_claim_transaction_too_big_total`, `badgerbox_claim_retry_size` | Claim transaction reductions |
+| `badgerbox_process_attempt_total`, `badgerbox_process_duration_seconds` | Per-message settlement outcomes and duration |
+| `badgerbox_process_batch_total`, `badgerbox_process_batch_size`, `badgerbox_process_batch_duration_seconds` | Batch execution |
+| `badgerbox_batch_result_missing_total`, `badgerbox_batch_result_invalid_total` | Missing, duplicate, and unknown result diagnostics |
+| `badgerbox_dead_letter_total`, `badgerbox_requeue_total`, `badgerbox_retry_delay_seconds` | Failure disposition and rescheduling |
+| `badgerbox_conflict_retry_total` | Badger transaction conflicts |
+| `badgerbox_schedule_lag_seconds`, `badgerbox_message_age_seconds` | Dispatch lag and message age |
+| `badgerbox_queue_ready`, `badgerbox_queue_processing`, `badgerbox_queue_dead_letter` | Index-derived queue depths |
+| `badgerbox_queue_oldest_ready_age_seconds`, `badgerbox_queue_oldest_processing_age_seconds` | Oldest created-time index ages |
+| `badgerbox_workers_active`, `badgerbox_work_channel_depth` | Active batch workers and queued messages |
+| `badgerbox_snapshot_duration_seconds`, `badgerbox_snapshot_error_total` | Polling cost and failures |
+| `badgerbox_kafka_produce_total`, `badgerbox_kafka_produce_error_total`, `badgerbox_kafka_promise_duration_seconds` | Kafka scheduling and asynchronous callback outcomes |
 
-Processing spans also add events for retry scheduling, dead-lettering, and panic recovery.
+Enqueue and processing duration maxima use `_max` gauges that reset after collection. Index snapshots scan keys without loading payload records. They are O(N), so set the polling interval to suit queue scale. Use explicit audits for row/index consistency checks.
 
-## Normal Library Setup
+`telemetry.NewDeliveryObserver` records `badgerbox_delivery_flush_total`, `badgerbox_delivery_flush_error_total`, and `badgerbox_delivery_flush_duration_seconds`, with one configured `delivery` attribute. Record shared-client flushes once rather than once per queue using the client.
 
-`badgerbox` accepts an OTEL meter provider and tracer provider directly. It does not create exporters or global SDK state for you.
+## Database metrics
 
-```go
-package main
+Database gauges cover `badgerbox_badger_lsm_size_bytes`, `badgerbox_badger_vlog_size_bytes`, `badgerbox_badger_total_size_bytes`, disk total/available bytes, pending memtable writes, and active compaction tables. `badgerbox_badger_compaction_written_bytes` is a reset-safe monotonic counter by level. Read failures increment `badgerbox_badger_collection_errors` with a bounded source attribute.
 
-import (
-	"context"
-	"errors"
-	"log"
-	"time"
+Maintenance counters cover attempts, outcomes, and successful rewrites; the duration histogram is `badgerbox_badger_maintenance_duration_seconds`. Attributes identify `flatten` or `value_log_gc` and `success`, `no_rewrite`, or `error`. Badger's `ErrNoRewrite` is a normal outcome, not an error or successful rewrite.
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-)
+Prometheus exporters may add counter suffixes such as `_total`. Dashboard queries use the exported names.
 
-func main() {
-	ctx := context.Background()
+## Local stack
 
-	res, err := resource.New(ctx, resource.WithAttributes(
-		attribute.String("service.name", "orders-api"),
-		attribute.String("service.namespace", "example"),
-	))
-	if err != nil {
-		log.Fatal(err)
-	}
+From the repository root:
 
-	metricExporter, err := otlpmetrichttp.New(ctx,
-		otlpmetrichttp.WithEndpoint("localhost:4318"),
-		otlpmetrichttp.WithInsecure(),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	traceExporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint("localhost:4318"),
-		otlptracehttp.WithInsecure(),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	meterProvider := sdkmetric.NewMeterProvider(
-		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)),
-	)
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = meterProvider.Shutdown(shutdownCtx)
-	}()
-
-	traceProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithResource(res),
-		sdktrace.WithBatcher(traceExporter),
-	)
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = traceProvider.Shutdown(shutdownCtx)
-	}()
-
-	db, err := badger.Open(badger.DefaultOptions("./data").WithLogger(nil))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	observability := badgerbox.ObservabilityOptions{
-		MeterProvider:  meterProvider,
-		TracerProvider: traceProvider,
-	}
-
-	store, err := badgerbox.New[string, string](
-		db,
-		badgerbox.Serde[string, string]{},
-		badgerbox.Options{
-			Namespace:     "orders",
-			Observability: observability,
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	// Processor.Run handles the initial snapshot and polling startup.
-
-	processor, err := badgerbox.NewProcessor(store, func(ctx context.Context, msg badgerbox.Message[string, string]) error {
-		if msg.Payload == "fail" {
-			return errors.New("retry me")
-		}
-		return nil
-	}, badgerbox.ProcessorOptions{})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := store.Enqueue(ctx, badgerbox.EnqueueRequest[string, string]{
-		Payload:     "hello",
-		Destination: "https://example.internal/orders",
-	}); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := processor.Run(ctx); err != nil {
-		log.Fatal(err)
-	}
-}
+```sh
+docker compose -p badgerbox-observability -f deployments/observability/docker-compose.yml up -d
 ```
 
-If you want queue-depth polling metrics without running a processor, start observability explicitly after constructing the store:
+Use the same project name and file when stopping this stack. The deployment binds configurable loopback ports:
 
-```go
-if err := store.RecordObservabilitySnapshot(ctx); err != nil {
-	log.Fatal(err)
-}
-if err := store.StartObservability(ctx); err != nil {
-	log.Fatal(err)
-}
-```
+| Service | Default URL/endpoint | Override |
+| --- | --- | --- |
+| Grafana | http://localhost:33000 | `BADGERBOX_GRAFANA_PORT` |
+| Prometheus | http://localhost:39090 | `BADGERBOX_PROMETHEUS_PORT` |
+| Tempo | http://localhost:33200 | `BADGERBOX_TEMPO_PORT` |
+| OTLP HTTP | localhost:34318 | `BADGERBOX_OTLP_HTTP_PORT` |
+| OTLP gRPC | localhost:34317 | `BADGERBOX_OTLP_GRPC_PORT` |
+| Collector metrics | http://localhost:39464/metrics | `BADGERBOX_COLLECTOR_METRICS_PORT` |
 
-## Enabling Only Metrics or Only Tracing
+The local Grafana login is `admin` / `admin`. The provisioned dashboard includes queue depth, latency percentiles, batch/callback latency, claim reductions, snapshot failures, disk availability, compaction, and flush outcomes.
 
-Metrics only:
+## Export from the demo
 
-```go
-observability := badgerbox.ObservabilityOptions{
-	MeterProvider: meterProvider,
-}
-```
-
-Tracing only:
-
-```go
-observability := badgerbox.ObservabilityOptions{
-	TracerProvider: traceProvider,
-}
-```
-
-## Metric Catalog
-
-Core counters:
-
-- `badgerbox_enqueue_total`
-- `badgerbox_claim_total`
-- `badgerbox_process_attempt_total`
-- `badgerbox_dead_letter_total`
-- `badgerbox_requeue_total`
-- `badgerbox_conflict_retry_total`
-
-Core histograms:
-
-- `badgerbox_enqueue_duration_seconds`
-- `badgerbox_process_duration_seconds`
-- `badgerbox_claim_batch_size`
-- `badgerbox_schedule_lag_seconds`
-- `badgerbox_message_age_seconds`
-- `badgerbox_retry_delay_seconds`
-
-Core duration max gauges:
-
-- `badgerbox_enqueue_duration_seconds_max`
-- `badgerbox_process_duration_seconds_max`
-
-Core gauges:
-
-- `badgerbox_queue_ready`
-- `badgerbox_queue_processing`
-- `badgerbox_queue_dead_letter`
-- `badgerbox_queue_oldest_ready_age_seconds`
-- `badgerbox_queue_oldest_processing_age_seconds`
-- `badgerbox_workers_active`
-- `badgerbox_work_channel_depth`
-
-Important attributes:
-
-- `namespace`
-- `outcome`
-- `mode`
-- `failure_kind`
-
-Current meanings:
-
-- `badgerbox_queue_ready` counts pending records in the ready index, including future scheduled retries.
-- `badgerbox_queue_processing` counts valid in-flight lease records.
-- `badgerbox_queue_dead_letter` counts dead-letter records.
-- `badgerbox_queue_oldest_ready_age_seconds` and `badgerbox_queue_oldest_processing_age_seconds` are based on message age since enqueue, not time since scheduled availability.
-- `badgerbox_schedule_lag_seconds` measures how late a claim happened relative to `AvailableAt`.
-- `badgerbox_message_age_seconds` measures message age at claim time.
-
-## Badger `expvar`
-
-If you want Badger's own storage and engine metrics, or default Go `runtime.Memstats`, expose `/debug/vars` from the process that owns the Badger DB and register Prometheus's expvar collector there.
-
-For example, in an application that already owns the HTTP server:
-
-```go
-import (
-	"expvar"
-	"net/http"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-)
-
-func main() {
-	registry := prometheus.NewRegistry()
-	registry.MustRegister(collectors.NewExpvarCollector(map[string]*prometheus.Desc{
-		"memstats": prometheus.NewDesc(
-			"go_expvar_memstats",
-			"Go runtime.MemStats fields exported from expvar.",
-			[]string{"stat"},
-			nil,
-		),
-		"badger_size_bytes_lsm": prometheus.NewDesc(
-			"badger_size_bytes_lsm",
-			"Badger LSM size in bytes exported from expvar.",
-			[]string{"directory"},
-			nil,
-		),
-		"badger_size_bytes_vlog": prometheus.NewDesc(
-			"badger_size_bytes_vlog",
-			"Badger value log size in bytes exported from expvar.",
-			[]string{"directory"},
-			nil,
-		),
-	}))
-
-	mux := http.NewServeMux()
-	mux.Handle("/debug/vars", expvar.Handler())
-	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-
-	server := &http.Server{
-		Addr:    "0.0.0.0:18080",
-		Handler: mux,
-	}
-
-	go server.ListenAndServe()
-}
-```
-
-When you do this, open Badger with metrics enabled:
-
-```go
-db, err := badger.Open(
-	badger.DefaultOptions("./data").
-		WithLogger(nil).
-		WithMetricsEnabled(true),
-)
-```
-
-Badger caveats still apply:
-
-- Badger metrics are registered globally in-process.
-- If your process opens multiple Badger databases, some metrics are cumulative across them.
-- For the cleanest results, use a dedicated Badger instance for a service or demo process.
-
-## Local Demo Stack
-
-The repo includes a local OTEL-to-Grafana pipeline under [deployments/observability](deployments/observability).
-
-It starts:
-
-- OTEL Collector
-- Prometheus
-- Tempo
-- Grafana
-- A Prometheus scrape path to the demo producer's `/metrics`, where the producer converts selected Badger `expvar` metrics plus Go `runtime.Memstats` from default expvar with `collectors.NewExpvarCollector`
-
-The Collector and Tempo OTLP receivers are explicitly bound to `0.0.0.0` in this repo's config. Their default OTLP receiver binding is not suitable for this demo because traffic arrives from outside the container.
-
-Grafana also provisions the demo metrics dashboard automatically from [deployments/observability/grafana/dashboards/badgerbox-demo-observability.json](deployments/observability/grafana/dashboards/badgerbox-demo-observability.json).
-
-```mermaid
-flowchart LR
-    Producer["badgerbox-demo producer"]
-    Prometheus["Prometheus"]
-    Grafana["Grafana"]
-
-    subgraph OTelPath["OTEL path"]
-        direction LR
-        Instrumentation["badgerbox core OTEL instrumentation\nbadgerbox_* metrics + traces"]
-        Collector["OTEL Collector\nOTLP receivers\nlocalhost:4318 / 4317"]
-        CollectorMetrics["Collector Prometheus exporter\notel-collector:9464"]
-        Tempo["Tempo"]
-    end
-
-    subgraph ExpvarPath["expvar scrape path"]
-        direction LR
-        Expvar["producer expvar server\n/debug/vars and /metrics"]
-        ProducerMetrics["Producer /metrics endpoint\nhost.docker.internal:18080/metrics\n(go_expvar_memstats + Badger expvar metrics)"]
-    end
-
-    Producer --> Instrumentation
-    Producer --> Expvar
-    Instrumentation -->|OTLP metrics + traces| Collector
-    Collector -->|traces pipeline| Tempo
-    Collector -->|metrics pipeline| CollectorMetrics
-    Expvar --> ProducerMetrics
-    Prometheus -.scrapes .-> CollectorMetrics
-    Prometheus -.scrapes .-> ProducerMetrics
-    Grafana -->|Prometheus datasource| Prometheus
-    Grafana -->|Tempo datasource| Tempo
-```
-
-In the demo stack, traces go through the OTEL Collector to Tempo, and `badgerbox_*` OTEL metrics go through the Collector's Prometheus exporter to Prometheus. Badger `expvar` metrics and Go `runtime.Memstats` bypass the Collector and are scraped directly from the producer's `/metrics` endpoint.
-
-### Start the stack
-
-```bash
-cd deployments/observability
-docker compose up -d
-```
-
-Endpoints:
-
-- Grafana: [http://localhost:3000](http://localhost:3000)
-- Prometheus: [http://localhost:9090](http://localhost:9090)
-- Tempo API: [http://localhost:3200](http://localhost:3200)
-- OTLP/HTTP collector: `localhost:4318`
-- OTLP/gRPC collector: `localhost:4317`
-
-Grafana credentials:
-
-- username: `admin`
-- password: `admin`
-
-### Dashboard import and provisioning
-
-The local stack auto-loads the dashboard into the `Badgerbox Demo` folder in Grafana. You do not need to import it manually when you use the checked-in Docker Compose stack.
-
-If you want to import it into another Grafana instance:
-
-1. Open Grafana and go to `Dashboards` -> `New` -> `Import`.
-2. Upload [deployments/observability/grafana/dashboards/badgerbox-demo-observability.json](deployments/observability/grafana/dashboards/badgerbox-demo-observability.json).
-3. When Grafana asks for a datasource, choose `Prometheus`.
-
-The dashboard uses two variables:
-
-- `namespace`, which defaults to `demo`
-- `directory`, a regex for Badger expvar-derived panels that defaults to `.*`
-
-### Run the demo
-
-Start Kafka:
-
-```bash
+```sh
 cd cmd/badgerbox-demo
-go run . kafka
+GOWORK=off go run . producer --logging-producer \
+  --otel-endpoint localhost:34318 --otel-insecure
 ```
 
-Start the OTEL-enabled producer:
+For gRPC, add `--otel-protocol grpc --otel-endpoint localhost:34317`. The protocol defaults to `http/protobuf`. Endpoint URLs are accepted. TLS remains the exporter default unless an insecure URL or `--otel-insecure` explicitly selects plaintext. The standard OTLP endpoint/protocol environment variables are also accepted by the demo CLI; provider setup respects exporter environment configuration.
 
-```bash
-cd cmd/badgerbox-demo
-BADGERBOX_DEMO_OTEL_ENDPOINT=localhost:4318 \
-BADGERBOX_DEMO_OTEL_SERVICE_NAME=badgerbox-demo-producer \
-BADGERBOX_DEMO_EXPVAR_LISTEN_ADDR=0.0.0.0:18080 \
-go run . producer
-```
-
-Optionally start the consumer:
-
-```bash
-cd cmd/badgerbox-demo
-go run . consumer
-```
-
-### What to look for in Grafana
-
-On the provisioned `Badgerbox Demo Observability` dashboard with the `Prometheus` datasource:
-
-![Badgerbox demo Grafana dashboard](./images/demo_grafana_dashboard.png)
-
-- Queue state panels show ready, processing, and dead-letter depths, `Ready Drain ETA (5m)` and `Ready Drain ETA (1m)` estimates, plus oldest queue ages.
-- `Ready Drain ETA (5m)` is the smoother estimate. `Ready Drain ETA (1m)` is more responsive but noisier.
-- Both drain ETA panels estimate when the `ready` queue reaches zero from net ready drain rate: claim rate minus committed enqueue rate minus requeue rate. They show `No drain` when that net rate is flat, negative, or unavailable.
-- Throughput panels show enqueue, claim, process, retry, dead-letter, and conflict retry rates.
-- Latency panels show enqueue and process max, p99.9, p99, p95, p90, p75, p50, plus retry delay, schedule lag, and message age at claim time.
-- Runtime panels show active workers, buffered work channel depth, Go heap memory, runtime memory overhead, heap activity, and GC summary gauges from default expvar `memstats`.
-- Badger panels show storage and engine metrics from the producer's `/metrics` endpoint, where the producer republishes selected Badger `expvar` values through Prometheus's expvar collector.
-
-In Explore with the Prometheus datasource, useful raw queries are:
-
-- `badgerbox_queue_ready{namespace="demo"}`
-- `badgerbox_queue_processing{namespace="demo"}`
-- `sum(rate(badgerbox_claim_total{namespace="demo"}[5m])) - sum(rate(badgerbox_enqueue_total{namespace="demo",outcome="committed"}[5m])) - sum(rate(badgerbox_requeue_total{namespace="demo"}[5m]))`
-- `sum(rate(badgerbox_claim_total{namespace="demo"}[1m])) - sum(rate(badgerbox_enqueue_total{namespace="demo",outcome="committed"}[1m])) - sum(rate(badgerbox_requeue_total{namespace="demo"}[1m]))`
-- `rate(badgerbox_enqueue_total{namespace="demo"}[1m])`
-- `rate(badgerbox_process_attempt_total{namespace="demo"}[1m])`
-- `rate(badgerbox_dead_letter_total{namespace="demo"}[5m])`
-- `max(max_over_time(badgerbox_enqueue_duration_seconds_max{namespace="demo"}[5m]))`
-- `max(max_over_time(badgerbox_process_duration_seconds_max{namespace="demo"}[5m]))`
-- `histogram_quantile(0.999, sum by (le) (rate(badgerbox_process_duration_seconds_bucket{namespace="demo"}[5m])))`
-- `go_expvar_memstats{stat="HeapAlloc"}`
-- `go_expvar_memstats{stat="Sys"}`
-- `time() - (go_expvar_memstats{stat="LastGC"} / 1e9)`
-- `badger_size_bytes_lsm`
-- `badger_size_bytes_vlog`
-
-In Explore with the Tempo datasource:
-
-- use a raw TraceQL query like `{ resource.service.name = "badgerbox-demo-producer" }`
-- for errors only: `{ resource.service.name = "badgerbox-demo-producer" && status = error }`
-- for process spans only: `{ resource.service.name = "badgerbox-demo-producer" && name = "badgerbox.process" }`
-- inspect `badgerbox.enqueue`
-- inspect `badgerbox.process`
-- confirm `badgerbox.process` spans have the enqueue trace as their parent chain
-
-### Suggested verification flow
-
-1. Start the local stack.
-2. Start `badgerbox-demo kafka`.
-3. Start the OTEL-enabled producer.
-4. Watch `badgerbox_enqueue_total` and `badgerbox_process_attempt_total` begin increasing.
-5. Stop Kafka and let the producer keep running.
-6. Watch `badgerbox_queue_ready` rise and `badgerbox_retry_delay_seconds` receive samples.
-7. Restart Kafka.
-8. Watch the backlog drain and inspect linked enqueue and process spans in Tempo.
-
-## Production Guidance
-
-- Prefer metrics by default; add tracing when you need queue-path debugging or latency attribution.
-- Keep attributes low-cardinality. Avoid payload-derived dimensions.
-- If you scrape Badger `expvar`, treat it as process-scoped data. It is not a perfect per-store view in multi-Badger processes.
-- Use short metric export intervals only for demos. For normal services, choose intervals that match your scrape and retention costs.
-- Remember that `EnqueueTx` is reported as `prepared`, not `committed`, because the caller owns the surrounding transaction commit.
-
-## Troubleshooting
-
-No metrics:
-
-- Verify you configured an OTEL meter provider.
-- Verify your OTEL exporter reaches the collector.
-- Verify the collector metrics pipeline is running.
-- Verify Prometheus is scraping the collector.
-
-No traces:
-
-- Verify you configured an OTEL tracer provider.
-- Verify the collector traces pipeline is running.
-- Verify Tempo is configured and healthy.
-
-Missing Badger metrics:
-
-- Verify the demo producer is serving `/debug/vars` and `/metrics`.
-- Verify Prometheus is scraping the producer's `/metrics` endpoint.
-- Verify Badger was opened with metrics enabled. Badger defaults to enabled.
-- Remember that some Badger metrics stay zero until the corresponding storage path is exercised.
-
-Missing Go runtime memstats:
-
-- Verify the demo producer's `/metrics` endpoint includes `go_expvar_memstats`.
-- Verify Prometheus is scraping the producer's `/metrics` endpoint.
-
-Duplicate processing traces:
-
-- Duplicate delivery is possible by design because `badgerbox` is at-least-once.
-- Expired leases and retries create additional processing attempts, which correctly produce additional `badgerbox.process` spans.
-
-Unexpected queue depth:
-
-- `badgerbox_queue_ready` includes scheduled retry records that are pending future availability.
-- Use trace and retry metrics together to understand whether backlog is active, delayed, or dead-lettered.
+The optional expvar listener remains available for local Go runtime diagnostics. Queue/database telemetry uses the injected OpenTelemetry providers and does not require that listener. Shut down the runner before shutting down providers so final settlement and flush observations can be exported.
