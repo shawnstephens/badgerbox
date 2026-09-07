@@ -33,7 +33,7 @@ The existing `badgerbox_enqueue_duration_seconds_max` and `badgerbox_process_dur
 | `badgerbox_snapshot_duration_seconds`, `badgerbox_snapshot_error_total` | Polling cost and failures |
 | `badgerbox_kafka_produce_total`, `badgerbox_kafka_produce_error_total`, `badgerbox_kafka_promise_duration_seconds` | Kafka scheduling and asynchronous callback outcomes |
 
-Enqueue and processing duration maxima use `_max` gauges that reset after collection. Index snapshots scan keys without loading payload records. They are O(N), so set the polling interval to suit queue scale. Use explicit audits for row/index consistency checks.
+Enqueue and processing duration maxima use `_max` gauges over the current and previous time windows; collection does not reset them. Index snapshots scan keys without loading payload records. They are O(N), so set the polling interval to suit queue scale. Use explicit audits for row/index consistency checks.
 
 `telemetry.NewDeliveryObserver` records `badgerbox_delivery_flush_total`, `badgerbox_delivery_flush_error_total`, and `badgerbox_delivery_flush_duration_seconds`, with one configured `delivery` attribute. Record shared-client flushes once rather than once per queue using the client.
 
