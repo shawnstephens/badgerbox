@@ -39,6 +39,8 @@ type Options struct {
 	FlattenOnStartup       bool          // FlattenOnStartup enables synchronous startup LSM flattening.
 	ValueLogGCInterval     time.Duration // ValueLogGCInterval controls periodic GC cadence; zero disables it.
 	ValueLogGCDiscardRatio float64       // ValueLogGCDiscardRatio controls value-log rewrite eligibility.
+	ValueLogGCMaxRuns      int           // ValueLogGCMaxRuns limits calls per tick; zero selects eight.
+	ValueLogGCMaxDuration  time.Duration // ValueLogGCMaxDuration limits starting more calls per tick; zero selects one second.
 	Clock                  Clock         // Clock optionally supplies time and ticker behavior.
 	Logger                 *slog.Logger  // Logger optionally receives maintenance failures.
 	Observer               Observer      // Observer optionally receives completed operation results.
@@ -67,6 +69,9 @@ type Service struct {
 // ValidateOptions rejects settings that make Badger maintenance unsafe or ineffective.
 // Callers may use it before badger.Open so invalid settings do not create database files.
 func ValidateOptions(dbOptions badger.Options, options Options) error {
+	if options.ValueLogGCMaxRuns < 0 || options.ValueLogGCMaxDuration < 0 {
+		return maintenanceErrorf("Badger value-log GC budgets must be greater than or equal to zero")
+	}
 	if options.ValueLogGCInterval < 0 {
 		return maintenanceErrorf("Badger value-log GC interval must be greater than or equal to zero")
 	}
@@ -113,6 +118,12 @@ func newService(
 	}
 	if options.Logger == nil {
 		options.Logger = slog.Default()
+	}
+	if options.ValueLogGCMaxRuns == 0 {
+		options.ValueLogGCMaxRuns = 8
+	}
+	if options.ValueLogGCMaxDuration == 0 {
+		options.ValueLogGCMaxDuration = time.Second
 	}
 	return &Service{db: db, dbOptions: dbOptions, options: options}, nil
 }
@@ -218,12 +229,27 @@ func (m *Service) runValueLogGC(ctx context.Context, ticker Ticker, done chan<- 
 			if ctx.Err() != nil {
 				return
 			}
-			startedAt := m.options.Clock.Now()
-			err := m.db.RunValueLogGC(m.options.ValueLogGCDiscardRatio)
-			m.record(ctx, OperationValueLogGC, startedAt, err)
-			if err != nil && !errors.Is(err, badger.ErrNoRewrite) {
+			m.runValueLogGCPass(ctx)
+		}
+	}
+}
+
+// A pass catches up after successful rewrites without monopolizing maintenance.
+// The budget is checked between calls: Badger cannot interrupt an in-flight GC.
+func (m *Service) runValueLogGCPass(ctx context.Context) {
+	passStarted := m.options.Clock.Now()
+	for range m.options.ValueLogGCMaxRuns {
+		if ctx.Err() != nil || m.options.Clock.Now().Sub(passStarted) >= m.options.ValueLogGCMaxDuration {
+			return
+		}
+		startedAt := m.options.Clock.Now()
+		err := m.db.RunValueLogGC(m.options.ValueLogGCDiscardRatio)
+		m.record(ctx, OperationValueLogGC, startedAt, err)
+		if err != nil {
+			if !errors.Is(err, badger.ErrNoRewrite) {
 				m.options.Logger.ErrorContext(ctx, "badgerbox value-log GC failed", "error", err)
 			}
+			return
 		}
 	}
 }
