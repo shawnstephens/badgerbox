@@ -1,0 +1,797 @@
+{
+  "schema_version": 2,
+  "started_at": "2026-09-07T05:31:56.218757958Z",
+  "environment": {
+    "build_settings": [
+      {
+        "Key": "-buildmode",
+        "Value": "exe"
+      },
+      {
+        "Key": "-compiler",
+        "Value": "gc"
+      },
+      {
+        "Key": "CGO_ENABLED",
+        "Value": "0"
+      },
+      {
+        "Key": "GOARCH",
+        "Value": "arm64"
+      },
+      {
+        "Key": "GOOS",
+        "Value": "linux"
+      },
+      {
+        "Key": "GOARM64",
+        "Value": "v8.0"
+      },
+      {
+        "Key": "vcs",
+        "Value": "git"
+      },
+      {
+        "Key": "vcs.revision",
+        "Value": "7321cc745bd24e3a9ba19d0b02de13c1b19b6bbe"
+      },
+      {
+        "Key": "vcs.time",
+        "Value": "2026-09-07T05:30:31Z"
+      },
+      {
+        "Key": "vcs.modified",
+        "Value": "false"
+      }
+    ],
+    "dependencies": [
+      {
+        "Path": "dario.cat/mergo",
+        "Version": "v1.0.2",
+        "Sum": "h1:85+piFYR1tMbRrLcDwR18y4UKJ3aH1Tbzi24VRW1TK8="
+      },
+      {
+        "Path": "github.com/beorn7/perks",
+        "Version": "v1.0.1",
+        "Sum": "h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM="
+      },
+      {
+        "Path": "github.com/cenkalti/backoff/v4",
+        "Version": "v4.3.0",
+        "Sum": "h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8="
+      },
+      {
+        "Path": "github.com/cenkalti/backoff/v5",
+        "Version": "v5.0.3",
+        "Sum": "h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM="
+      },
+      {
+        "Path": "github.com/cespare/xxhash/v2",
+        "Version": "v2.3.0",
+        "Sum": "h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs="
+      },
+      {
+        "Path": "github.com/containerd/errdefs",
+        "Version": "v1.0.0",
+        "Sum": "h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI="
+      },
+      {
+        "Path": "github.com/containerd/errdefs/pkg",
+        "Version": "v0.3.0",
+        "Sum": "h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE="
+      },
+      {
+        "Path": "github.com/containerd/log",
+        "Version": "v0.1.0",
+        "Sum": "h1:TCJt7ioM2cr/tfR8GPbGf9/VRAX8D2B4PjzCpfX540I="
+      },
+      {
+        "Path": "github.com/containerd/platforms",
+        "Version": "v0.2.1",
+        "Sum": "h1:zvwtM3rz2YHPQsF2CHYM8+KtB5dvhISiXh5ZpSBQv6A="
+      },
+      {
+        "Path": "github.com/cpuguy83/dockercfg",
+        "Version": "v0.3.2",
+        "Sum": "h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GKorA="
+      },
+      {
+        "Path": "github.com/dgraph-io/badger/v4",
+        "Version": "v4.9.6",
+        "Sum": "h1:IQqMPVGLNCQr1b4Mu8lHkYm/xyqFRsyKaFEtyLi9CCQ="
+      },
+      {
+        "Path": "github.com/dgraph-io/ristretto/v2",
+        "Version": "v2.2.0",
+        "Sum": "h1:bkY3XzJcXoMuELV8F+vS8kzNgicwQFAaGINAEJdWGOM="
+      },
+      {
+        "Path": "github.com/distribution/reference",
+        "Version": "v0.6.0",
+        "Sum": "h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk="
+      },
+      {
+        "Path": "github.com/docker/go-connections",
+        "Version": "v0.6.0",
+        "Sum": "h1:LlMG9azAe1TqfR7sO+NJttz1gy6KO7VJBh+pMmjSD94="
+      },
+      {
+        "Path": "github.com/docker/go-units",
+        "Version": "v0.5.0",
+        "Sum": "h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4="
+      },
+      {
+        "Path": "github.com/dustin/go-humanize",
+        "Version": "v1.0.1",
+        "Sum": "h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY="
+      },
+      {
+        "Path": "github.com/fatih/color",
+        "Version": "v1.18.0",
+        "Sum": "h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM="
+      },
+      {
+        "Path": "github.com/felixge/httpsnoop",
+        "Version": "v1.1.0",
+        "Sum": "h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeORc="
+      },
+      {
+        "Path": "github.com/go-logr/logr",
+        "Version": "v1.4.4",
+        "Sum": "h1:tG4xh9yMsRCAiodLVTxyrkzSZ9+o0L1Kg/+cPVcbP/8="
+      },
+      {
+        "Path": "github.com/go-logr/stdr",
+        "Version": "v1.2.2",
+        "Sum": "h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag="
+      },
+      {
+        "Path": "github.com/google/flatbuffers",
+        "Version": "v25.2.10+incompatible",
+        "Sum": "h1:F3vclr7C3HpB1k9mxCGRMXq6FdUalZ6H/pNX4FP1v0Q="
+      },
+      {
+        "Path": "github.com/google/uuid",
+        "Version": "v1.6.0",
+        "Sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0="
+      },
+      {
+        "Path": "github.com/grpc-ecosystem/grpc-gateway/v2",
+        "Version": "v2.30.0",
+        "Sum": "h1:/Tnpcb2E0Pz/tN9s3bfEY2Q8ePCEX9iuS+cneUwncnw="
+      },
+      {
+        "Path": "github.com/klauspost/compress",
+        "Version": "v1.18.6",
+        "Sum": "h1:2jupLlAwFm95+YDR+NwD2MEfFO9d4z4Prjl1XXDjuao="
+      },
+      {
+        "Path": "github.com/magiconair/properties",
+        "Version": "v1.8.10",
+        "Sum": "h1:s31yESBquKXCV9a/ScB3ESkOjUYYv+X0rg8SYxI99mE="
+      },
+      {
+        "Path": "github.com/mattn/go-colorable",
+        "Version": "v0.1.14",
+        "Sum": "h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE="
+      },
+      {
+        "Path": "github.com/mattn/go-isatty",
+        "Version": "v0.0.20",
+        "Sum": "h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY="
+      },
+      {
+        "Path": "github.com/moby/docker-image-spec",
+        "Version": "v1.3.1",
+        "Sum": "h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0="
+      },
+      {
+        "Path": "github.com/moby/go-archive",
+        "Version": "v0.2.0",
+        "Sum": "h1:zg5QDUM2mi0JIM9fdQZWC7U8+2ZfixfTYoHL7rWUcP8="
+      },
+      {
+        "Path": "github.com/moby/moby/api",
+        "Version": "v1.54.1",
+        "Sum": "h1:TqVzuJkOLsgLDDwNLmYqACUuTehOHRGKiPhvH8V3Nn4="
+      },
+      {
+        "Path": "github.com/moby/moby/client",
+        "Version": "v0.4.0",
+        "Sum": "h1:S+2XegzHQrrvTCvF6s5HFzcrywWQmuVnhOXe2kiWjIw="
+      },
+      {
+        "Path": "github.com/moby/patternmatcher",
+        "Version": "v0.6.1",
+        "Sum": "h1:qlhtafmr6kgMIJjKJMDmMWq7WLkKIo23hsrpR3x084U="
+      },
+      {
+        "Path": "github.com/moby/sys/sequential",
+        "Version": "v0.6.0",
+        "Sum": "h1:qrx7XFUd/5DxtqcoH1h438hF5TmOvzC/lspjy7zgvCU="
+      },
+      {
+        "Path": "github.com/moby/sys/user",
+        "Version": "v0.4.0",
+        "Sum": "h1:jhcMKit7SA80hivmFJcbB1vqmw//wU61Zdui2eQXuMs="
+      },
+      {
+        "Path": "github.com/moby/sys/userns",
+        "Version": "v0.1.0",
+        "Sum": "h1:tVLXkFOxVu9A64/yh59slHVv9ahO9UIev4JZusOLG/g="
+      },
+      {
+        "Path": "github.com/moby/term",
+        "Version": "v0.5.2",
+        "Sum": "h1:6qk3FJAFDs6i/q3W/pQ97SX192qKfZgGjCQqfCJkgzQ="
+      },
+      {
+        "Path": "github.com/munnerz/goautoneg",
+        "Version": "v0.0.0-20191010083416-a7dc8b61c822",
+        "Sum": "h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA="
+      },
+      {
+        "Path": "github.com/opencontainers/go-digest",
+        "Version": "v1.0.0",
+        "Sum": "h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U="
+      },
+      {
+        "Path": "github.com/opencontainers/image-spec",
+        "Version": "v1.1.1",
+        "Sum": "h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040="
+      },
+      {
+        "Path": "github.com/pierrec/lz4/v4",
+        "Version": "v4.1.26",
+        "Sum": "h1:GrpZw1gZttORinvzBdXPUXATeqlJjqUG/D87TKMnhjY="
+      },
+      {
+        "Path": "github.com/prometheus/client_golang",
+        "Version": "v1.23.2",
+        "Sum": "h1:Je96obch5RDVy3FDMndoUsjAhG5Edi49h0RJWRi/o0o="
+      },
+      {
+        "Path": "github.com/prometheus/client_model",
+        "Version": "v0.6.2",
+        "Sum": "h1:oBsgwpGs7iVziMvrGhE53c/GrLUsZdHnqNwqPLxwZyk="
+      },
+      {
+        "Path": "github.com/prometheus/common",
+        "Version": "v0.66.1",
+        "Sum": "h1:h5E0h5/Y8niHc5DlaLlWLArTQI7tMrsfQjHV+d9ZoGs="
+      },
+      {
+        "Path": "github.com/prometheus/procfs",
+        "Version": "v0.16.1",
+        "Sum": "h1:hZ15bTNuirocR6u0JZ6BAHHmwS1p8B4P6MRqxtzMyRg="
+      },
+      {
+        "Path": "github.com/shawnstephens/badgerbox",
+        "Version": "v0.0.0",
+        "Replace": {
+          "Path": "../..",
+          "Version": "(devel)"
+        }
+      },
+      {
+        "Path": "github.com/shirou/gopsutil/v4",
+        "Version": "v4.26.3",
+        "Sum": "h1:2ESdQt90yU3oXF/CdOlRCJxrP+Am1aBYubTMTfxJ1qc="
+      },
+      {
+        "Path": "github.com/sirupsen/logrus",
+        "Version": "v1.9.4",
+        "Sum": "h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w="
+      },
+      {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.12.1",
+        "Sum": "h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE="
+      },
+      {
+        "Path": "github.com/testcontainers/testcontainers-go",
+        "Version": "v0.42.0",
+        "Sum": "h1:He3IhTzTZOygSXLJPMX7n44XtK+qhjat1nI9cneBbUY="
+      },
+      {
+        "Path": "github.com/testcontainers/testcontainers-go/modules/kafka",
+        "Version": "v0.42.0",
+        "Sum": "h1:b3plW+MUoF6ZaVOAlLjNQMJsigPLsJFIOqHdzMFv/w4="
+      },
+      {
+        "Path": "github.com/tklauser/go-sysconf",
+        "Version": "v0.3.16",
+        "Sum": "h1:frioLaCQSsF5Cy1jgRBrzr6t502KIIwQ0MArYICU0nA="
+      },
+      {
+        "Path": "github.com/tklauser/numcpus",
+        "Version": "v0.11.0",
+        "Sum": "h1:nSTwhKH5e1dMNsCdVBukSZrURJRoHbSEQjdEbY+9RXw="
+      },
+      {
+        "Path": "github.com/twmb/franz-go",
+        "Version": "v1.21.5",
+        "Sum": "h1:cVYI2+JTTKSvohhy8bCOleYrS7G79ZBrLVFIJsoHm8M="
+      },
+      {
+        "Path": "github.com/twmb/franz-go/pkg/kmsg",
+        "Version": "v1.13.1",
+        "Sum": "h1:fG5kItwysTk5UXqVwb64EpQEy3TydF3vYYK21nUQ+bI="
+      },
+      {
+        "Path": "github.com/urfave/cli/v3",
+        "Version": "v3.8.0",
+        "Sum": "h1:XqKPrm0q4P0q5JpoclYoCAv0/MIvH/jZ2umzuf8pNTI="
+      },
+      {
+        "Path": "go.opentelemetry.io/auto/sdk",
+        "Version": "v1.2.1",
+        "Sum": "h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64="
+      },
+      {
+        "Path": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+        "Version": "v0.70.0",
+        "Sum": "h1:LMuyCAyfalSjDyjdC65nK6N0zoTT63+E/u95X0JovZI="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel",
+        "Version": "v1.46.0",
+        "Sum": "h1:FHt5/CDyVxi/8IM1CH7VE/rRgq3kLHa2mSTVMO8AWyc="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc",
+        "Version": "v1.46.0",
+        "Sum": "h1:qkDYCAFiZXLcs1L4aY+tP2wguQ4kURANqHOQMA2et2s="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp",
+        "Version": "v1.46.0",
+        "Sum": "h1:AP23h/mFgb/lc7tdck1Kfn9qxsM8TAeNPCU5C3pzaps="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+        "Version": "v1.46.0",
+        "Sum": "h1:OFnwLJr+pF3iHrlGSzbxyuo6/6HyBlnlN1CWEJmBVcw="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+        "Version": "v1.46.0",
+        "Sum": "h1:w53CDeOA/Kurp7yRsegSr6pbbr759dOvJ+yNmWM6Hxs="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+        "Version": "v1.46.0",
+        "Sum": "h1:KrC1YrQeSt46ITMWAbgQx1M1eV1/1TKzttrBzymPmss="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/metric",
+        "Version": "v1.46.0",
+        "Sum": "h1:yBnkXvgV7AXFILZc5K6IZe/CBFF3OS7BJ8ov6/lj0K8="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/sdk",
+        "Version": "v1.46.0",
+        "Sum": "h1:h5CNQQjEbuQXY/JfZtgt3i7HVFV3aHPO2OAwO2eTYPI="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/sdk/metric",
+        "Version": "v1.46.0",
+        "Sum": "h1:0piZ26EG4RBfebb2jhDH6ERCYHoVWduc3kLgPCwSnSE="
+      },
+      {
+        "Path": "go.opentelemetry.io/otel/trace",
+        "Version": "v1.46.0",
+        "Sum": "h1:OULy7ccdJnZtJ0UDYFOIGaCmiWzJ8Vi2G/Rsu60qs1c="
+      },
+      {
+        "Path": "go.opentelemetry.io/proto/otlp",
+        "Version": "v1.11.0",
+        "Sum": "h1:5rrYs0Ykyj50sdU/JU0x8etU+LubXWb+gED6TbEdMIk="
+      },
+      {
+        "Path": "go.yaml.in/yaml/v2",
+        "Version": "v2.4.2",
+        "Sum": "h1:DzmwEr2rDGHl7lsFgAHxmNz/1NlQ7xLIrlN2h5d1eGI="
+      },
+      {
+        "Path": "go.yaml.in/yaml/v3",
+        "Version": "v3.0.5",
+        "Sum": "h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw="
+      },
+      {
+        "Path": "golang.org/x/crypto",
+        "Version": "v0.55.0",
+        "Sum": "h1:+KWHjbgOaAQ66dh/YlkZKHlz9ZUlq61AFirAR9ntP8M="
+      },
+      {
+        "Path": "golang.org/x/mod",
+        "Version": "v0.38.0",
+        "Sum": "h1:MECBjubtXD7yj4HrhIUcywNaGeNVUdfVnxmPajOk4yk="
+      },
+      {
+        "Path": "golang.org/x/net",
+        "Version": "v0.58.0",
+        "Sum": "h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To="
+      },
+      {
+        "Path": "golang.org/x/sys",
+        "Version": "v0.47.0",
+        "Sum": "h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs="
+      },
+      {
+        "Path": "golang.org/x/text",
+        "Version": "v0.41.0",
+        "Sum": "h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8="
+      },
+      {
+        "Path": "google.golang.org/genproto/googleapis/api",
+        "Version": "v0.0.0-20260819154853-08b0e4226688",
+        "Sum": "h1:ax2KzoSRIZU/M0cIxri3pKxy99vniH1PVxWC6si/eZI="
+      },
+      {
+        "Path": "google.golang.org/genproto/googleapis/rpc",
+        "Version": "v0.0.0-20260819154853-08b0e4226688",
+        "Sum": "h1:cYNAzI2sUwhmCcoj9TxvihSrqsxt6uIkj3rDRhSDmW4="
+      },
+      {
+        "Path": "google.golang.org/grpc",
+        "Version": "v1.83.1",
+        "Sum": "h1:HIO0+BEtBP6soyqvqC8sNUjZ7bTs+0hFQuFF+RAy++Y="
+      },
+      {
+        "Path": "google.golang.org/protobuf",
+        "Version": "v1.36.12",
+        "Sum": "h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc="
+      }
+    ],
+    "go_version": "go1.26.2",
+    "goarch": "arm64",
+    "gogc_env": "",
+    "gomaxprocs": 2,
+    "gomemlimit_env": "96MiB",
+    "goos": "linux",
+    "logical_cpus": 8
+  },
+  "config": {
+    "resource_controls": {
+      "admission_limits": {
+        "max_retained_messages": 128,
+        "max_retained_bytes": 67108864
+      },
+      "claim_max_bytes": 2097152,
+      "min_free_disk_bytes": 536870912,
+      "disk_check_interval_nanoseconds": 100000000,
+      "admission_retry_interval_nanoseconds": 10000000
+    },
+    "processor": {
+      "ClaimMaxBytes": 2097152,
+      "Concurrency": 4,
+      "PollInterval": 250000000,
+      "LeaseDuration": 30000000000,
+      "RetryBaseDelay": 1000000000,
+      "RetryMaxDelay": 5000000000,
+      "MaxAttempts": 36,
+      "RequeuePageSize": 64,
+      "SettlementTimeout": 10000000000,
+      "ClaimBatchSize": 32
+    },
+    "maintenance": {
+      "FlattenOnStartup": false,
+      "ValueLogGCInterval": 60000000000,
+      "ValueLogGCDiscardRatio": 0.1,
+      "ValueLogGCMaxRuns": 8,
+      "ValueLogGCMaxDuration": 1000000000,
+      "Clock": null,
+      "Logger": null,
+      "Observer": null
+    },
+    "messages": 4,
+    "payload_bytes": 16384,
+    "offered_messages_per_second": 0,
+    "enqueue_workers": 1,
+    "processor_workers": 4,
+    "claim_batch_size": 32,
+    "transport": "local-verified-sink",
+    "timeout": "10s",
+    "sample_interval": "100ms",
+    "timeline_interval": "1s",
+    "timeline_max_points": 600,
+    "observe_after_drain": "0s",
+    "delivery_delay": "0s",
+    "outage": "0s",
+    "fail_every": 0,
+    "badger": {
+      "Dir": "/data/badgerbox-benchmark-4241460256",
+      "ValueDir": "/data/badgerbox-benchmark-4241460256",
+      "SyncWrites": true,
+      "NumVersionsToKeep": 1,
+      "ReadOnly": false,
+      "Logger": null,
+      "Compression": 1,
+      "InMemory": false,
+      "MetricsEnabled": true,
+      "NumGoroutines": 8,
+      "MemTableSize": 4194304,
+      "BaseTableSize": 1048576,
+      "BaseLevelSize": 10485760,
+      "LevelSizeMultiplier": 10,
+      "TableSizeMultiplier": 2,
+      "MaxLevels": 7,
+      "VLogPercentile": 0,
+      "ValueThreshold": 1024,
+      "NumMemtables": 2,
+      "BlockSize": 4096,
+      "BloomFalsePositive": 0.01,
+      "BlockCacheSize": 8388608,
+      "IndexCacheSize": 4194304,
+      "NumLevelZeroTables": 5,
+      "NumLevelZeroTablesStall": 15,
+      "ValueLogFileSize": 8388608,
+      "ValueLogMaxEntries": 1000000,
+      "NumCompactors": 2,
+      "CompactL0OnClose": false,
+      "LmaxCompaction": false,
+      "ZSTDCompressionLevel": 1,
+      "VerifyValueChecksum": false,
+      "EncryptionKey": "",
+      "EncryptionKeyRotationDuration": 864000000000000,
+      "BypassLockGuard": false,
+      "ChecksumVerificationMode": 0,
+      "DetectConflicts": true,
+      "NamespaceOffset": -1,
+      "ExternalMagicVersion": 0
+    }
+  },
+  "db_path": "/data/badgerbox-benchmark-4241460256",
+  "passed": true,
+  "accepted": 4,
+  "unique_delivered": 4,
+  "duplicate_deliveries": 0,
+  "invalid_deliveries": 0,
+  "publish_attempts": 4,
+  "admission_rejected_attempts": 0,
+  "admission_rejections": {
+    "disk_pressure": 0,
+    "namespace_quota": 0
+  },
+  "enqueue_seconds": 0.010140167,
+  "delivery_seconds": 0.023256542,
+  "enqueue_messages_per_second": 394.4708208454555,
+  "delivery_messages_per_second": 171.994615536566,
+  "delivery_payload_mib_per_second": 2.6874158677588436,
+  "enqueue_latency_seconds": {
+    "count": 4,
+    "mean": 0.0024988125,
+    "p50_upper_bound": 0.0004650645016532169,
+    "p95_upper_bound": 0.008496625,
+    "p99_upper_bound": 0.008496625,
+    "max": 0.008496625
+  },
+  "delivery_latency_seconds": {
+    "count": 4,
+    "mean": 0.004389770499999999,
+    "p50_upper_bound": 0.002819219050556846,
+    "p95_upper_bound": 0.009193083,
+    "p99_upper_bound": 0.009193083,
+    "max": 0.009193083
+  },
+  "resources": {
+    "started_at": "2026-09-07T05:31:56.225968542Z",
+    "elapsed_seconds": 0.024530042,
+    "measurements_complete": true,
+    "samples": 2,
+    "sampled_peak_rss_bytes": 30711808,
+    "sampled_peak_heap_bytes": 10032136,
+    "sampled_peak_apparent_disk_bytes": 26214447,
+    "final_apparent_disk_bytes": 1285834,
+    "total_allocated_bytes": 2663280,
+    "gc_cycles": 0,
+    "gc_pause_seconds": 0,
+    "cpu_seconds": 0,
+    "average_cpu_cores": 0
+  },
+  "resource_timeline": {
+    "requested_interval_seconds": 1,
+    "retained_every_nth_observation": 1,
+    "observed_points": 2,
+    "max_points": 600,
+    "points": [
+      {
+        "timestamp": "2026-09-07T05:31:56.226311583Z",
+        "elapsed_seconds": 0.00034325,
+        "phase": "delivery",
+        "measurements_complete": true,
+        "rss_bytes": 25272320,
+        "heap_bytes": 7408152,
+        "total_allocated_bytes": 17480,
+        "go_gc_cycles": 0,
+        "cpu_seconds": 0,
+        "apparent_disk": {
+          "total_bytes": 26214447,
+          "value_log_bytes": 16777216,
+          "lsm_bytes": 0,
+          "wal_bytes": 8388608,
+          "other_bytes": 1048623
+        },
+        "accepted": 0,
+        "unique_delivered": 0,
+        "retained_messages": 0,
+        "retained_bytes": 0,
+        "admission_rejected_attempts": 0,
+        "value_log_gc_rewrites": 0,
+        "value_log_gc_no_rewrite": 0,
+        "value_log_gc_errors": 0,
+        "compaction_written_bytes": 0
+      },
+      {
+        "timestamp": "2026-09-07T05:31:56.2497785Z",
+        "elapsed_seconds": 0.02381,
+        "phase": "stopped",
+        "measurements_complete": true,
+        "rss_bytes": 30711808,
+        "heap_bytes": 10032136,
+        "total_allocated_bytes": 2641464,
+        "go_gc_cycles": 0,
+        "cpu_seconds": 0,
+        "apparent_disk": {
+          "total_bytes": 26214447,
+          "value_log_bytes": 16777216,
+          "lsm_bytes": 0,
+          "wal_bytes": 8388608,
+          "other_bytes": 1048623
+        },
+        "accepted": 4,
+        "unique_delivered": 4,
+        "retained_messages": 0,
+        "retained_bytes": 0,
+        "admission_rejected_attempts": 0,
+        "value_log_gc_rewrites": 0,
+        "value_log_gc_no_rewrite": 0,
+        "value_log_gc_errors": 0,
+        "compaction_written_bytes": 0
+      }
+    ]
+  },
+  "final_queue": {
+    "ReadyDepth": 0,
+    "ProcessingDepth": 0,
+    "DeadLetterDepth": 0,
+    "OldestReadyAge": 0,
+    "OldestProcessingAge": 0
+  },
+  "final_usage": {
+    "limits": {
+      "max_retained_messages": 128,
+      "max_retained_bytes": 67108864
+    },
+    "retained_messages": 0,
+    "retained_bytes": 0
+  },
+  "final_audit": {
+    "complete": true,
+    "scanned_keys": 1,
+    "scanned_bytes": 87,
+    "generated_at": "2026-09-07T05:31:56.249653333Z",
+    "namespace": "benchmark",
+    "live_rows": 0,
+    "states": {
+      "ready": {
+        "rows": 0,
+        "lifecycle": {
+          "keys": 0,
+          "missing": 0,
+          "orphaned": 0,
+          "wrong_state": 0,
+          "timestamp_mismatches": 0,
+          "value_mismatches": 0,
+          "duplicate_keys": 0
+        },
+        "created": {
+          "keys": 0,
+          "missing": 0,
+          "orphaned": 0,
+          "wrong_state": 0,
+          "timestamp_mismatches": 0,
+          "value_mismatches": 0,
+          "duplicate_keys": 0
+        }
+      },
+      "processing": {
+        "rows": 0,
+        "lifecycle": {
+          "keys": 0,
+          "missing": 0,
+          "orphaned": 0,
+          "wrong_state": 0,
+          "timestamp_mismatches": 0,
+          "value_mismatches": 0,
+          "duplicate_keys": 0
+        },
+        "created": {
+          "keys": 0,
+          "missing": 0,
+          "orphaned": 0,
+          "wrong_state": 0,
+          "timestamp_mismatches": 0,
+          "value_mismatches": 0,
+          "duplicate_keys": 0
+        }
+      }
+    },
+    "dead_letters": {
+      "referenced_rows": 0,
+      "rows": 0,
+      "duplicate_ids": 0,
+      "live_row_collisions": 0,
+      "record_id_mismatches": 0,
+      "failed_at_mismatches": 0,
+      "unexpected_record_states": 0
+    },
+    "usage": {
+      "persisted": {
+        "limits": {
+          "max_retained_messages": 128,
+          "max_retained_bytes": 67108864
+        },
+        "retained_messages": 0,
+        "retained_bytes": 0
+      },
+      "retained_messages": 0,
+      "retained_bytes": 0,
+      "matches": true
+    },
+    "samples": {}
+  },
+  "metric_totals": {
+    "badgerbox_claim_total": 4,
+    "badgerbox_conflict_retry_total": 1,
+    "badgerbox_enqueue_total": 4,
+    "badgerbox_process_attempt_total": 4,
+    "badgerbox_process_batch_total": 3
+  },
+  "metric_series": [
+    {
+      "name": "badgerbox_claim_total",
+      "scope": "github.com/shawnstephens/badgerbox",
+      "attributes": {
+        "namespace": "benchmark",
+        "outcome": "success"
+      },
+      "value": 4
+    },
+    {
+      "name": "badgerbox_conflict_retry_total",
+      "scope": "github.com/shawnstephens/badgerbox",
+      "attributes": {
+        "namespace": "benchmark"
+      },
+      "value": 1
+    },
+    {
+      "name": "badgerbox_enqueue_total",
+      "scope": "github.com/shawnstephens/badgerbox",
+      "attributes": {
+        "namespace": "benchmark",
+        "outcome": "committed"
+      },
+      "value": 4
+    },
+    {
+      "name": "badgerbox_process_attempt_total",
+      "scope": "github.com/shawnstephens/badgerbox",
+      "attributes": {
+        "namespace": "benchmark",
+        "outcome": "success"
+      },
+      "value": 4
+    },
+    {
+      "name": "badgerbox_process_batch_total",
+      "scope": "github.com/shawnstephens/badgerbox",
+      "attributes": {
+        "namespace": "benchmark"
+      },
+      "value": 3
+    }
+  ]
+}

@@ -1,0 +1,7305 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-09-07T05:34:27.296080667Z",
+  "command": [
+    "/badgerbox-demo",
+    "benchmark",
+    "--messages",
+    "90000",
+    "--rate",
+    "500",
+    "--payload-bytes",
+    "16384",
+    "--observe-after-drain",
+    "30s",
+    "--timeout",
+    "330s",
+    "--db-path",
+    "/data",
+    "--output",
+    "/output/report.json",
+    "--max-retained-messages",
+    "128",
+    "--max-retained-bytes",
+    "64MiB",
+    "--processor-claim-max-bytes",
+    "2MiB",
+    "--min-free-disk-bytes",
+    "512MiB",
+    "--disk-check-interval",
+    "100ms",
+    "--admission-retry-interval",
+    "10ms",
+    "--sample-interval",
+    "100ms",
+    "--timeline-interval",
+    "1s",
+    "--timeline-max-points",
+    "600",
+    "--badger-sync-writes=true",
+    "--badger-value-threshold",
+    "1KiB",
+    "--badger-memtable-size",
+    "4MiB",
+    "--badger-num-memtables",
+    "2",
+    "--badger-num-level-zero-tables",
+    "2",
+    "--badger-num-level-zero-tables-stall",
+    "6",
+    "--badger-block-cache-size",
+    "8MiB",
+    "--badger-index-cache-size",
+    "4MiB",
+    "--badger-base-table-size",
+    "1MiB",
+    "--badger-value-log-file-size",
+    "8MiB",
+    "--badger-num-compactors",
+    "2",
+    "--badger-gc-interval",
+    "1s",
+    "--badger-gc-discard-ratio",
+    "0.5",
+    "--badger-gc-max-runs",
+    "8",
+    "--badger-gc-max-duration",
+    "1s",
+    "--enqueue-parallelism",
+    "2",
+    "--processor-concurrency",
+    "2",
+    "--processor-claim-batch-size",
+    "16",
+    "--poll-interval",
+    "5ms",
+    "--retry-base-delay",
+    "10ms",
+    "--retry-max-delay",
+    "100ms"
+  ],
+  "kernel_limits": {
+    "cpu.max": "200000 100000",
+    "memory.max": "268435456",
+    "memory.swap.max": "0"
+  },
+  "sample_interval": "1s",
+  "max_points": 1024,
+  "observed_points": 212,
+  "retained_every_nth_observation": 1,
+  "points": [
+    {
+      "timestamp": "2026-09-07T05:34:27.296108125Z",
+      "elapsed_seconds": 0.000027542,
+      "memory_current_bytes": 5664768,
+      "memory_peak_bytes": 7786496,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 0,
+        "nr_throttled": 0,
+        "system_usec": 2605,
+        "throttled_usec": 0,
+        "usage_usec": 7817,
+        "user_usec": 5211
+      },
+      "memory_stat": {
+        "anon": 4444160,
+        "file": 4096,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 999424,
+        "slab": 490936
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:28.298796793Z",
+      "elapsed_seconds": 1.002716292,
+      "memory_current_bytes": 56258560,
+      "memory_peak_bytes": 56258560,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 10,
+        "nr_throttled": 0,
+        "system_usec": 34144,
+        "throttled_usec": 0,
+        "usage_usec": 423397,
+        "user_usec": 389252
+      },
+      "memory_stat": {
+        "anon": 23568384,
+        "file": 29302784,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 2031616,
+        "slab": 1393400
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:29.297260835Z",
+      "elapsed_seconds": 2.001180293,
+      "memory_current_bytes": 91070464,
+      "memory_peak_bytes": 91070464,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 20,
+        "nr_throttled": 0,
+        "system_usec": 58431,
+        "throttled_usec": 0,
+        "usage_usec": 868278,
+        "user_usec": 809846
+      },
+      "memory_stat": {
+        "anon": 25214976,
+        "file": 59879424,
+        "file_dirty": 45056,
+        "file_writeback": 0,
+        "kernel": 3022848,
+        "slab": 2308488
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:30.296838043Z",
+      "elapsed_seconds": 3.000757418,
+      "memory_current_bytes": 121671680,
+      "memory_peak_bytes": 121671680,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 30,
+        "nr_throttled": 0,
+        "system_usec": 94456,
+        "throttled_usec": 0,
+        "usage_usec": 1337311,
+        "user_usec": 1242854
+      },
+      "memory_stat": {
+        "anon": 24494080,
+        "file": 89989120,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 4018176,
+        "slab": 3219056
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:31.297075919Z",
+      "elapsed_seconds": 4.000995377,
+      "memory_current_bytes": 151937024,
+      "memory_peak_bytes": 151937024,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 40,
+        "nr_throttled": 0,
+        "system_usec": 127598,
+        "throttled_usec": 0,
+        "usage_usec": 1761259,
+        "user_usec": 1633661
+      },
+      "memory_stat": {
+        "anon": 24297472,
+        "file": 119242752,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 4964352,
+        "slab": 4096680
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:32.298327128Z",
+      "elapsed_seconds": 5.002247044,
+      "memory_current_bytes": 183570432,
+      "memory_peak_bytes": 183570432,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 50,
+        "nr_throttled": 0,
+        "system_usec": 156815,
+        "throttled_usec": 0,
+        "usage_usec": 2200384,
+        "user_usec": 2043569
+      },
+      "memory_stat": {
+        "anon": 24969216,
+        "file": 149041152,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 5931008,
+        "slab": 4993368
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:33.296847628Z",
+      "elapsed_seconds": 6.000767045,
+      "memory_current_bytes": 216715264,
+      "memory_peak_bytes": 216715264,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 60,
+        "nr_throttled": 0,
+        "system_usec": 198757,
+        "throttled_usec": 0,
+        "usage_usec": 2661363,
+        "user_usec": 2462605
+      },
+      "memory_stat": {
+        "anon": 26370048,
+        "file": 179630080,
+        "file_dirty": 20480,
+        "file_writeback": 4096,
+        "kernel": 6914048,
+        "slab": 5894488
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:34.299154629Z",
+      "elapsed_seconds": 7.00307417,
+      "memory_current_bytes": 255451136,
+      "memory_peak_bytes": 256233472,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 70,
+        "nr_throttled": 0,
+        "system_usec": 237184,
+        "throttled_usec": 0,
+        "usage_usec": 3115427,
+        "user_usec": 2878242
+      },
+      "memory_stat": {
+        "anon": 38232064,
+        "file": 205864960,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 7811072,
+        "slab": 6696040
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:35.297963046Z",
+      "elapsed_seconds": 8.001882462,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268435456,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 89,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 80,
+        "nr_throttled": 0,
+        "system_usec": 275270,
+        "throttled_usec": 0,
+        "usage_usec": 3626388,
+        "user_usec": 3351117
+      },
+      "memory_stat": {
+        "anon": 42946560,
+        "file": 213614592,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8069120,
+        "slab": 6890600
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:36.297878546Z",
+      "elapsed_seconds": 9.001797963,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268435456,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 203,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 90,
+        "nr_throttled": 0,
+        "system_usec": 307546,
+        "throttled_usec": 0,
+        "usage_usec": 4163857,
+        "user_usec": 3856311
+      },
+      "memory_stat": {
+        "anon": 42795008,
+        "file": 213434368,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8241152,
+        "slab": 6973344
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:37.297445463Z",
+      "elapsed_seconds": 10.00136488,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268435456,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 321,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 100,
+        "nr_throttled": 0,
+        "system_usec": 344164,
+        "throttled_usec": 0,
+        "usage_usec": 4708254,
+        "user_usec": 4364090
+      },
+      "memory_stat": {
+        "anon": 42831872,
+        "file": 212959232,
+        "file_dirty": 20480,
+        "file_writeback": 4096,
+        "kernel": 8396800,
+        "slab": 7075192
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:38.297118464Z",
+      "elapsed_seconds": 11.00103788,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 417,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 110,
+        "nr_throttled": 0,
+        "system_usec": 381671,
+        "throttled_usec": 0,
+        "usage_usec": 5287307,
+        "user_usec": 4905635
+      },
+      "memory_stat": {
+        "anon": 30916608,
+        "file": 217350144,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8683520,
+        "slab": 7274360
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:39.297870756Z",
+      "elapsed_seconds": 12.001790339,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 529,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 120,
+        "nr_throttled": 0,
+        "system_usec": 403240,
+        "throttled_usec": 0,
+        "usage_usec": 5872057,
+        "user_usec": 5468817
+      },
+      "memory_stat": {
+        "anon": 31424512,
+        "file": 218447872,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8896512,
+        "slab": 7397472
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:40.297851465Z",
+      "elapsed_seconds": 13.001770881,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 643,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 130,
+        "nr_throttled": 0,
+        "system_usec": 439152,
+        "throttled_usec": 0,
+        "usage_usec": 6477757,
+        "user_usec": 6038604
+      },
+      "memory_stat": {
+        "anon": 31227904,
+        "file": 218312704,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 9089024,
+        "slab": 7515568
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:41.297910715Z",
+      "elapsed_seconds": 14.00183009,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 737,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 140,
+        "nr_throttled": 0,
+        "system_usec": 468030,
+        "throttled_usec": 0,
+        "usage_usec": 7018453,
+        "user_usec": 6550423
+      },
+      "memory_stat": {
+        "anon": 33284096,
+        "file": 219410432,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 9244672,
+        "slab": 7618344
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:42.298031508Z",
+      "elapsed_seconds": 15.001951091,
+      "memory_current_bytes": 255094784,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 770,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 150,
+        "nr_throttled": 0,
+        "system_usec": 502858,
+        "throttled_usec": 0,
+        "usage_usec": 7459573,
+        "user_usec": 6956715
+      },
+      "memory_stat": {
+        "anon": 37548032,
+        "file": 203567104,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8634368,
+        "slab": 7091584
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:43.297870133Z",
+      "elapsed_seconds": 16.001789591,
+      "memory_current_bytes": 254509056,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 770,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 160,
+        "nr_throttled": 0,
+        "system_usec": 536113,
+        "throttled_usec": 0,
+        "usage_usec": 7977567,
+        "user_usec": 7441454
+      },
+      "memory_stat": {
+        "anon": 36261888,
+        "file": 199639040,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8343552,
+        "slab": 6893320
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:44.297902008Z",
+      "elapsed_seconds": 17.001821425,
+      "memory_current_bytes": 231833600,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 770,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 170,
+        "nr_throttled": 0,
+        "system_usec": 574321,
+        "throttled_usec": 0,
+        "usage_usec": 8551891,
+        "user_usec": 7977570
+      },
+      "memory_stat": {
+        "anon": 27119616,
+        "file": 188882944,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7888896,
+        "slab": 6505600
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:45.297844176Z",
+      "elapsed_seconds": 18.001763592,
+      "memory_current_bytes": 228773888,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 770,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 180,
+        "nr_throttled": 0,
+        "system_usec": 623223,
+        "throttled_usec": 0,
+        "usage_usec": 9103045,
+        "user_usec": 8479822
+      },
+      "memory_stat": {
+        "anon": 27508736,
+        "file": 185643008,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7606272,
+        "slab": 6306328
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:46.297887384Z",
+      "elapsed_seconds": 19.001806759,
+      "memory_current_bytes": 219353088,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 770,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 190,
+        "nr_throttled": 0,
+        "system_usec": 653803,
+        "throttled_usec": 0,
+        "usage_usec": 9677489,
+        "user_usec": 9023685
+      },
+      "memory_stat": {
+        "anon": 26488832,
+        "file": 174878720,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7127040,
+        "slab": 5917952
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:47.297848302Z",
+      "elapsed_seconds": 20.001767676,
+      "memory_current_bytes": 240287744,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 770,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 200,
+        "nr_throttled": 0,
+        "system_usec": 688653,
+        "throttled_usec": 0,
+        "usage_usec": 10240239,
+        "user_usec": 9551585
+      },
+      "memory_stat": {
+        "anon": 25968640,
+        "file": 195334144,
+        "file_dirty": 12288,
+        "file_writeback": 4096,
+        "kernel": 7536640,
+        "slab": 6398040
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:48.298164177Z",
+      "elapsed_seconds": 21.002083802,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 821,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 210,
+        "nr_throttled": 0,
+        "system_usec": 738252,
+        "throttled_usec": 0,
+        "usage_usec": 10842964,
+        "user_usec": 10104711
+      },
+      "memory_stat": {
+        "anon": 40554496,
+        "file": 209178624,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7979008,
+        "slab": 6752440
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:49.296841219Z",
+      "elapsed_seconds": 22.000760594,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 937,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 220,
+        "nr_throttled": 0,
+        "system_usec": 769061,
+        "throttled_usec": 0,
+        "usage_usec": 11452128,
+        "user_usec": 10683067
+      },
+      "memory_stat": {
+        "anon": 40554496,
+        "file": 208834560,
+        "file_dirty": 12288,
+        "file_writeback": 36864,
+        "kernel": 8134656,
+        "slab": 6846464
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:50.298887553Z",
+      "elapsed_seconds": 23.002806928,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1052,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 230,
+        "nr_throttled": 0,
+        "system_usec": 807609,
+        "throttled_usec": 0,
+        "usage_usec": 12072114,
+        "user_usec": 11264505
+      },
+      "memory_stat": {
+        "anon": 41185280,
+        "file": 208420864,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8298496,
+        "slab": 6921752
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:51.301675512Z",
+      "elapsed_seconds": 24.005595011,
+      "memory_current_bytes": 268365824,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1170,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 240,
+        "nr_throttled": 0,
+        "system_usec": 837211,
+        "throttled_usec": 0,
+        "usage_usec": 12738429,
+        "user_usec": 11901218
+      },
+      "memory_stat": {
+        "anon": 41242624,
+        "file": 207949824,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8450048,
+        "slab": 7011904
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:52.296972637Z",
+      "elapsed_seconds": 25.000892137,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1244,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 250,
+        "nr_throttled": 0,
+        "system_usec": 885178,
+        "throttled_usec": 0,
+        "usage_usec": 13450301,
+        "user_usec": 12565122
+      },
+      "memory_stat": {
+        "anon": 30171136,
+        "file": 218390528,
+        "file_dirty": 12288,
+        "file_writeback": 32768,
+        "kernel": 8900608,
+        "slab": 7393856
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:53.300169888Z",
+      "elapsed_seconds": 26.004089387,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1362,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 260,
+        "nr_throttled": 0,
+        "system_usec": 927028,
+        "throttled_usec": 0,
+        "usage_usec": 14157800,
+        "user_usec": 13230771
+      },
+      "memory_stat": {
+        "anon": 30801920,
+        "file": 217657344,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 9043968,
+        "slab": 7468832
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:54.29822993Z",
+      "elapsed_seconds": 27.002149346,
+      "memory_current_bytes": 268398592,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1476,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 270,
+        "nr_throttled": 0,
+        "system_usec": 954990,
+        "throttled_usec": 0,
+        "usage_usec": 14825523,
+        "user_usec": 13870533
+      },
+      "memory_stat": {
+        "anon": 30629888,
+        "file": 217526272,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 9211904,
+        "slab": 7562648
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:55.298107097Z",
+      "elapsed_seconds": 28.002026513,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1584,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 280,
+        "nr_throttled": 0,
+        "system_usec": 997205,
+        "throttled_usec": 0,
+        "usage_usec": 15354953,
+        "user_usec": 14357748
+      },
+      "memory_stat": {
+        "anon": 33644544,
+        "file": 214503424,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 9158656,
+        "slab": 7452520
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:56.298899833Z",
+      "elapsed_seconds": 29.002254889,
+      "memory_current_bytes": 246390784,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1619,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 290,
+        "nr_throttled": 0,
+        "system_usec": 1051519,
+        "throttled_usec": 0,
+        "usage_usec": 15850343,
+        "user_usec": 14798824
+      },
+      "memory_stat": {
+        "anon": 34021376,
+        "file": 192729088,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8409088,
+        "slab": 6777080
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:57.298702959Z",
+      "elapsed_seconds": 30.002058056,
+      "memory_current_bytes": 234643456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1619,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 300,
+        "nr_throttled": 0,
+        "system_usec": 1085490,
+        "throttled_usec": 0,
+        "usage_usec": 16343725,
+        "user_usec": 15258234
+      },
+      "memory_stat": {
+        "anon": 35438592,
+        "file": 179859456,
+        "file_dirty": 45056,
+        "file_writeback": 0,
+        "kernel": 7872512,
+        "slab": 6336832
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:58.298406084Z",
+      "elapsed_seconds": 31.001761265,
+      "memory_current_bytes": 248205312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1619,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 310,
+        "nr_throttled": 0,
+        "system_usec": 1127826,
+        "throttled_usec": 0,
+        "usage_usec": 16894210,
+        "user_usec": 15766384
+      },
+      "memory_stat": {
+        "anon": 26370048,
+        "file": 202432512,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8306688,
+        "slab": 6860744
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:34:59.299957501Z",
+      "elapsed_seconds": 32.003312557,
+      "memory_current_bytes": 268107776,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1633,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 320,
+        "nr_throttled": 0,
+        "system_usec": 1182580,
+        "throttled_usec": 0,
+        "usage_usec": 17439543,
+        "user_usec": 16256962
+      },
+      "memory_stat": {
+        "anon": 27897856,
+        "file": 220254208,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8609792,
+        "slab": 7256944
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:00.29840646Z",
+      "elapsed_seconds": 33.001761515,
+      "memory_current_bytes": 243752960,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1639,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 330,
+        "nr_throttled": 0,
+        "system_usec": 1224971,
+        "throttled_usec": 0,
+        "usage_usec": 18008898,
+        "user_usec": 16783927
+      },
+      "memory_stat": {
+        "anon": 27480064,
+        "file": 197169152,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7802880,
+        "slab": 6544368
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:01.298779294Z",
+      "elapsed_seconds": 34.002134349,
+      "memory_current_bytes": 251994112,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1639,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 340,
+        "nr_throttled": 0,
+        "system_usec": 1268162,
+        "throttled_usec": 0,
+        "usage_usec": 18579590,
+        "user_usec": 17311427
+      },
+      "memory_stat": {
+        "anon": 29245440,
+        "file": 203812864,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7806976,
+        "slab": 6632024
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:02.298744086Z",
+      "elapsed_seconds": 35.002099225,
+      "memory_current_bytes": 268378112,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1700,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 350,
+        "nr_throttled": 0,
+        "system_usec": 1304838,
+        "throttled_usec": 0,
+        "usage_usec": 19160410,
+        "user_usec": 17855572
+      },
+      "memory_stat": {
+        "anon": 38195200,
+        "file": 210841600,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8069120,
+        "slab": 6821880
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:03.298783962Z",
+      "elapsed_seconds": 36.002139017,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1820,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 360,
+        "nr_throttled": 0,
+        "system_usec": 1339026,
+        "throttled_usec": 0,
+        "usage_usec": 19785604,
+        "user_usec": 18446577
+      },
+      "memory_stat": {
+        "anon": 39088128,
+        "file": 209883136,
+        "file_dirty": 40960,
+        "file_writeback": 4096,
+        "kernel": 8204288,
+        "slab": 6887040
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:04.298398254Z",
+      "elapsed_seconds": 37.001753267,
+      "memory_current_bytes": 268406784,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 1936,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 370,
+        "nr_throttled": 0,
+        "system_usec": 1376404,
+        "throttled_usec": 0,
+        "usage_usec": 20371185,
+        "user_usec": 18994781
+      },
+      "memory_stat": {
+        "anon": 39702528,
+        "file": 209330176,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8355840,
+        "slab": 6959624
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:05.298398671Z",
+      "elapsed_seconds": 38.001753726,
+      "memory_current_bytes": 268189696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2054,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 380,
+        "nr_throttled": 0,
+        "system_usec": 1408655,
+        "throttled_usec": 0,
+        "usage_usec": 21034176,
+        "user_usec": 19625520
+      },
+      "memory_stat": {
+        "anon": 40325120,
+        "file": 208707584,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8515584,
+        "slab": 7056880
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:06.298770921Z",
+      "elapsed_seconds": 39.002125977,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2135,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 390,
+        "nr_throttled": 0,
+        "system_usec": 1441115,
+        "throttled_usec": 0,
+        "usage_usec": 21699480,
+        "user_usec": 20258365
+      },
+      "memory_stat": {
+        "anon": 31457280,
+        "file": 217047040,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8896512,
+        "slab": 7372808
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:07.298411797Z",
+      "elapsed_seconds": 40.001766894,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2250,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 400,
+        "nr_throttled": 0,
+        "system_usec": 1482113,
+        "throttled_usec": 0,
+        "usage_usec": 22449926,
+        "user_usec": 20967813
+      },
+      "memory_stat": {
+        "anon": 31182848,
+        "file": 217088000,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 9076736,
+        "slab": 7477104
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:08.297397339Z",
+      "elapsed_seconds": 41.000752394,
+      "memory_current_bytes": 267669504,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2367,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 410,
+        "nr_throttled": 0,
+        "system_usec": 1517346,
+        "throttled_usec": 0,
+        "usage_usec": 23137755,
+        "user_usec": 21620409
+      },
+      "memory_stat": {
+        "anon": 35545088,
+        "file": 211402752,
+        "file_dirty": 40960,
+        "file_writeback": 0,
+        "kernel": 9056256,
+        "slab": 7388904
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:09.298617339Z",
+      "elapsed_seconds": 42.001972478,
+      "memory_current_bytes": 263118848,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2439,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 420,
+        "nr_throttled": 0,
+        "system_usec": 1563918,
+        "throttled_usec": 0,
+        "usage_usec": 23625695,
+        "user_usec": 22061776
+      },
+      "memory_stat": {
+        "anon": 36372480,
+        "file": 205910016,
+        "file_dirty": 8192,
+        "file_writeback": 4096,
+        "kernel": 8724480,
+        "slab": 7145880
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:10.301738382Z",
+      "elapsed_seconds": 43.005093437,
+      "memory_current_bytes": 263864320,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2453,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 430,
+        "nr_throttled": 0,
+        "system_usec": 1599211,
+        "throttled_usec": 0,
+        "usage_usec": 24141013,
+        "user_usec": 22541801
+      },
+      "memory_stat": {
+        "anon": 35770368,
+        "file": 207626240,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8589312,
+        "slab": 7093176
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:11.298490757Z",
+      "elapsed_seconds": 44.001845896,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2547,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 440,
+        "nr_throttled": 0,
+        "system_usec": 1652486,
+        "throttled_usec": 0,
+        "usage_usec": 24649586,
+        "user_usec": 22997100
+      },
+      "memory_stat": {
+        "anon": 35987456,
+        "file": 212332544,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8425472,
+        "slab": 7040728
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:12.304600883Z",
+      "elapsed_seconds": 45.007955938,
+      "memory_current_bytes": 241479680,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2552,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 450,
+        "nr_throttled": 0,
+        "system_usec": 1702917,
+        "throttled_usec": 0,
+        "usage_usec": 25194880,
+        "user_usec": 23491963
+      },
+      "memory_stat": {
+        "anon": 27029504,
+        "file": 195162112,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7798784,
+        "slab": 6493224
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:13.298507966Z",
+      "elapsed_seconds": 46.00186298,
+      "memory_current_bytes": 239149056,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2552,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 460,
+        "nr_throttled": 0,
+        "system_usec": 1741823,
+        "throttled_usec": 0,
+        "usage_usec": 25744437,
+        "user_usec": 24002613
+      },
+      "memory_stat": {
+        "anon": 28102656,
+        "file": 191479808,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7503872,
+        "slab": 6294848
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:14.298810758Z",
+      "elapsed_seconds": 47.002166022,
+      "memory_current_bytes": 235180032,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2552,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 470,
+        "nr_throttled": 0,
+        "system_usec": 1786765,
+        "throttled_usec": 0,
+        "usage_usec": 26336385,
+        "user_usec": 24549619
+      },
+      "memory_stat": {
+        "anon": 27725824,
+        "file": 188084224,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7274496,
+        "slab": 6138336
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:15.301373051Z",
+      "elapsed_seconds": 48.004728189,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2572,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 480,
+        "nr_throttled": 0,
+        "system_usec": 1817407,
+        "throttled_usec": 0,
+        "usage_usec": 26950477,
+        "user_usec": 25133070
+      },
+      "memory_stat": {
+        "anon": 38354944,
+        "file": 210079744,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8032256,
+        "slab": 6828232
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:16.298408176Z",
+      "elapsed_seconds": 49.001763231,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2689,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 490,
+        "nr_throttled": 0,
+        "system_usec": 1854106,
+        "throttled_usec": 0,
+        "usage_usec": 27545432,
+        "user_usec": 25691325
+      },
+      "memory_stat": {
+        "anon": 39469056,
+        "file": 209485824,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8200192,
+        "slab": 6901840
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:17.30037426Z",
+      "elapsed_seconds": 50.003729274,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2807,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 500,
+        "nr_throttled": 0,
+        "system_usec": 1895935,
+        "throttled_usec": 0,
+        "usage_usec": 28136975,
+        "user_usec": 26241040
+      },
+      "memory_stat": {
+        "anon": 39862272,
+        "file": 208478208,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8335360,
+        "slab": 6997192
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:18.298546844Z",
+      "elapsed_seconds": 51.001909191,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2847,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 510,
+        "nr_throttled": 0,
+        "system_usec": 1931693,
+        "throttled_usec": 0,
+        "usage_usec": 28785055,
+        "user_usec": 26853361
+      },
+      "memory_stat": {
+        "anon": 29421568,
+        "file": 218726400,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8667136,
+        "slab": 7244360
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:19.297417969Z",
+      "elapsed_seconds": 52.000773025,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 2966,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 520,
+        "nr_throttled": 0,
+        "system_usec": 1970801,
+        "throttled_usec": 0,
+        "usage_usec": 29444144,
+        "user_usec": 27473342
+      },
+      "memory_stat": {
+        "anon": 29749248,
+        "file": 218202112,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8839168,
+        "slab": 7333424
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:20.29889622Z",
+      "elapsed_seconds": 53.002251233,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3086,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 530,
+        "nr_throttled": 0,
+        "system_usec": 2019301,
+        "throttled_usec": 0,
+        "usage_usec": 30118142,
+        "user_usec": 28098840
+      },
+      "memory_stat": {
+        "anon": 31084544,
+        "file": 216604672,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8957952,
+        "slab": 7388280
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:21.297404095Z",
+      "elapsed_seconds": 54.000759109,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3201,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 540,
+        "nr_throttled": 0,
+        "system_usec": 2058288,
+        "throttled_usec": 0,
+        "usage_usec": 30803632,
+        "user_usec": 28745344
+      },
+      "memory_stat": {
+        "anon": 31498240,
+        "file": 216231936,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 9113600,
+        "slab": 7468112
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:22.298406596Z",
+      "elapsed_seconds": 55.001761651,
+      "memory_current_bytes": 265469952,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3305,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 550,
+        "nr_throttled": 0,
+        "system_usec": 2097880,
+        "throttled_usec": 0,
+        "usage_usec": 31412675,
+        "user_usec": 29314795
+      },
+      "memory_stat": {
+        "anon": 40845312,
+        "file": 203710464,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8921088,
+        "slab": 7204808
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:23.298417888Z",
+      "elapsed_seconds": 56.001773068,
+      "memory_current_bytes": 246435840,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3326,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 560,
+        "nr_throttled": 0,
+        "system_usec": 2145117,
+        "throttled_usec": 0,
+        "usage_usec": 31924512,
+        "user_usec": 29779395
+      },
+      "memory_stat": {
+        "anon": 41185280,
+        "file": 185430016,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8237056,
+        "slab": 6616248
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:24.298727388Z",
+      "elapsed_seconds": 57.002082444,
+      "memory_current_bytes": 252391424,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3326,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 570,
+        "nr_throttled": 0,
+        "system_usec": 2190376,
+        "throttled_usec": 0,
+        "usage_usec": 32445203,
+        "user_usec": 30254827
+      },
+      "memory_stat": {
+        "anon": 41132032,
+        "file": 191062016,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8196096,
+        "slab": 6673008
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:25.29873618Z",
+      "elapsed_seconds": 58.002091277,
+      "memory_current_bytes": 256983040,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3326,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 580,
+        "nr_throttled": 0,
+        "system_usec": 2232381,
+        "throttled_usec": 0,
+        "usage_usec": 32918051,
+        "user_usec": 30685670
+      },
+      "memory_stat": {
+        "anon": 43360256,
+        "file": 194097152,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8073216,
+        "slab": 6644512
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:26.298310958Z",
+      "elapsed_seconds": 59.001760194,
+      "memory_current_bytes": 253595648,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3326,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 590,
+        "nr_throttled": 0,
+        "system_usec": 2281343,
+        "throttled_usec": 0,
+        "usage_usec": 33501690,
+        "user_usec": 31220347
+      },
+      "memory_stat": {
+        "anon": 32366592,
+        "file": 201220096,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8093696,
+        "slab": 6755032
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:27.298324959Z",
+      "elapsed_seconds": 60.001774277,
+      "memory_current_bytes": 248016896,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3326,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 600,
+        "nr_throttled": 0,
+        "system_usec": 2323811,
+        "throttled_usec": 0,
+        "usage_usec": 34049673,
+        "user_usec": 31725862
+      },
+      "memory_stat": {
+        "anon": 30642176,
+        "file": 197742592,
+        "file_dirty": 8192,
+        "file_writeback": 4096,
+        "kernel": 7811072,
+        "slab": 6552288
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:28.298799501Z",
+      "elapsed_seconds": 61.002248861,
+      "memory_current_bytes": 248029184,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3326,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 610,
+        "nr_throttled": 0,
+        "system_usec": 2360318,
+        "throttled_usec": 0,
+        "usage_usec": 34615324,
+        "user_usec": 32255005
+      },
+      "memory_stat": {
+        "anon": 30306304,
+        "file": 197992448,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7626752,
+        "slab": 6460848
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:29.298601293Z",
+      "elapsed_seconds": 62.002050612,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3383,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 620,
+        "nr_throttled": 0,
+        "system_usec": 2412184,
+        "throttled_usec": 0,
+        "usage_usec": 35181469,
+        "user_usec": 32769284
+      },
+      "memory_stat": {
+        "anon": 38273024,
+        "file": 210812928,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8044544,
+        "slab": 6808696
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:30.29882821Z",
+      "elapsed_seconds": 63.002277445,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3503,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 630,
+        "nr_throttled": 0,
+        "system_usec": 2441160,
+        "throttled_usec": 0,
+        "usage_usec": 35751377,
+        "user_usec": 33310217
+      },
+      "memory_stat": {
+        "anon": 39059456,
+        "file": 209977344,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8167424,
+        "slab": 6874984
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:31.297323461Z",
+      "elapsed_seconds": 64.000772696,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3619,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 640,
+        "nr_throttled": 0,
+        "system_usec": 2487255,
+        "throttled_usec": 0,
+        "usage_usec": 36342901,
+        "user_usec": 33855646
+      },
+      "memory_stat": {
+        "anon": 39669760,
+        "file": 208994304,
+        "file_dirty": 40960,
+        "file_writeback": 0,
+        "kernel": 8306688,
+        "slab": 6952120
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:32.298787961Z",
+      "elapsed_seconds": 65.00223728,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3700,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 650,
+        "nr_throttled": 0,
+        "system_usec": 2520903,
+        "throttled_usec": 0,
+        "usage_usec": 36978611,
+        "user_usec": 34457708
+      },
+      "memory_stat": {
+        "anon": 29962240,
+        "file": 218374144,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8724480,
+        "slab": 7288752
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:33.297314212Z",
+      "elapsed_seconds": 66.000763447,
+      "memory_current_bytes": 268210176,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3816,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 660,
+        "nr_throttled": 0,
+        "system_usec": 2569688,
+        "throttled_usec": 0,
+        "usage_usec": 37643828,
+        "user_usec": 35074139
+      },
+      "memory_stat": {
+        "anon": 31023104,
+        "file": 217059328,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8867840,
+        "slab": 7338576
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:34.298428795Z",
+      "elapsed_seconds": 67.001878031,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 3934,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 670,
+        "nr_throttled": 0,
+        "system_usec": 2617120,
+        "throttled_usec": 0,
+        "usage_usec": 38325717,
+        "user_usec": 35708596
+      },
+      "memory_stat": {
+        "anon": 31125504,
+        "file": 216776704,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 9007104,
+        "slab": 7431776
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:35.298339671Z",
+      "elapsed_seconds": 68.001788906,
+      "memory_current_bytes": 268263424,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4048,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 680,
+        "nr_throttled": 0,
+        "system_usec": 2667805,
+        "throttled_usec": 0,
+        "usage_usec": 38997278,
+        "user_usec": 36329472
+      },
+      "memory_stat": {
+        "anon": 31334400,
+        "file": 216432640,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 9179136,
+        "slab": 7523632
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:36.299368755Z",
+      "elapsed_seconds": 69.00281799,
+      "memory_current_bytes": 267956224,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4138,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 690,
+        "nr_throttled": 0,
+        "system_usec": 2721124,
+        "throttled_usec": 0,
+        "usage_usec": 39471891,
+        "user_usec": 36750767
+      },
+      "memory_stat": {
+        "anon": 35393536,
+        "file": 212115456,
+        "file_dirty": 8192,
+        "file_writeback": 32768,
+        "kernel": 9121792,
+        "slab": 7389184
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:37.299245547Z",
+      "elapsed_seconds": 70.002694782,
+      "memory_current_bytes": 268410880,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4171,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 700,
+        "nr_throttled": 0,
+        "system_usec": 2759755,
+        "throttled_usec": 0,
+        "usage_usec": 40004386,
+        "user_usec": 37244630
+      },
+      "memory_stat": {
+        "anon": 37003264,
+        "file": 210915328,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8921088,
+        "slab": 7277896
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:38.297318839Z",
+      "elapsed_seconds": 71.000768074,
+      "memory_current_bytes": 262803456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4244,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 710,
+        "nr_throttled": 0,
+        "system_usec": 2803317,
+        "throttled_usec": 0,
+        "usage_usec": 40531470,
+        "user_usec": 37728152
+      },
+      "memory_stat": {
+        "anon": 37617664,
+        "file": 204922880,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8556544,
+        "slab": 7012640
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:39.298363048Z",
+      "elapsed_seconds": 72.001812241,
+      "memory_current_bytes": 249196544,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4244,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 720,
+        "nr_throttled": 0,
+        "system_usec": 2850677,
+        "throttled_usec": 0,
+        "usage_usec": 41046734,
+        "user_usec": 38196057
+      },
+      "memory_stat": {
+        "anon": 37564416,
+        "file": 192225280,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8056832,
+        "slab": 6600024
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:40.298324798Z",
+      "elapsed_seconds": 73.001774242,
+      "memory_current_bytes": 253898752,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4244,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 730,
+        "nr_throttled": 0,
+        "system_usec": 2886983,
+        "throttled_usec": 0,
+        "usage_usec": 41611372,
+        "user_usec": 38724389
+      },
+      "memory_stat": {
+        "anon": 27459584,
+        "file": 206172160,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8249344,
+        "slab": 6880712
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:41.299336299Z",
+      "elapsed_seconds": 74.002785534,
+      "memory_current_bytes": 254304256,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4244,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 740,
+        "nr_throttled": 0,
+        "system_usec": 2928281,
+        "throttled_usec": 0,
+        "usage_usec": 42170474,
+        "user_usec": 39242192
+      },
+      "memory_stat": {
+        "anon": 28540928,
+        "file": 205729792,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8048640,
+        "slab": 6776184
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:42.299314299Z",
+      "elapsed_seconds": 75.002763535,
+      "memory_current_bytes": 265986048,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4245,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 750,
+        "nr_throttled": 0,
+        "system_usec": 2974899,
+        "throttled_usec": 0,
+        "usage_usec": 42779009,
+        "user_usec": 39804110
+      },
+      "memory_stat": {
+        "anon": 40255488,
+        "file": 206389248,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7929856,
+        "slab": 6745048
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:43.2986313Z",
+      "elapsed_seconds": 76.002080493,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4357,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 760,
+        "nr_throttled": 0,
+        "system_usec": 3026456,
+        "throttled_usec": 0,
+        "usage_usec": 43389601,
+        "user_usec": 40363145
+      },
+      "memory_stat": {
+        "anon": 43274240,
+        "file": 205406208,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7958528,
+        "slab": 6700872
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:44.300329675Z",
+      "elapsed_seconds": 77.00377891,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4474,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 770,
+        "nr_throttled": 0,
+        "system_usec": 3063413,
+        "throttled_usec": 0,
+        "usage_usec": 44021975,
+        "user_usec": 40958562
+      },
+      "memory_stat": {
+        "anon": 43937792,
+        "file": 204685312,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8110080,
+        "slab": 6773088
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:45.297610384Z",
+      "elapsed_seconds": 78.001059578,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4590,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 780,
+        "nr_throttled": 0,
+        "system_usec": 3093689,
+        "throttled_usec": 0,
+        "usage_usec": 44646010,
+        "user_usec": 41552320
+      },
+      "memory_stat": {
+        "anon": 43954176,
+        "file": 204570624,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8265728,
+        "slab": 6852248
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:46.298145551Z",
+      "elapsed_seconds": 79.001594786,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4664,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 790,
+        "nr_throttled": 0,
+        "system_usec": 3124284,
+        "throttled_usec": 0,
+        "usage_usec": 45292054,
+        "user_usec": 42167770
+      },
+      "memory_stat": {
+        "anon": 33013760,
+        "file": 215076864,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8720384,
+        "slab": 7231248
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:47.297327635Z",
+      "elapsed_seconds": 80.00077687,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4780,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 800,
+        "nr_throttled": 0,
+        "system_usec": 3162071,
+        "throttled_usec": 0,
+        "usage_usec": 45966388,
+        "user_usec": 42804316
+      },
+      "memory_stat": {
+        "anon": 33144832,
+        "file": 214900736,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8892416,
+        "slab": 7331040
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:48.29771326Z",
+      "elapsed_seconds": 81.001162537,
+      "memory_current_bytes": 268181504,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 4898,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 810,
+        "nr_throttled": 0,
+        "system_usec": 3197444,
+        "throttled_usec": 0,
+        "usage_usec": 46698221,
+        "user_usec": 43500777
+      },
+      "memory_stat": {
+        "anon": 33259520,
+        "file": 214167552,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 9043968,
+        "slab": 7425240
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:49.299354344Z",
+      "elapsed_seconds": 82.002803705,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5007,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 820,
+        "nr_throttled": 0,
+        "system_usec": 3235173,
+        "throttled_usec": 0,
+        "usage_usec": 47363826,
+        "user_usec": 44128653
+      },
+      "memory_stat": {
+        "anon": 36954112,
+        "file": 210550784,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 9072640,
+        "slab": 7384736
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:50.298403428Z",
+      "elapsed_seconds": 83.001852663,
+      "memory_current_bytes": 262680576,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5040,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 830,
+        "nr_throttled": 0,
+        "system_usec": 3275592,
+        "throttled_usec": 0,
+        "usage_usec": 47843405,
+        "user_usec": 44567813
+      },
+      "memory_stat": {
+        "anon": 36212736,
+        "file": 206106624,
+        "file_dirty": 163840,
+        "file_writeback": 0,
+        "kernel": 8769536,
+        "slab": 7161112
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:51.298544553Z",
+      "elapsed_seconds": 84.001993789,
+      "memory_current_bytes": 251707392,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5040,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 840,
+        "nr_throttled": 0,
+        "system_usec": 3315981,
+        "throttled_usec": 0,
+        "usage_usec": 48353449,
+        "user_usec": 45037467
+      },
+      "memory_stat": {
+        "anon": 36864000,
+        "file": 194859008,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8265728,
+        "slab": 6761712
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:52.300707887Z",
+      "elapsed_seconds": 85.004157123,
+      "memory_current_bytes": 245932032,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5040,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 850,
+        "nr_throttled": 0,
+        "system_usec": 3356305,
+        "throttled_usec": 0,
+        "usage_usec": 48876077,
+        "user_usec": 45519771
+      },
+      "memory_stat": {
+        "anon": 26398720,
+        "file": 199278592,
+        "file_dirty": 12288,
+        "file_writeback": 32768,
+        "kernel": 8204288,
+        "slab": 6781256
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:53.299333596Z",
+      "elapsed_seconds": 86.00278279,
+      "memory_current_bytes": 251105280,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5040,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 860,
+        "nr_throttled": 0,
+        "system_usec": 3392638,
+        "throttled_usec": 0,
+        "usage_usec": 49425943,
+        "user_usec": 46033305
+      },
+      "memory_stat": {
+        "anon": 27213824,
+        "file": 203939840,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8138752,
+        "slab": 6804280
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:54.301180597Z",
+      "elapsed_seconds": 87.00463004,
+      "memory_current_bytes": 238915584,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5040,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 870,
+        "nr_throttled": 0,
+        "system_usec": 3424546,
+        "throttled_usec": 0,
+        "usage_usec": 49947841,
+        "user_usec": 46523295
+      },
+      "memory_stat": {
+        "anon": 29208576,
+        "file": 190423040,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7561216,
+        "slab": 6326792
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:55.301673305Z",
+      "elapsed_seconds": 88.005122499,
+      "memory_current_bytes": 239751168,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5040,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 880,
+        "nr_throttled": 0,
+        "system_usec": 3457721,
+        "throttled_usec": 0,
+        "usage_usec": 50555595,
+        "user_usec": 47097873
+      },
+      "memory_stat": {
+        "anon": 28790784,
+        "file": 191967232,
+        "file_dirty": 36864,
+        "file_writeback": 0,
+        "kernel": 7446528,
+        "slab": 6286128
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:56.298588875Z",
+      "elapsed_seconds": 89.002059041,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5092,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 890,
+        "nr_throttled": 0,
+        "system_usec": 3506417,
+        "throttled_usec": 0,
+        "usage_usec": 51133166,
+        "user_usec": 47626748
+      },
+      "memory_stat": {
+        "anon": 43241472,
+        "file": 205328384,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7860224,
+        "slab": 6654344
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:57.299290834Z",
+      "elapsed_seconds": 90.002760999,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5208,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 900,
+        "nr_throttled": 0,
+        "system_usec": 3546831,
+        "throttled_usec": 0,
+        "usage_usec": 51783543,
+        "user_usec": 48236711
+      },
+      "memory_stat": {
+        "anon": 43331584,
+        "file": 205299712,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8028160,
+        "slab": 6731568
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:58.298294126Z",
+      "elapsed_seconds": 91.00176425,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5323,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 910,
+        "nr_throttled": 0,
+        "system_usec": 3578968,
+        "throttled_usec": 0,
+        "usage_usec": 52397345,
+        "user_usec": 48818377
+      },
+      "memory_stat": {
+        "anon": 43503616,
+        "file": 205008896,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8187904,
+        "slab": 6818888
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:35:59.29728496Z",
+      "elapsed_seconds": 92.000755042,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5437,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 920,
+        "nr_throttled": 0,
+        "system_usec": 3603787,
+        "throttled_usec": 0,
+        "usage_usec": 53053016,
+        "user_usec": 49449228
+      },
+      "memory_stat": {
+        "anon": 43503616,
+        "file": 205082624,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8368128,
+        "slab": 6924424
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:00.299539002Z",
+      "elapsed_seconds": 93.003009126,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5514,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 930,
+        "nr_throttled": 0,
+        "system_usec": 3638566,
+        "throttled_usec": 0,
+        "usage_usec": 53789259,
+        "user_usec": 50150692
+      },
+      "memory_stat": {
+        "anon": 32894976,
+        "file": 214962176,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8785920,
+        "slab": 7284144
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:01.298749836Z",
+      "elapsed_seconds": 94.002219918,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5628,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 940,
+        "nr_throttled": 0,
+        "system_usec": 3666058,
+        "throttled_usec": 0,
+        "usage_usec": 54496042,
+        "user_usec": 50829983
+      },
+      "memory_stat": {
+        "anon": 33124352,
+        "file": 214765568,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8953856,
+        "slab": 7369880
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:02.298569461Z",
+      "elapsed_seconds": 95.002039627,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5744,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 950,
+        "nr_throttled": 0,
+        "system_usec": 3702403,
+        "throttled_usec": 0,
+        "usage_usec": 55233225,
+        "user_usec": 51530821
+      },
+      "memory_stat": {
+        "anon": 33124352,
+        "file": 214728704,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 9121792,
+        "slab": 7459568
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:03.29730267Z",
+      "elapsed_seconds": 96.000772752,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5841,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 960,
+        "nr_throttled": 0,
+        "system_usec": 3747363,
+        "throttled_usec": 0,
+        "usage_usec": 55753352,
+        "user_usec": 52005989
+      },
+      "memory_stat": {
+        "anon": 36028416,
+        "file": 211656704,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 9076736,
+        "slab": 7347120
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:04.296850045Z",
+      "elapsed_seconds": 97.000320086,
+      "memory_current_bytes": 258682880,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5904,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 970,
+        "nr_throttled": 0,
+        "system_usec": 3803222,
+        "throttled_usec": 0,
+        "usage_usec": 56285480,
+        "user_usec": 52482257
+      },
+      "memory_stat": {
+        "anon": 36700160,
+        "file": 202010624,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8638464,
+        "slab": 7010864
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:05.297288879Z",
+      "elapsed_seconds": 98.000758962,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5913,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 980,
+        "nr_throttled": 0,
+        "system_usec": 3837208,
+        "throttled_usec": 0,
+        "usage_usec": 56767727,
+        "user_usec": 52930518
+      },
+      "memory_stat": {
+        "anon": 36360192,
+        "file": 211808256,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8716288,
+        "slab": 7196408
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:06.297743046Z",
+      "elapsed_seconds": 99.001213129,
+      "memory_current_bytes": 248541184,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5987,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 990,
+        "nr_throttled": 0,
+        "system_usec": 3885289,
+        "throttled_usec": 0,
+        "usage_usec": 57303488,
+        "user_usec": 53418199
+      },
+      "memory_stat": {
+        "anon": 27095040,
+        "file": 201584640,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8269824,
+        "slab": 6833688
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:07.297696963Z",
+      "elapsed_seconds": 100.001167129,
+      "memory_current_bytes": 237617152,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5987,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1000,
+        "nr_throttled": 0,
+        "system_usec": 3931576,
+        "throttled_usec": 0,
+        "usage_usec": 57866884,
+        "user_usec": 53935308
+      },
+      "memory_stat": {
+        "anon": 27803648,
+        "file": 190586880,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7811072,
+        "slab": 6451496
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:08.298288672Z",
+      "elapsed_seconds": 101.001758796,
+      "memory_current_bytes": 243929088,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5987,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1010,
+        "nr_throttled": 0,
+        "system_usec": 3977507,
+        "throttled_usec": 0,
+        "usage_usec": 58436436,
+        "user_usec": 54458928
+      },
+      "memory_stat": {
+        "anon": 28884992,
+        "file": 195358720,
+        "file_dirty": 12288,
+        "file_writeback": 28672,
+        "kernel": 7749632,
+        "slab": 6472664
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:09.298290173Z",
+      "elapsed_seconds": 102.001760213,
+      "memory_current_bytes": 252100608,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 5987,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1020,
+        "nr_throttled": 0,
+        "system_usec": 4023997,
+        "throttled_usec": 0,
+        "usage_usec": 59027024,
+        "user_usec": 55003026
+      },
+      "memory_stat": {
+        "anon": 29065216,
+        "file": 203718656,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7819264,
+        "slab": 6636472
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:10.299222298Z",
+      "elapsed_seconds": 103.002692714,
+      "memory_current_bytes": 268361728,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6045,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1030,
+        "nr_throttled": 0,
+        "system_usec": 4062784,
+        "throttled_usec": 0,
+        "usage_usec": 59635831,
+        "user_usec": 55573047
+      },
+      "memory_stat": {
+        "anon": 38064128,
+        "file": 211177472,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8065024,
+        "slab": 6809536
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:11.298357257Z",
+      "elapsed_seconds": 104.001827423,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6165,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1040,
+        "nr_throttled": 0,
+        "system_usec": 4099389,
+        "throttled_usec": 0,
+        "usage_usec": 60245918,
+        "user_usec": 56146528
+      },
+      "memory_stat": {
+        "anon": 39051264,
+        "file": 209809408,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8200192,
+        "slab": 6874128
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:12.297288133Z",
+      "elapsed_seconds": 105.000758215,
+      "memory_current_bytes": 268267520,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6282,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1050,
+        "nr_throttled": 0,
+        "system_usec": 4150596,
+        "throttled_usec": 0,
+        "usage_usec": 60871394,
+        "user_usec": 56720797
+      },
+      "memory_stat": {
+        "anon": 39862272,
+        "file": 208908288,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8339456,
+        "slab": 6946376
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:13.2986413Z",
+      "elapsed_seconds": 106.002111382,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6401,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1060,
+        "nr_throttled": 0,
+        "system_usec": 4189935,
+        "throttled_usec": 0,
+        "usage_usec": 61545722,
+        "user_usec": 57355786
+      },
+      "memory_stat": {
+        "anon": 40472576,
+        "file": 207777792,
+        "file_dirty": 12288,
+        "file_writeback": 32768,
+        "kernel": 8470528,
+        "slab": 7000008
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:14.298293175Z",
+      "elapsed_seconds": 107.001763299,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6480,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1070,
+        "nr_throttled": 0,
+        "system_usec": 4216273,
+        "throttled_usec": 0,
+        "usage_usec": 62238397,
+        "user_usec": 58022124
+      },
+      "memory_stat": {
+        "anon": 31059968,
+        "file": 217202688,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8896512,
+        "slab": 7347888
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:15.298710884Z",
+      "elapsed_seconds": 108.002181216,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6600,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1080,
+        "nr_throttled": 0,
+        "system_usec": 4256881,
+        "throttled_usec": 0,
+        "usage_usec": 62959310,
+        "user_usec": 58702429
+      },
+      "memory_stat": {
+        "anon": 31846400,
+        "file": 215609344,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 9023488,
+        "slab": 7407072
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:16.299251009Z",
+      "elapsed_seconds": 109.002721133,
+      "memory_current_bytes": 267108352,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6714,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1090,
+        "nr_throttled": 0,
+        "system_usec": 4298063,
+        "throttled_usec": 0,
+        "usage_usec": 63611135,
+        "user_usec": 59313072
+      },
+      "memory_stat": {
+        "anon": 36986880,
+        "file": 209772544,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 9015296,
+        "slab": 7331232
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:17.298317385Z",
+      "elapsed_seconds": 110.001787426,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6795,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1100,
+        "nr_throttled": 0,
+        "system_usec": 4346220,
+        "throttled_usec": 0,
+        "usage_usec": 64156383,
+        "user_usec": 59810162
+      },
+      "memory_stat": {
+        "anon": 36827136,
+        "file": 211038208,
+        "file_dirty": 8192,
+        "file_writeback": 4096,
+        "kernel": 8876032,
+        "slab": 7292952
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:18.298308969Z",
+      "elapsed_seconds": 111.001779051,
+      "memory_current_bytes": 252575744,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6798,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1110,
+        "nr_throttled": 0,
+        "system_usec": 4387333,
+        "throttled_usec": 0,
+        "usage_usec": 64651935,
+        "user_usec": 60264602
+      },
+      "memory_stat": {
+        "anon": 37199872,
+        "file": 195637248,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8245248,
+        "slab": 6753936
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:19.298287094Z",
+      "elapsed_seconds": 112.001757302,
+      "memory_current_bytes": 257085440,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6810,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1120,
+        "nr_throttled": 0,
+        "system_usec": 4438734,
+        "throttled_usec": 0,
+        "usage_usec": 65235177,
+        "user_usec": 60796443
+      },
+      "memory_stat": {
+        "anon": 38285312,
+        "file": 199417856,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8093696,
+        "slab": 6682816
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:20.298489011Z",
+      "elapsed_seconds": 113.001959177,
+      "memory_current_bytes": 245702656,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6810,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1130,
+        "nr_throttled": 0,
+        "system_usec": 4482832,
+        "throttled_usec": 0,
+        "usage_usec": 65788182,
+        "user_usec": 61305350
+      },
+      "memory_stat": {
+        "anon": 30199808,
+        "file": 195325952,
+        "file_dirty": 8192,
+        "file_writeback": 471040,
+        "kernel": 7798784,
+        "slab": 6490512
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:21.298358387Z",
+      "elapsed_seconds": 114.001828427,
+      "memory_current_bytes": 215871488,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6810,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1140,
+        "nr_throttled": 0,
+        "system_usec": 4521142,
+        "throttled_usec": 0,
+        "usage_usec": 66363159,
+        "user_usec": 61842016
+      },
+      "memory_stat": {
+        "anon": 35110912,
+        "file": 166191104,
+        "file_dirty": 8192,
+        "file_writeback": 4096,
+        "kernel": 6836224,
+        "slab": 5607696
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:22.307633887Z",
+      "elapsed_seconds": 115.011104053,
+      "memory_current_bytes": 240910336,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6810,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1150,
+        "nr_throttled": 0,
+        "system_usec": 4565176,
+        "throttled_usec": 0,
+        "usage_usec": 66959273,
+        "user_usec": 62394097
+      },
+      "memory_stat": {
+        "anon": 30871552,
+        "file": 188891136,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7311360,
+        "slab": 6161760
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:23.297870138Z",
+      "elapsed_seconds": 116.00134022,
+      "memory_current_bytes": 254197760,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6812,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1160,
+        "nr_throttled": 0,
+        "system_usec": 4595295,
+        "throttled_usec": 0,
+        "usage_usec": 67517505,
+        "user_usec": 62922210
+      },
+      "memory_stat": {
+        "anon": 42405888,
+        "file": 192774144,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7577600,
+        "slab": 6352600
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:24.297389597Z",
+      "elapsed_seconds": 117.000859721,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6878,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1170,
+        "nr_throttled": 0,
+        "system_usec": 4636433,
+        "throttled_usec": 0,
+        "usage_usec": 68135327,
+        "user_usec": 63498894
+      },
+      "memory_stat": {
+        "anon": 43229184,
+        "file": 205844480,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8032256,
+        "slab": 6747096
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:25.298113805Z",
+      "elapsed_seconds": 118.001583888,
+      "memory_current_bytes": 267206656,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 6983,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1180,
+        "nr_throttled": 0,
+        "system_usec": 4668520,
+        "throttled_usec": 0,
+        "usage_usec": 68743589,
+        "user_usec": 64075068
+      },
+      "memory_stat": {
+        "anon": 43036672,
+        "file": 204746752,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8159232,
+        "slab": 6787496
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:26.297195792Z",
+      "elapsed_seconds": 119.000782346,
+      "memory_current_bytes": 268333056,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7047,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1190,
+        "nr_throttled": 0,
+        "system_usec": 4706413,
+        "throttled_usec": 0,
+        "usage_usec": 69380793,
+        "user_usec": 64674380
+      },
+      "memory_stat": {
+        "anon": 30289920,
+        "file": 217968640,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8679424,
+        "slab": 7235416
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:27.298167875Z",
+      "elapsed_seconds": 120.00175443,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7167,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1200,
+        "nr_throttled": 0,
+        "system_usec": 4741101,
+        "throttled_usec": 0,
+        "usage_usec": 70084228,
+        "user_usec": 65343126
+      },
+      "memory_stat": {
+        "anon": 30740480,
+        "file": 216768512,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8814592,
+        "slab": 7310064
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:28.298178334Z",
+      "elapsed_seconds": 121.001764972,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7285,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1210,
+        "nr_throttled": 0,
+        "system_usec": 4776953,
+        "throttled_usec": 0,
+        "usage_usec": 70855623,
+        "user_usec": 66078670
+      },
+      "memory_stat": {
+        "anon": 32198656,
+        "file": 215986176,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8962048,
+        "slab": 7375104
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:29.298171835Z",
+      "elapsed_seconds": 122.001758389,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7402,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1220,
+        "nr_throttled": 0,
+        "system_usec": 4820104,
+        "throttled_usec": 0,
+        "usage_usec": 71574068,
+        "user_usec": 66753963
+      },
+      "memory_stat": {
+        "anon": 33140736,
+        "file": 214708224,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 9084928,
+        "slab": 7447208
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:30.297179668Z",
+      "elapsed_seconds": 123.000766264,
+      "memory_current_bytes": 260644864,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7502,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1230,
+        "nr_throttled": 0,
+        "system_usec": 4858201,
+        "throttled_usec": 0,
+        "usage_usec": 72161250,
+        "user_usec": 67303048
+      },
+      "memory_stat": {
+        "anon": 37085184,
+        "file": 203124736,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8908800,
+        "slab": 7190232
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:31.298177336Z",
+      "elapsed_seconds": 124.001763932,
+      "memory_current_bytes": 262664192,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7516,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1240,
+        "nr_throttled": 0,
+        "system_usec": 4913292,
+        "throttled_usec": 0,
+        "usage_usec": 72667672,
+        "user_usec": 67754379
+      },
+      "memory_stat": {
+        "anon": 46309376,
+        "file": 194629632,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8495104,
+        "slab": 6866856
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:32.299948253Z",
+      "elapsed_seconds": 125.003535015,
+      "memory_current_bytes": 259084288,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7583,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1250,
+        "nr_throttled": 0,
+        "system_usec": 4947858,
+        "throttled_usec": 0,
+        "usage_usec": 73200829,
+        "user_usec": 68252971
+      },
+      "memory_stat": {
+        "anon": 43098112,
+        "file": 192245760,
+        "file_dirty": 8192,
+        "file_writeback": 32768,
+        "kernel": 8249344,
+        "slab": 6715552
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:33.298755878Z",
+      "elapsed_seconds": 126.002342474,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7594,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1260,
+        "nr_throttled": 0,
+        "system_usec": 4989694,
+        "throttled_usec": 0,
+        "usage_usec": 73711351,
+        "user_usec": 68721656
+      },
+      "memory_stat": {
+        "anon": 41619456,
+        "file": 201998336,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8318976,
+        "slab": 6885816
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:34.29753242Z",
+      "elapsed_seconds": 127.001119058,
+      "memory_current_bytes": 266797056,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7613,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1270,
+        "nr_throttled": 0,
+        "system_usec": 5043462,
+        "throttled_usec": 0,
+        "usage_usec": 74247435,
+        "user_usec": 69203973
+      },
+      "memory_stat": {
+        "anon": 32309248,
+        "file": 208007168,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8261632,
+        "slab": 6911440
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:35.297180588Z",
+      "elapsed_seconds": 128.000767184,
+      "memory_current_bytes": 248250368,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7643,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1280,
+        "nr_throttled": 0,
+        "system_usec": 5088745,
+        "throttled_usec": 0,
+        "usage_usec": 74829797,
+        "user_usec": 69741052
+      },
+      "memory_stat": {
+        "anon": 32415744,
+        "file": 189779968,
+        "file_dirty": 8192,
+        "file_writeback": 4096,
+        "kernel": 7540736,
+        "slab": 6281280
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:36.298184046Z",
+      "elapsed_seconds": 129.001770684,
+      "memory_current_bytes": 260096000,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7643,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1290,
+        "nr_throttled": 0,
+        "system_usec": 5139613,
+        "throttled_usec": 0,
+        "usage_usec": 75372919,
+        "user_usec": 70233305
+      },
+      "memory_stat": {
+        "anon": 36552704,
+        "file": 194592768,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7495680,
+        "slab": 6321936
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:37.298507547Z",
+      "elapsed_seconds": 130.002094351,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7750,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1300,
+        "nr_throttled": 0,
+        "system_usec": 5170344,
+        "throttled_usec": 0,
+        "usage_usec": 75996591,
+        "user_usec": 70826247
+      },
+      "memory_stat": {
+        "anon": 43794432,
+        "file": 194404352,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7634944,
+        "slab": 6393168
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:38.298416839Z",
+      "elapsed_seconds": 131.002003393,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7868,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1310,
+        "nr_throttled": 0,
+        "system_usec": 5207652,
+        "throttled_usec": 0,
+        "usage_usec": 76649819,
+        "user_usec": 71442167
+      },
+      "memory_stat": {
+        "anon": 44630016,
+        "file": 193511424,
+        "file_dirty": 8192,
+        "file_writeback": 32768,
+        "kernel": 7770112,
+        "slab": 6465064
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:39.297225381Z",
+      "elapsed_seconds": 132.000811935,
+      "memory_current_bytes": 268181504,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 7982,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1320,
+        "nr_throttled": 0,
+        "system_usec": 5244169,
+        "throttled_usec": 0,
+        "usage_usec": 77272978,
+        "user_usec": 72028809
+      },
+      "memory_stat": {
+        "anon": 44568576,
+        "file": 193404928,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7950336,
+        "slab": 6561560
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:40.298178132Z",
+      "elapsed_seconds": 133.001764728,
+      "memory_current_bytes": 260595712,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8034,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1330,
+        "nr_throttled": 0,
+        "system_usec": 5283175,
+        "throttled_usec": 0,
+        "usage_usec": 77949573,
+        "user_usec": 72666397
+      },
+      "memory_stat": {
+        "anon": 34185216,
+        "file": 195420160,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8138752,
+        "slab": 6680176
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:41.29918184Z",
+      "elapsed_seconds": 134.002768395,
+      "memory_current_bytes": 266383360,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8076,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1340,
+        "nr_throttled": 0,
+        "system_usec": 5323554,
+        "throttled_usec": 0,
+        "usage_usec": 78608319,
+        "user_usec": 73284765
+      },
+      "memory_stat": {
+        "anon": 37203968,
+        "file": 198524928,
+        "file_dirty": 8192,
+        "file_writeback": 32768,
+        "kernel": 8339456,
+        "slab": 6804008
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:42.298182758Z",
+      "elapsed_seconds": 135.001769312,
+      "memory_current_bytes": 267583488,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8188,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1350,
+        "nr_throttled": 0,
+        "system_usec": 5361808,
+        "throttled_usec": 0,
+        "usage_usec": 79339392,
+        "user_usec": 73977584
+      },
+      "memory_stat": {
+        "anon": 37371904,
+        "file": 199217152,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8523776,
+        "slab": 6910504
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:43.298639508Z",
+      "elapsed_seconds": 136.002226354,
+      "memory_current_bytes": 267206656,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8291,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1360,
+        "nr_throttled": 0,
+        "system_usec": 5395223,
+        "throttled_usec": 0,
+        "usage_usec": 80123515,
+        "user_usec": 74728292
+      },
+      "memory_stat": {
+        "anon": 36864000,
+        "file": 199245824,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8695808,
+        "slab": 7002832
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:44.297781092Z",
+      "elapsed_seconds": 137.001367813,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8388,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1370,
+        "nr_throttled": 0,
+        "system_usec": 5430461,
+        "throttled_usec": 0,
+        "usage_usec": 80608791,
+        "user_usec": 75178329
+      },
+      "memory_stat": {
+        "anon": 37269504,
+        "file": 199225344,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8843264,
+        "slab": 7094768
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:45.300319301Z",
+      "elapsed_seconds": 138.003905938,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8476,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1380,
+        "nr_throttled": 0,
+        "system_usec": 5474134,
+        "throttled_usec": 0,
+        "usage_usec": 81100269,
+        "user_usec": 75626134
+      },
+      "memory_stat": {
+        "anon": 39297024,
+        "file": 197828608,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8617984,
+        "slab": 6967296
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:46.297057509Z",
+      "elapsed_seconds": 139.000644064,
+      "memory_current_bytes": 264310784,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8480,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1390,
+        "nr_throttled": 0,
+        "system_usec": 5518128,
+        "throttled_usec": 0,
+        "usage_usec": 81610900,
+        "user_usec": 76092772
+      },
+      "memory_stat": {
+        "anon": 38866944,
+        "file": 193347584,
+        "file_dirty": 8192,
+        "file_writeback": 32768,
+        "kernel": 8302592,
+        "slab": 6746320
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:47.29817001Z",
+      "elapsed_seconds": 140.001756564,
+      "memory_current_bytes": 265285632,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8497,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1400,
+        "nr_throttled": 0,
+        "system_usec": 5562897,
+        "throttled_usec": 0,
+        "usage_usec": 82129024,
+        "user_usec": 76566126
+      },
+      "memory_stat": {
+        "anon": 38879232,
+        "file": 193863680,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8146944,
+        "slab": 6675624
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:48.297652677Z",
+      "elapsed_seconds": 141.001239231,
+      "memory_current_bytes": 255397888,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8519,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1410,
+        "nr_throttled": 0,
+        "system_usec": 5617734,
+        "throttled_usec": 0,
+        "usage_usec": 82673659,
+        "user_usec": 77055924
+      },
+      "memory_stat": {
+        "anon": 29401088,
+        "file": 194478080,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7970816,
+        "slab": 6587992
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:49.297278303Z",
+      "elapsed_seconds": 142.000864857,
+      "memory_current_bytes": 245751808,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8519,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1420,
+        "nr_throttled": 0,
+        "system_usec": 5666956,
+        "throttled_usec": 0,
+        "usage_usec": 83255465,
+        "user_usec": 77588508
+      },
+      "memory_stat": {
+        "anon": 30539776,
+        "file": 182792192,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7467008,
+        "slab": 6177328
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:50.297192553Z",
+      "elapsed_seconds": 143.000779232,
+      "memory_current_bytes": 263872512,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8578,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1430,
+        "nr_throttled": 0,
+        "system_usec": 5726479,
+        "throttled_usec": 0,
+        "usage_usec": 83859388,
+        "user_usec": 78132908
+      },
+      "memory_stat": {
+        "anon": 39206912,
+        "file": 194543616,
+        "file_dirty": 8192,
+        "file_writeback": 36864,
+        "kernel": 7524352,
+        "slab": 6310504
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:51.297303137Z",
+      "elapsed_seconds": 144.000889774,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8682,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1440,
+        "nr_throttled": 0,
+        "system_usec": 5770101,
+        "throttled_usec": 0,
+        "usage_usec": 84467539,
+        "user_usec": 78697437
+      },
+      "memory_stat": {
+        "anon": 40194048,
+        "file": 197636096,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7770112,
+        "slab": 6493352
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:52.298606554Z",
+      "elapsed_seconds": 145.002193067,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8799,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1450,
+        "nr_throttled": 0,
+        "system_usec": 5813970,
+        "throttled_usec": 0,
+        "usage_usec": 85108889,
+        "user_usec": 79294918
+      },
+      "memory_stat": {
+        "anon": 40493056,
+        "file": 197083136,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 7925760,
+        "slab": 6562848
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:53.298189888Z",
+      "elapsed_seconds": 146.001776525,
+      "memory_current_bytes": 268181504,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8919,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1460,
+        "nr_throttled": 0,
+        "system_usec": 5857158,
+        "throttled_usec": 0,
+        "usage_usec": 85753764,
+        "user_usec": 79896606
+      },
+      "memory_stat": {
+        "anon": 41902080,
+        "file": 195473408,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8060928,
+        "slab": 6631016
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:54.298921805Z",
+      "elapsed_seconds": 147.002508359,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 8994,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1470,
+        "nr_throttled": 0,
+        "system_usec": 5904913,
+        "throttled_usec": 0,
+        "usage_usec": 86429854,
+        "user_usec": 80524941
+      },
+      "memory_stat": {
+        "anon": 30912512,
+        "file": 205746176,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8507392,
+        "slab": 7010368
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:55.298247305Z",
+      "elapsed_seconds": 148.001833901,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9114,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1480,
+        "nr_throttled": 0,
+        "system_usec": 5935822,
+        "throttled_usec": 0,
+        "usage_usec": 87131524,
+        "user_usec": 81195702
+      },
+      "memory_stat": {
+        "anon": 32219136,
+        "file": 204505088,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8634368,
+        "slab": 7056344
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:56.298177333Z",
+      "elapsed_seconds": 149.002222068,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9228,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1490,
+        "nr_throttled": 0,
+        "system_usec": 5967330,
+        "throttled_usec": 0,
+        "usage_usec": 87830287,
+        "user_usec": 81862956
+      },
+      "memory_stat": {
+        "anon": 32145408,
+        "file": 204423168,
+        "file_dirty": 8192,
+        "file_writeback": 0,
+        "kernel": 8802304,
+        "slab": 7158648
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:57.299014417Z",
+      "elapsed_seconds": 150.003059068,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9340,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1500,
+        "nr_throttled": 0,
+        "system_usec": 6007014,
+        "throttled_usec": 0,
+        "usage_usec": 88498296,
+        "user_usec": 82491281
+      },
+      "memory_stat": {
+        "anon": 37576704,
+        "file": 198877184,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8687616,
+        "slab": 6980976
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:58.299065459Z",
+      "elapsed_seconds": 151.003110319,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9453,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1510,
+        "nr_throttled": 0,
+        "system_usec": 6057318,
+        "throttled_usec": 0,
+        "usage_usec": 88979252,
+        "user_usec": 82921934
+      },
+      "memory_stat": {
+        "anon": 37298176,
+        "file": 199286784,
+        "file_dirty": 40960,
+        "file_writeback": 4096,
+        "kernel": 8511488,
+        "slab": 6891032
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:36:59.296738793Z",
+      "elapsed_seconds": 152.000783569,
+      "memory_current_bytes": 263036928,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9492,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1520,
+        "nr_throttled": 0,
+        "system_usec": 6108919,
+        "throttled_usec": 0,
+        "usage_usec": 89475387,
+        "user_usec": 83366467
+      },
+      "memory_stat": {
+        "anon": 37249024,
+        "file": 193986560,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8204288,
+        "slab": 6667856
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:00.298087502Z",
+      "elapsed_seconds": 153.002132153,
+      "memory_current_bytes": 249716736,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9505,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1530,
+        "nr_throttled": 0,
+        "system_usec": 6147538,
+        "throttled_usec": 0,
+        "usage_usec": 90008706,
+        "user_usec": 83861168
+      },
+      "memory_stat": {
+        "anon": 26894336,
+        "file": 192122880,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7979008,
+        "slab": 6531816
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:01.298622669Z",
+      "elapsed_seconds": 154.002667404,
+      "memory_current_bytes": 265838592,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9505,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1540,
+        "nr_throttled": 0,
+        "system_usec": 6190088,
+        "throttled_usec": 0,
+        "usage_usec": 90551810,
+        "user_usec": 84361721
+      },
+      "memory_stat": {
+        "anon": 28733440,
+        "file": 206024704,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 8187904,
+        "slab": 6834568
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:02.298277961Z",
+      "elapsed_seconds": 155.002322612,
+      "memory_current_bytes": 253825024,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9505,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1550,
+        "nr_throttled": 0,
+        "system_usec": 6233050,
+        "throttled_usec": 0,
+        "usage_usec": 91090806,
+        "user_usec": 84857755
+      },
+      "memory_stat": {
+        "anon": 29667328,
+        "file": 193482752,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7663616,
+        "slab": 6406160
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:03.297123462Z",
+      "elapsed_seconds": 156.001168238,
+      "memory_current_bytes": 251805696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9505,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1560,
+        "nr_throttled": 0,
+        "system_usec": 6274291,
+        "throttled_usec": 0,
+        "usage_usec": 91659308,
+        "user_usec": 85385017
+      },
+      "memory_stat": {
+        "anon": 29503488,
+        "file": 191721472,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7450624,
+        "slab": 6286136
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:04.298142212Z",
+      "elapsed_seconds": 157.002186863,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9584,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1570,
+        "nr_throttled": 0,
+        "system_usec": 6320575,
+        "throttled_usec": 0,
+        "usage_usec": 92229010,
+        "user_usec": 85908435
+      },
+      "memory_stat": {
+        "anon": 39043072,
+        "file": 198717440,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7680000,
+        "slab": 6459144
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:05.296818046Z",
+      "elapsed_seconds": 158.000862781,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9702,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1580,
+        "nr_throttled": 0,
+        "system_usec": 6355622,
+        "throttled_usec": 0,
+        "usage_usec": 92847140,
+        "user_usec": 86491517
+      },
+      "memory_stat": {
+        "anon": 39866368,
+        "file": 197902336,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7831552,
+        "slab": 6516144
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:06.300267421Z",
+      "elapsed_seconds": 159.004312114,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9821,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1590,
+        "nr_throttled": 0,
+        "system_usec": 6394821,
+        "throttled_usec": 0,
+        "usage_usec": 93456474,
+        "user_usec": 87061652
+      },
+      "memory_stat": {
+        "anon": 40509440,
+        "file": 196669440,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7966720,
+        "slab": 6592296
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:07.297235713Z",
+      "elapsed_seconds": 160.001280406,
+      "memory_current_bytes": 268181504,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 9938,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1600,
+        "nr_throttled": 0,
+        "system_usec": 6435995,
+        "throttled_usec": 0,
+        "usage_usec": 94081668,
+        "user_usec": 87645673
+      },
+      "memory_stat": {
+        "anon": 41119744,
+        "file": 195928064,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8118272,
+        "slab": 6656632
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:08.299196589Z",
+      "elapsed_seconds": 161.00324124,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10016,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1610,
+        "nr_throttled": 0,
+        "system_usec": 6469051,
+        "throttled_usec": 0,
+        "usage_usec": 94788695,
+        "user_usec": 88319644
+      },
+      "memory_stat": {
+        "anon": 31588352,
+        "file": 205553664,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8540160,
+        "slab": 7015008
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:09.301201173Z",
+      "elapsed_seconds": 162.005245782,
+      "memory_current_bytes": 268402688,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10134,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1620,
+        "nr_throttled": 0,
+        "system_usec": 6510484,
+        "throttled_usec": 0,
+        "usage_usec": 95461808,
+        "user_usec": 88951324
+      },
+      "memory_stat": {
+        "anon": 32018432,
+        "file": 204546048,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8675328,
+        "slab": 7094056
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:10.297335465Z",
+      "elapsed_seconds": 163.001380158,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10248,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1630,
+        "nr_throttled": 0,
+        "system_usec": 6537702,
+        "throttled_usec": 0,
+        "usage_usec": 96205142,
+        "user_usec": 89667440
+      },
+      "memory_stat": {
+        "anon": 32673792,
+        "file": 204308480,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8843264,
+        "slab": 7179840
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:11.296780965Z",
+      "elapsed_seconds": 164.000825617,
+      "memory_current_bytes": 267788288,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10351,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1640,
+        "nr_throttled": 0,
+        "system_usec": 6584514,
+        "throttled_usec": 0,
+        "usage_usec": 96729414,
+        "user_usec": 90144899
+      },
+      "memory_stat": {
+        "anon": 36851712,
+        "file": 199159808,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8736768,
+        "slab": 7020592
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:12.297809091Z",
+      "elapsed_seconds": 165.001853826,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10431,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1650,
+        "nr_throttled": 0,
+        "system_usec": 6634021,
+        "throttled_usec": 0,
+        "usage_usec": 97228142,
+        "user_usec": 90594121
+      },
+      "memory_stat": {
+        "anon": 36708352,
+        "file": 199835648,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8589312,
+        "slab": 6949944
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:13.298025133Z",
+      "elapsed_seconds": 166.002069868,
+      "memory_current_bytes": 261492736,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10514,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1660,
+        "nr_throttled": 0,
+        "system_usec": 6676865,
+        "throttled_usec": 0,
+        "usage_usec": 97751625,
+        "user_usec": 91074759
+      },
+      "memory_stat": {
+        "anon": 37777408,
+        "file": 192303104,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8212480,
+        "slab": 6661472
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:14.297801675Z",
+      "elapsed_seconds": 167.001846451,
+      "memory_current_bytes": 240316416,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10514,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1670,
+        "nr_throttled": 0,
+        "system_usec": 6717914,
+        "throttled_usec": 0,
+        "usage_usec": 98281870,
+        "user_usec": 91563956
+      },
+      "memory_stat": {
+        "anon": 28381184,
+        "file": 181092352,
+        "file_dirty": 12288,
+        "file_writeback": 28672,
+        "kernel": 7737344,
+        "slab": 6278720
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:15.297882926Z",
+      "elapsed_seconds": 168.001927577,
+      "memory_current_bytes": 218505216,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10514,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1680,
+        "nr_throttled": 0,
+        "system_usec": 6759312,
+        "throttled_usec": 0,
+        "usage_usec": 98816633,
+        "user_usec": 92057321
+      },
+      "memory_stat": {
+        "anon": 28237824,
+        "file": 160317440,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 6983680,
+        "slab": 5618104
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:16.297711843Z",
+      "elapsed_seconds": 169.001756494,
+      "memory_current_bytes": 243818496,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10514,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1690,
+        "nr_throttled": 0,
+        "system_usec": 6805193,
+        "throttled_usec": 0,
+        "usage_usec": 99412060,
+        "user_usec": 92606866
+      },
+      "memory_stat": {
+        "anon": 29052928,
+        "file": 184082432,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7450624,
+        "slab": 6176400
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:17.297988343Z",
+      "elapsed_seconds": 170.002032995,
+      "memory_current_bytes": 267255808,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10514,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1700,
+        "nr_throttled": 0,
+        "system_usec": 6848780,
+        "throttled_usec": 0,
+        "usage_usec": 99998663,
+        "user_usec": 93149882
+      },
+      "memory_stat": {
+        "anon": 30097408,
+        "file": 205938688,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7901184,
+        "slab": 6708592
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:18.297746302Z",
+      "elapsed_seconds": 171.001790953,
+      "memory_current_bytes": 268173312,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10667,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1710,
+        "nr_throttled": 0,
+        "system_usec": 6895459,
+        "throttled_usec": 0,
+        "usage_usec": 100605187,
+        "user_usec": 93709728
+      },
+      "memory_stat": {
+        "anon": 44601344,
+        "file": 193216512,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7610368,
+        "slab": 6345912
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:19.298725428Z",
+      "elapsed_seconds": 172.002770162,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10784,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1720,
+        "nr_throttled": 0,
+        "system_usec": 6934773,
+        "throttled_usec": 0,
+        "usage_usec": 101236568,
+        "user_usec": 94301795
+      },
+      "memory_stat": {
+        "anon": 44691456,
+        "file": 192806912,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7770112,
+        "slab": 6430136
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:20.297746095Z",
+      "elapsed_seconds": 173.001790746,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 10900,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1730,
+        "nr_throttled": 0,
+        "system_usec": 6976206,
+        "throttled_usec": 0,
+        "usage_usec": 101896305,
+        "user_usec": 94920098
+      },
+      "memory_stat": {
+        "anon": 44691456,
+        "file": 192376832,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7925760,
+        "slab": 6509960
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:21.29917597Z",
+      "elapsed_seconds": 174.003220621,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11014,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1740,
+        "nr_throttled": 0,
+        "system_usec": 7007021,
+        "throttled_usec": 0,
+        "usage_usec": 102585186,
+        "user_usec": 95578165
+      },
+      "memory_stat": {
+        "anon": 44691456,
+        "file": 192364544,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8093696,
+        "slab": 6614728
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:22.300646387Z",
+      "elapsed_seconds": 175.00469133,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11089,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1750,
+        "nr_throttled": 0,
+        "system_usec": 7054309,
+        "throttled_usec": 0,
+        "usage_usec": 103330297,
+        "user_usec": 96275988
+      },
+      "memory_stat": {
+        "anon": 34074624,
+        "file": 202391552,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8540160,
+        "slab": 6986584
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:23.296886638Z",
+      "elapsed_seconds": 176.000931372,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11206,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1760,
+        "nr_throttled": 0,
+        "system_usec": 7092067,
+        "throttled_usec": 0,
+        "usage_usec": 104031832,
+        "user_usec": 96939765
+      },
+      "memory_stat": {
+        "anon": 34033664,
+        "file": 202420224,
+        "file_dirty": 40960,
+        "file_writeback": 0,
+        "kernel": 8704000,
+        "slab": 7083040
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:24.29719593Z",
+      "elapsed_seconds": 177.001240706,
+      "memory_current_bytes": 265494528,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11321,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1770,
+        "nr_throttled": 0,
+        "system_usec": 7131075,
+        "throttled_usec": 0,
+        "usage_usec": 104698770,
+        "user_usec": 97567694
+      },
+      "memory_stat": {
+        "anon": 36470784,
+        "file": 197398528,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8609792,
+        "slab": 6919992
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:25.296964889Z",
+      "elapsed_seconds": 178.001009498,
+      "memory_current_bytes": 253263872,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11426,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1780,
+        "nr_throttled": 0,
+        "system_usec": 7182475,
+        "throttled_usec": 0,
+        "usage_usec": 105227922,
+        "user_usec": 98045446
+      },
+      "memory_stat": {
+        "anon": 37298176,
+        "file": 184823808,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8105984,
+        "slab": 6500560
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:26.298097875Z",
+      "elapsed_seconds": 179.00177104,
+      "memory_current_bytes": 264527872,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11428,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1790,
+        "nr_throttled": 0,
+        "system_usec": 7227225,
+        "throttled_usec": 0,
+        "usage_usec": 105720695,
+        "user_usec": 98493469
+      },
+      "memory_stat": {
+        "anon": 37670912,
+        "file": 195338240,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 8204288,
+        "slab": 6686768
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:27.300105Z",
+      "elapsed_seconds": 180.003779499,
+      "memory_current_bytes": 263176192,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11429,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1800,
+        "nr_throttled": 0,
+        "system_usec": 7275164,
+        "throttled_usec": 0,
+        "usage_usec": 106230354,
+        "user_usec": 98955189
+      },
+      "memory_stat": {
+        "anon": 38092800,
+        "file": 194367488,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 7991296,
+        "slab": 6574128
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:28.299302584Z",
+      "elapsed_seconds": 181.002975916,
+      "memory_current_bytes": 216416256,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1810,
+        "nr_throttled": 0,
+        "system_usec": 7297942,
+        "throttled_usec": 0,
+        "usage_usec": 106630883,
+        "user_usec": 99332940
+      },
+      "memory_stat": {
+        "anon": 29519872,
+        "file": 156999680,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 6647808,
+        "slab": 5401888
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:29.297961126Z",
+      "elapsed_seconds": 182.001634667,
+      "memory_current_bytes": 185909248,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1820,
+        "nr_throttled": 0,
+        "system_usec": 7322595,
+        "throttled_usec": 0,
+        "usage_usec": 107108512,
+        "user_usec": 99785916
+      },
+      "memory_stat": {
+        "anon": 30629888,
+        "file": 126177280,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 5484544,
+        "slab": 4397304
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:30.298393835Z",
+      "elapsed_seconds": 183.002067459,
+      "memory_current_bytes": 151498752,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1830,
+        "nr_throttled": 0,
+        "system_usec": 7344366,
+        "throttled_usec": 0,
+        "usage_usec": 107562001,
+        "user_usec": 100217635
+      },
+      "memory_stat": {
+        "anon": 28020736,
+        "file": 96059392,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 4341760,
+        "slab": 3420248
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:31.298273252Z",
+      "elapsed_seconds": 184.001946918,
+      "memory_current_bytes": 148762624,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1840,
+        "nr_throttled": 0,
+        "system_usec": 7354915,
+        "throttled_usec": 0,
+        "usage_usec": 108042249,
+        "user_usec": 100687333
+      },
+      "memory_stat": {
+        "anon": 24956928,
+        "file": 96059392,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3423200
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:32.298074794Z",
+      "elapsed_seconds": 185.00174821,
+      "memory_current_bytes": 148701184,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1850,
+        "nr_throttled": 0,
+        "system_usec": 7365757,
+        "throttled_usec": 0,
+        "usage_usec": 108504432,
+        "user_usec": 101138675
+      },
+      "memory_stat": {
+        "anon": 24956928,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4341760,
+        "slab": 3414832
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:33.302624128Z",
+      "elapsed_seconds": 186.006297502,
+      "memory_current_bytes": 148570112,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1860,
+        "nr_throttled": 0,
+        "system_usec": 7383002,
+        "throttled_usec": 0,
+        "usage_usec": 108958400,
+        "user_usec": 101575397
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3414928
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:34.302141087Z",
+      "elapsed_seconds": 187.005814627,
+      "memory_current_bytes": 148570112,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1870,
+        "nr_throttled": 0,
+        "system_usec": 7391572,
+        "throttled_usec": 0,
+        "usage_usec": 109432858,
+        "user_usec": 102041285
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4349952,
+        "slab": 3418272
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:35.297886713Z",
+      "elapsed_seconds": 188.001560336,
+      "memory_current_bytes": 148832256,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1880,
+        "nr_throttled": 0,
+        "system_usec": 7400173,
+        "throttled_usec": 0,
+        "usage_usec": 109906474,
+        "user_usec": 102506300
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4354048,
+        "slab": 3421512
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:36.299552255Z",
+      "elapsed_seconds": 189.003225837,
+      "memory_current_bytes": 148832256,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1890,
+        "nr_throttled": 0,
+        "system_usec": 7412007,
+        "throttled_usec": 0,
+        "usage_usec": 110378105,
+        "user_usec": 102966097
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4354048,
+        "slab": 3422080
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:37.297963213Z",
+      "elapsed_seconds": 190.001636795,
+      "memory_current_bytes": 148832256,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1900,
+        "nr_throttled": 0,
+        "system_usec": 7433715,
+        "throttled_usec": 0,
+        "usage_usec": 110856290,
+        "user_usec": 103422575
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4358144,
+        "slab": 3425536
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:38.302674214Z",
+      "elapsed_seconds": 191.006347879,
+      "memory_current_bytes": 148754432,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1910,
+        "nr_throttled": 0,
+        "system_usec": 7449831,
+        "throttled_usec": 0,
+        "usage_usec": 111295114,
+        "user_usec": 103845282
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4349952,
+        "slab": 3414800
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:39.298211131Z",
+      "elapsed_seconds": 192.001884671,
+      "memory_current_bytes": 148754432,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1920,
+        "nr_throttled": 0,
+        "system_usec": 7466189,
+        "throttled_usec": 0,
+        "usage_usec": 111749519,
+        "user_usec": 104283329
+      },
+      "memory_stat": {
+        "anon": 24825856,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4341760,
+        "slab": 3416560
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:40.299621257Z",
+      "elapsed_seconds": 193.00329488,
+      "memory_current_bytes": 149573632,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1930,
+        "nr_throttled": 0,
+        "system_usec": 7478110,
+        "throttled_usec": 0,
+        "usage_usec": 112209024,
+        "user_usec": 104730913
+      },
+      "memory_stat": {
+        "anon": 26083328,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4341760,
+        "slab": 3413360
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:41.29945534Z",
+      "elapsed_seconds": 194.003128881,
+      "memory_current_bytes": 149835776,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1940,
+        "nr_throttled": 0,
+        "system_usec": 7484887,
+        "throttled_usec": 0,
+        "usage_usec": 112681122,
+        "user_usec": 105196234
+      },
+      "memory_stat": {
+        "anon": 26083328,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3416280
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:42.297175466Z",
+      "elapsed_seconds": 195.000849048,
+      "memory_current_bytes": 149835776,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1950,
+        "nr_throttled": 0,
+        "system_usec": 7488870,
+        "throttled_usec": 0,
+        "usage_usec": 113141377,
+        "user_usec": 105652506
+      },
+      "memory_stat": {
+        "anon": 26083328,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3418008
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:43.3013163Z",
+      "elapsed_seconds": 196.004989632,
+      "memory_current_bytes": 149651456,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1960,
+        "nr_throttled": 0,
+        "system_usec": 7498122,
+        "throttled_usec": 0,
+        "usage_usec": 113627332,
+        "user_usec": 106129210
+      },
+      "memory_stat": {
+        "anon": 26107904,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4341760,
+        "slab": 3417968
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:44.304364217Z",
+      "elapsed_seconds": 197.008037757,
+      "memory_current_bytes": 149913600,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1970,
+        "nr_throttled": 0,
+        "system_usec": 7509528,
+        "throttled_usec": 0,
+        "usage_usec": 114100232,
+        "user_usec": 106590703
+      },
+      "memory_stat": {
+        "anon": 26107904,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4349952,
+        "slab": 3418416
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:45.298071384Z",
+      "elapsed_seconds": 198.001745008,
+      "memory_current_bytes": 149913600,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1980,
+        "nr_throttled": 0,
+        "system_usec": 7519435,
+        "throttled_usec": 0,
+        "usage_usec": 114579320,
+        "user_usec": 107059885
+      },
+      "memory_stat": {
+        "anon": 26107904,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4349952,
+        "slab": 3420640
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:46.298466093Z",
+      "elapsed_seconds": 199.002139508,
+      "memory_current_bytes": 150175744,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1990,
+        "nr_throttled": 0,
+        "system_usec": 7526183,
+        "throttled_usec": 0,
+        "usage_usec": 114932687,
+        "user_usec": 107406504
+      },
+      "memory_stat": {
+        "anon": 26185728,
+        "file": 96059392,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4354048,
+        "slab": 3417640
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:47.297329635Z",
+      "elapsed_seconds": 200.001003217,
+      "memory_current_bytes": 150175744,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2000,
+        "nr_throttled": 0,
+        "system_usec": 7538827,
+        "throttled_usec": 0,
+        "usage_usec": 115378765,
+        "user_usec": 107839938
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4354048,
+        "slab": 3418320
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:48.298378885Z",
+      "elapsed_seconds": 201.002052467,
+      "memory_current_bytes": 149905408,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2010,
+        "nr_throttled": 0,
+        "system_usec": 7552071,
+        "throttled_usec": 0,
+        "usage_usec": 115809189,
+        "user_usec": 108257118
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4341760,
+        "slab": 3415464
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:49.297810844Z",
+      "elapsed_seconds": 202.001484468,
+      "memory_current_bytes": 150167552,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2020,
+        "nr_throttled": 0,
+        "system_usec": 7576134,
+        "throttled_usec": 0,
+        "usage_usec": 116250794,
+        "user_usec": 108674660
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3416368
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:50.298314511Z",
+      "elapsed_seconds": 203.001988093,
+      "memory_current_bytes": 150429696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2030,
+        "nr_throttled": 0,
+        "system_usec": 7587032,
+        "throttled_usec": 0,
+        "usage_usec": 116709379,
+        "user_usec": 109122346
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4349952,
+        "slab": 3418248
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:51.308168262Z",
+      "elapsed_seconds": 204.011841844,
+      "memory_current_bytes": 150429696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2040,
+        "nr_throttled": 0,
+        "system_usec": 7600468,
+        "throttled_usec": 0,
+        "usage_usec": 117189021,
+        "user_usec": 109588553
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3416928
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:52.303507762Z",
+      "elapsed_seconds": 205.007181344,
+      "memory_current_bytes": 150429696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2050,
+        "nr_throttled": 0,
+        "system_usec": 7611133,
+        "throttled_usec": 0,
+        "usage_usec": 117639268,
+        "user_usec": 110028134
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3418104
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:53.299258221Z",
+      "elapsed_seconds": 206.002931761,
+      "memory_current_bytes": 150683648,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2060,
+        "nr_throttled": 0,
+        "system_usec": 7622326,
+        "throttled_usec": 0,
+        "usage_usec": 118123365,
+        "user_usec": 110501039
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3413264
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:54.298391555Z",
+      "elapsed_seconds": 207.002065095,
+      "memory_current_bytes": 150679552,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2070,
+        "nr_throttled": 0,
+        "system_usec": 7635324,
+        "throttled_usec": 0,
+        "usage_usec": 118593038,
+        "user_usec": 110957713
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3415256
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:55.297615389Z",
+      "elapsed_seconds": 208.001289221,
+      "memory_current_bytes": 150679552,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2080,
+        "nr_throttled": 0,
+        "system_usec": 7645079,
+        "throttled_usec": 0,
+        "usage_usec": 119081974,
+        "user_usec": 111436894
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4345856,
+        "slab": 3417344
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:56.296191208Z",
+      "elapsed_seconds": 209.000524095,
+      "memory_current_bytes": 150941696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2090,
+        "nr_throttled": 0,
+        "system_usec": 7656082,
+        "throttled_usec": 0,
+        "usage_usec": 119555847,
+        "user_usec": 111899765
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4349952,
+        "slab": 3419808
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:57.298379459Z",
+      "elapsed_seconds": 210.002712221,
+      "memory_current_bytes": 150941696,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2100,
+        "nr_throttled": 0,
+        "system_usec": 7668231,
+        "throttled_usec": 0,
+        "usage_usec": 120018708,
+        "user_usec": 112350476
+      },
+      "memory_stat": {
+        "anon": 26238976,
+        "file": 96059392,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 4354048,
+        "slab": 3422248
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:37:57.386250375Z",
+      "elapsed_seconds": 210.090582929,
+      "memory_current_bytes": 107909120,
+      "memory_peak_bytes": 268439552,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 11447,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 2101,
+        "nr_throttled": 0,
+        "system_usec": 7675650,
+        "throttled_usec": 0,
+        "usage_usec": 120073780,
+        "user_usec": 112398130
+      },
+      "memory_stat": {
+        "anon": 7606272,
+        "file": 94633984,
+        "file_dirty": 4096,
+        "file_writeback": 0,
+        "kernel": 4300800,
+        "slab": 3377176
+      }
+    }
+  ],
+  "child_exit_code": 0,
+  "notes": [
+    "Kernel cgroup v2 memory includes benchmark, this supervisor, filesystem page cache and kernel accounting; process RSS is reported separately by the benchmark.",
+    "CPU counters include supervisor overhead. memory.peak is the kernel peak, not a sampled maximum. Finite success does not establish a permanent bound or prove crash durability."
+  ]
+}
