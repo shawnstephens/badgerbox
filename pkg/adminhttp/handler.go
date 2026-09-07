@@ -140,12 +140,13 @@ type deadLetterPage struct {
 	NextCursor  string               `json:"next_cursor"`
 }
 type deadLetterResponse struct {
-	MessageID   string             `json:"message_id"`
-	Status      string             `json:"status"`
-	FailedAt    time.Time          `json:"failed_at"`
-	StoredBytes int64              `json:"stored_bytes"`
-	Oversized   bool               `json:"oversized"`
-	Metadata    *deadLetterDetails `json:"metadata,omitempty"`
+	MessageID         string                     `json:"message_id"`
+	Status            string                     `json:"status"`
+	FailedAt          time.Time                  `json:"failed_at"`
+	StoredBytes       int64                      `json:"stored_bytes"`
+	Oversized         bool                       `json:"oversized"`
+	Metadata          *deadLetterDetails         `json:"metadata,omitempty"`
+	QuarantinedSource *quarantinedSourceResponse `json:"quarantined_source,omitempty"`
 }
 type deadLetterDetails struct {
 	CreatedAt            time.Time `json:"created_at"`
@@ -155,6 +156,15 @@ type deadLetterDetails struct {
 	FailureText          string    `json:"failure_text"`
 	FailureTextTruncated bool      `json:"failure_text_truncated"`
 	Permanent            bool      `json:"permanent"`
+}
+
+// Referenced sources have not been decoded: expose only the validated wrapper
+// metadata and conservative source size, never invented message timestamps.
+type quarantinedSourceResponse struct {
+	StoredBytes          int64  `json:"stored_bytes"`
+	FailureText          string `json:"failure_text"`
+	FailureTextTruncated bool   `json:"failure_text_truncated"`
+	Permanent            bool   `json:"permanent"`
 }
 
 type requeueRequest struct {
@@ -324,6 +334,10 @@ func newDeadLetterResponse(row badgerbox.DeadLetterMetadata) deadLetterResponse 
 	if d := row.Details; d != nil {
 		text, truncated := boundedText(d.FailureText, 1024)
 		result.Metadata = &deadLetterDetails{CreatedAt: d.CreatedAt, AvailableAt: d.AvailableAt, Attempt: d.Attempt, MaxAttempts: d.MaxAttempts, FailureText: text, FailureTextTruncated: d.FailureTextTruncated || truncated, Permanent: d.Permanent}
+	}
+	if source := row.QuarantinedSource; source != nil {
+		text, truncated := boundedText(source.FailureText, 1024)
+		result.QuarantinedSource = &quarantinedSourceResponse{StoredBytes: source.StoredBytes, FailureText: text, FailureTextTruncated: source.FailureTextTruncated || truncated, Permanent: source.Permanent}
 	}
 	return result
 }

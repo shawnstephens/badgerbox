@@ -172,3 +172,12 @@ usage approaching a finite limit and on accounting snapshot errors. Change
 persisted limits explicitly with `CompareAndSwapAdmissionLimits(ctx, expected,
 next)`, then update the configuration used by future Store constructors. Open
 Stores enforce the new limits immediately on their next committed admission.
+
+Referenced quarantines appear in `GET /dead-letters` with a `quarantined_source`
+object containing `stored_bytes`, `failure_text`, `failure_text_truncated`, and
+`permanent`. The outer `stored_bytes` measures the dead-letter wrapper; the nested
+value measures the additional retained source. Both are conservative storage-byte
+estimates. The ordinary `metadata` object is absent because the source envelope
+has not been read or validated. Failure summaries remain bounded by the HTTP
+response budget, and pagination retains the exact dead-letter identity even when
+text must be truncated.

@@ -58,10 +58,20 @@ func (h handler) encodeDeadLetters(ctx context.Context, rows []badgerbox.DeadLet
 			if count > 0 {
 				break
 			}
-			// A long failure summary must not make the first ordinary row inaccessible.
+			// A long summary must not make the first ordinary or referenced row
+			// inaccessible. Preserve identity and disclose every text truncation.
+			trimmed := false
 			if result.Metadata != nil && result.Metadata.FailureText != "" {
 				result.Metadata.FailureText = ""
 				result.Metadata.FailureTextTruncated = true
+				trimmed = true
+			}
+			if result.QuarantinedSource != nil && result.QuarantinedSource.FailureText != "" {
+				result.QuarantinedSource.FailureText = ""
+				result.QuarantinedSource.FailureTextTruncated = true
+				trimmed = true
+			}
+			if trimmed {
 				encoded, err = json.Marshal(result)
 				if err != nil {
 					return nil, err
