@@ -42,6 +42,10 @@ def analyze(report):
         "schema_version": report["schema_version"],
         "started_at": report["started_at"],
         "accepted": report["accepted"],
+        "resource_controls": report["config"].get("resource_controls"),
+        "admission_rejected_attempts": report.get("admission_rejected_attempts"),
+        "admission_rejections": report.get("admission_rejections"),
+        "final_usage": report.get("final_usage"),
         "unique_delivered": report["unique_delivered"],
         "duplicates": report["duplicate_deliveries"],
         "delivery_seconds": report["delivery_seconds"],
@@ -77,10 +81,17 @@ def main():
     parser.add_argument("--observe-seconds", type=int, default=30)
     parser.add_argument("--rate", type=float, default=500)
     parser.add_argument("--payload-bytes", type=int, default=16384)
+    parser.add_argument("--max-retained-messages", type=int, default=0)
+    parser.add_argument("--max-retained-bytes", default="0")
+    parser.add_argument("--processor-claim-max-bytes", default="0")
+    parser.add_argument("--min-free-disk-bytes", default="0")
+    parser.add_argument("--disk-check-interval", default="100ms")
+    parser.add_argument("--admission-retry-interval", default="10ms")
+    parser.add_argument("--outage-seconds", type=float, default=0, help="Initial local sink outage to exercise admission pressure")
     parser.add_argument("--disable-gc", action="store_true", help="Control experiment: preserve the same workload but disable periodic value-log GC")
     args = parser.parse_args()
-    if args.duration_seconds < 1 or args.observe_seconds < 0 or not math.isfinite(args.rate) or args.rate <= 0 or args.payload_bytes < 20:
-        parser.error("duration and rate must be positive, observe duration nonnegative, payload at least 20 bytes")
+    if args.duration_seconds < 1 or args.observe_seconds < 0 or not math.isfinite(args.rate) or args.rate <= 0 or args.payload_bytes < 20 or args.max_retained_messages < 0 or not math.isfinite(args.outage_seconds) or args.outage_seconds < 0:
+        parser.error("duration and rate must be positive; observe/outage duration and message quota nonnegative; payload at least 20 bytes")
     binary = args.binary.resolve(strict=True)
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -89,7 +100,14 @@ def main():
     command = [
         str(binary), "benchmark", "--messages", str(math.ceil(args.duration_seconds * args.rate)),
         "--payload-bytes", str(args.payload_bytes), "--rate", str(args.rate),
-        "--observe-after-drain", f"{args.observe_seconds}s", "--timeout", f"{args.duration_seconds + args.observe_seconds + 120}s",
+        "--observe-after-drain", f"{args.observe_seconds}s", "--timeout", f"{args.duration_seconds + args.observe_seconds + args.outage_seconds + 120}s",
+        "--max-retained-messages", str(args.max_retained_messages),
+        "--max-retained-bytes", args.max_retained_bytes,
+        "--processor-claim-max-bytes", args.processor_claim_max_bytes,
+        "--min-free-disk-bytes", args.min_free_disk_bytes,
+        "--disk-check-interval", args.disk_check_interval,
+        "--admission-retry-interval", args.admission_retry_interval,
+        "--outage", f"{args.outage_seconds}s",
         "--sample-interval", "100ms", "--timeline-interval", "1s", "--timeline-max-points", "600",
         "--badger-sync-writes=true", "--badger-value-threshold", "1KiB",
         "--badger-memtable-size", "4MiB", "--badger-num-memtables", "2",

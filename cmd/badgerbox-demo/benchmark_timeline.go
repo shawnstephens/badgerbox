@@ -12,22 +12,25 @@ import (
 // Each point is an observation, not a claim that all sources were read atomically.
 // Disk values are apparent file sizes and include Badger's preallocated files.
 type benchmarkResourcePoint struct {
-	Timestamp            time.Time              `json:"timestamp"`
-	ElapsedSeconds       float64                `json:"elapsed_seconds"`
-	Phase                string                 `json:"phase"`
-	MeasurementsComplete bool                   `json:"measurements_complete"`
-	RSS                  uint64                 `json:"rss_bytes"`
-	Heap                 uint64                 `json:"heap_bytes"`
-	Allocated            uint64                 `json:"total_allocated_bytes"`
-	GCCycles             uint32                 `json:"go_gc_cycles"`
-	CPUSeconds           *float64               `json:"cpu_seconds,omitempty"`
-	Disk                 benchmarkDiskBreakdown `json:"apparent_disk"`
-	Accepted             int64                  `json:"accepted"`
-	UniqueDelivered      int64                  `json:"unique_delivered"`
-	ValueLogGCRewrites   float64                `json:"value_log_gc_rewrites"`
-	ValueLogGCNoRewrite  float64                `json:"value_log_gc_no_rewrite"`
-	ValueLogGCErrors     float64                `json:"value_log_gc_errors"`
-	CompactionWritten    float64                `json:"compaction_written_bytes"`
+	Timestamp                 time.Time              `json:"timestamp"`
+	ElapsedSeconds            float64                `json:"elapsed_seconds"`
+	Phase                     string                 `json:"phase"`
+	MeasurementsComplete      bool                   `json:"measurements_complete"`
+	RSS                       uint64                 `json:"rss_bytes"`
+	Heap                      uint64                 `json:"heap_bytes"`
+	Allocated                 uint64                 `json:"total_allocated_bytes"`
+	GCCycles                  uint32                 `json:"go_gc_cycles"`
+	CPUSeconds                *float64               `json:"cpu_seconds,omitempty"`
+	Disk                      benchmarkDiskBreakdown `json:"apparent_disk"`
+	Accepted                  int64                  `json:"accepted"`
+	UniqueDelivered           int64                  `json:"unique_delivered"`
+	RetainedMessages          uint64                 `json:"retained_messages"`
+	RetainedBytes             uint64                 `json:"retained_bytes"`
+	AdmissionRejectedAttempts int64                  `json:"admission_rejected_attempts"`
+	ValueLogGCRewrites        float64                `json:"value_log_gc_rewrites"`
+	ValueLogGCNoRewrite       float64                `json:"value_log_gc_no_rewrite"`
+	ValueLogGCErrors          float64                `json:"value_log_gc_errors"`
+	CompactionWritten         float64                `json:"compaction_written_bytes"`
 }
 
 type benchmarkTimelineReport struct {

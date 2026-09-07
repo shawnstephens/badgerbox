@@ -52,3 +52,15 @@ The summary's slopes describe the latter half of intake, with no automatic
 memory bound, sustained production capacity, Kafka behavior, or crash durability.
 Extend duration, repeat against the actual filesystem and payload distribution,
 and compare only matching durability and maintenance settings.
+
+The harness also accepts the demo resource-control flags:
+`--max-retained-messages`, `--max-retained-bytes`,
+`--processor-claim-max-bytes`, `--min-free-disk-bytes`,
+`--disk-check-interval`, and `--admission-retry-interval`. All capacity limits
+remain disabled by default. Add `--outage-seconds 20` with a message quota to
+exercise recovery from a full namespace; this is a local sink outage. Reports
+and summaries preserve explicit settings, rejection counts by reason, and final
+usage. Timeline points record retained messages/bytes and cumulative admission
+rejections. Admission wait contributes to enqueue and end-to-end latency, and
+backpressure can lower achieved throughput below the offered rate. The full
+semantics and persisted quota rules are in [the producer guide](../../cmd/badgerbox-demo/README.md).

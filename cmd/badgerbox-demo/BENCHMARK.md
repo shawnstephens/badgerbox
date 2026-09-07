@@ -121,3 +121,11 @@ GOWORK=off go test -race -run Benchmark .
 BADGERBOX_BENCHMARK_TEST_BROKERS=localhost:9092 \
   GOWORK=off go test -race -run TestBenchmarkKafkaConsumerConservation .
 ```
+
+Admission, disk margin, and claim-byte controls are described in
+[the demo resource guide](README.md). The same flags apply to this command.
+Rejected admission attempts retry the same message with a cancellable delay and
+are reported by reason. Final persisted usage must be zero for a passing run;
+quarantined or other dead-lettered messages fail verification, including while
+intake is waiting for quota. Resource timelines include retained messages and
+logical bytes. Admission waiting is included in latency measurements.

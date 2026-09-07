@@ -55,11 +55,13 @@ func newBenchmarkCommand() *cli.Command {
 			flags = append(flags, flag)
 		}
 	}
+	flags = append(flags, resourceControlFlags()...)
 	flags = append(flags, &cli.StringFlag{Name: "db-path", Usage: "Parent directory for a fresh isolated database; blank uses the OS temporary directory. The run directory is retained in the report"})
 	return &cli.Command{Name: "benchmark", Usage: "Run a bounded disk-backed outbox benchmark, verify delivery and emit JSON; --brokers enables Kafka consumer verification", Flags: flags, Action: runBenchmark}
 }
 
 type benchmarkConfig struct {
+	ResourceControls  resourceControls                `json:"resource_controls"`
 	Processor         badgerbox.BatchProcessorOptions `json:"processor"`
 	Maintenance       maintenance.Options             `json:"maintenance"`
 	Messages          int                             `json:"messages"`
@@ -80,32 +82,35 @@ type benchmarkConfig struct {
 	Badger            any                             `json:"badger"`
 }
 type benchmarkReport struct {
-	SchemaVersion       int                     `json:"schema_version"`
-	StartedAt           time.Time               `json:"started_at"`
-	Environment         map[string]any          `json:"environment"`
-	Config              benchmarkConfig         `json:"config"`
-	DBPath              string                  `json:"db_path"`
-	Topic               string                  `json:"topic,omitempty"`
-	Passed              bool                    `json:"passed"`
-	Error               string                  `json:"error,omitempty"`
-	Accepted            int64                   `json:"accepted"`
-	UniqueDelivered     int64                   `json:"unique_delivered"`
-	DuplicateDeliveries int64                   `json:"duplicate_deliveries"`
-	InvalidDeliveries   int64                   `json:"invalid_deliveries"`
-	PublishAttempts     int64                   `json:"publish_attempts"`
-	EnqueueSeconds      float64                 `json:"enqueue_seconds"`
-	DeliverySeconds     float64                 `json:"delivery_seconds"`
-	EnqueuePerSecond    float64                 `json:"enqueue_messages_per_second"`
-	DeliveryPerSecond   float64                 `json:"delivery_messages_per_second"`
-	PayloadMiBPerSecond float64                 `json:"delivery_payload_mib_per_second"`
-	EnqueueLatency      latencySummary          `json:"enqueue_latency_seconds"`
-	DeliveryLatency     latencySummary          `json:"delivery_latency_seconds"`
-	Resources           benchmarkResources      `json:"resources"`
-	Timeline            benchmarkTimelineReport `json:"resource_timeline"`
-	Queue               badgerbox.QueueSnapshot `json:"final_queue"`
-	Audit               *badgerbox.AuditReport  `json:"final_audit,omitempty"`
-	Metrics             map[string]float64      `json:"metric_totals"`
-	MetricSeries        []benchmarkMetricSeries `json:"metric_series"`
+	SchemaVersion             int                      `json:"schema_version"`
+	StartedAt                 time.Time                `json:"started_at"`
+	Environment               map[string]any           `json:"environment"`
+	Config                    benchmarkConfig          `json:"config"`
+	DBPath                    string                   `json:"db_path"`
+	Topic                     string                   `json:"topic,omitempty"`
+	Passed                    bool                     `json:"passed"`
+	Error                     string                   `json:"error,omitempty"`
+	Accepted                  int64                    `json:"accepted"`
+	UniqueDelivered           int64                    `json:"unique_delivered"`
+	DuplicateDeliveries       int64                    `json:"duplicate_deliveries"`
+	InvalidDeliveries         int64                    `json:"invalid_deliveries"`
+	PublishAttempts           int64                    `json:"publish_attempts"`
+	AdmissionRejectedAttempts int64                    `json:"admission_rejected_attempts"`
+	AdmissionRejections       map[string]int64         `json:"admission_rejections"`
+	EnqueueSeconds            float64                  `json:"enqueue_seconds"`
+	DeliverySeconds           float64                  `json:"delivery_seconds"`
+	EnqueuePerSecond          float64                  `json:"enqueue_messages_per_second"`
+	DeliveryPerSecond         float64                  `json:"delivery_messages_per_second"`
+	PayloadMiBPerSecond       float64                  `json:"delivery_payload_mib_per_second"`
+	EnqueueLatency            latencySummary           `json:"enqueue_latency_seconds"`
+	DeliveryLatency           latencySummary           `json:"delivery_latency_seconds"`
+	Resources                 benchmarkResources       `json:"resources"`
+	Timeline                  benchmarkTimelineReport  `json:"resource_timeline"`
+	Queue                     badgerbox.QueueSnapshot  `json:"final_queue"`
+	Usage                     *badgerbox.UsageSnapshot `json:"final_usage,omitempty"`
+	Audit                     *badgerbox.AuditReport   `json:"final_audit,omitempty"`
+	Metrics                   map[string]float64       `json:"metric_totals"`
+	MetricSeries              []benchmarkMetricSeries  `json:"metric_series"`
 }
 
 func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
@@ -145,6 +150,10 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	if cmd.String("brokers") != "" && len(demo.ParseBrokers(cmd.String("brokers"))) == 0 {
 		return errors.New("brokers must contain at least one nonempty Kafka broker address")
 	}
+	controls, err := parseResourceControls(cmd)
+	if err != nil {
+		return err
+	}
 	opts, err := producerBadgerOptions(cmd)
 	if err != nil {
 		return err
@@ -166,6 +175,7 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		report.Environment["dependencies"] = info.Deps
 	}
 	report.Config = benchmarkConfig{Messages: count, PayloadBytes: size, Rate: rate, EnqueueWorkers: workers, ProcessorWorkers: concurrency, ClaimBatchSize: batch, Transport: "local-verified-sink", Timeout: cmd.Duration("timeout").String(), SampleInterval: cmd.Duration("sample-interval").String(), DeliveryDelay: cmd.Duration("delivery-delay").String(), Outage: cmd.Duration("outage").String(), FailEvery: cmd.Int("fail-every"), Badger: opts}
+	report.Config.ResourceControls = controls
 	report.Config.TimelineInterval = cmd.Duration("timeline-interval").String()
 	report.Config.TimelineMaxPoints = cmd.Int("timeline-max-points")
 	report.Config.ObserveAfterDrain = cmd.Duration("observe-after-drain").String()
@@ -209,6 +219,7 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	}()
 	verifier := newBenchmarkVerifier(count, size)
 	var attempts, accepted atomic.Int64
+	var rejections admissionRejections
 	var started time.Time
 	var consumer *kgo.Client
 	var producer *kgo.Client
@@ -273,8 +284,12 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		}
 	}
 	delivery = demo.NewBatchProcessFunc(benchmarkBatchPublisher{fn: delivery}, cmd.Duration("publish-timeout"), nil)
-	report.Config.Processor = badgerbox.BatchProcessorOptions{ClaimBatchSize: batch, ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: concurrency, PollInterval: cmd.Duration("poll-interval"), LeaseDuration: cmd.Duration("lease-duration"), RetryBaseDelay: cmd.Duration("retry-base-delay"), RetryMaxDelay: cmd.Duration("retry-max-delay"), MaxAttempts: 36, RequeuePageSize: 64, SettlementTimeout: 10 * time.Second}}
-	store, err := runner.Register(service, badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{}, runner.QueueOptions{Store: badgerbox.Options{Namespace: "benchmark"}, Processor: report.Config.Processor}, delivery)
+	report.Config.Processor = badgerbox.BatchProcessorOptions{ClaimBatchSize: batch, ProcessorOptions: badgerbox.ProcessorOptions{ClaimMaxBytes: controls.ClaimMaxBytes, Concurrency: concurrency, PollInterval: cmd.Duration("poll-interval"), LeaseDuration: cmd.Duration("lease-duration"), RetryBaseDelay: cmd.Duration("retry-base-delay"), RetryMaxDelay: cmd.Duration("retry-max-delay"), MaxAttempts: 36, RequeuePageSize: 64, SettlementTimeout: 10 * time.Second}}
+	storeOptions, err := controls.storeOptions("benchmark", opts)
+	if err != nil {
+		return err
+	}
+	store, err := runner.Register(service, badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{}, runner.QueueOptions{Store: storeOptions, Processor: report.Config.Processor}, delivery)
 	if err != nil {
 		return err
 	}
@@ -286,6 +301,12 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 			report.Queue = snapshot
 		} else {
 			resultErr = errors.Join(resultErr, err)
+		}
+		usage, err := store.Usage(finalCtx)
+		if err != nil {
+			resultErr = errors.Join(resultErr, err)
+		} else {
+			report.Usage = &usage
 		}
 		var metrics metricdata.ResourceMetrics
 		if err := reader.Collect(finalCtx, &metrics); err == nil {
@@ -310,11 +331,20 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 			point.Phase = "stopped"
 		}
 		point.Accepted = accepted.Load()
+		point.AdmissionRejectedAttempts = rejections.total()
 		verifier.mu.Lock()
 		point.UniqueDelivered = verifier.unique
 		verifier.mu.Unlock()
 		metricCtx, cancelMetrics := context.WithTimeout(context.Background(), time.Second)
 		defer cancelMetrics()
+		usage, err := store.Usage(metricCtx)
+		if err != nil {
+			sampler.recordError(err)
+			point.MeasurementsComplete = false
+		} else {
+			point.RetainedMessages = usage.RetainedMessages
+			point.RetainedBytes = usage.RetainedBytes
+		}
 		var metrics metricdata.ResourceMetrics
 		if err := reader.Collect(metricCtx, &metrics); err != nil {
 			sampler.recordError(err)
@@ -411,7 +441,9 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 				}
 				payload := benchmarkPayload(uint64(seq), size, time.Now())
 				before := time.Now()
-				_, err := store.Enqueue(intakeCtx, badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{Payload: kafka.KafkaMessage{Key: payload[:8], Value: payload}, Destination: kafka.KafkaDestination{Topic: report.Topic}})
+				_, err := enqueueWithAdmissionRetry(intakeCtx, controls.AdmissionRetryInterval, func() (badgerbox.MessageID, error) {
+					return store.Enqueue(intakeCtx, badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{Payload: kafka.KafkaMessage{Key: payload[:8], Value: payload}, Destination: kafka.KafkaDestination{Topic: report.Topic}})
+				}, rejections.record)
 				if err != nil {
 					errs <- err
 					stopIntake()
@@ -436,6 +468,8 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		consumerWG.Wait()
 		report.Accepted = accepted.Load()
 		report.PublishAttempts = attempts.Load()
+		report.AdmissionRejectedAttempts = rejections.total()
+		report.AdmissionRejections = rejections.snapshot()
 		verifier.mu.Lock()
 		defer verifier.mu.Unlock()
 		report.UniqueDelivered = verifier.unique
@@ -444,17 +478,36 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		report.EnqueueLatency = verifier.enqueue.summary()
 		report.DeliveryLatency = verifier.delivery.summary()
 	}()
-	select {
-	case <-intakeDone:
-	case err = <-errs:
-		return err
-	case err = <-service.Errors():
-		if err == nil {
-			err = errors.New("runner stopped before intake completed")
+	// A permanently failed row retains namespace quota. Detect that failure even
+	// while intake is waiting for admission, using a bounded metadata-only page.
+	intakeMonitor := time.NewTicker(100 * time.Millisecond)
+	defer intakeMonitor.Stop()
+intakeLoop:
+	for {
+		select {
+		case <-intakeDone:
+			break intakeLoop
+		case err = <-errs:
+			return err
+		case err = <-service.Errors():
+			if err == nil {
+				err = errors.New("runner stopped before intake completed")
+			}
+			return err
+		case <-runCtx.Done():
+			return runCtx.Err()
+		case <-intakeMonitor.C:
+			if rejections.quota.Load() == 0 {
+				continue
+			}
+			letters, _, err := store.ListDeadLetterMetadata(runCtx, badgerbox.DeadLetterListOptions{Limit: 1, MaxBytes: 64 << 10})
+			if err != nil {
+				return err
+			}
+			if len(letters) > 0 {
+				return errors.New("benchmark dead-lettered a message while intake was waiting for admission")
+			}
 		}
-		return err
-	case <-runCtx.Done():
-		return runCtx.Err()
 	}
 	report.EnqueueSeconds = time.Since(started).Seconds()
 	report.EnqueuePerSecond = float64(accepted.Load()) / report.EnqueueSeconds
@@ -552,6 +605,13 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		}
 		if !audit.Complete || audit.LiveRows != 0 || audit.DeadLetters.Rows != 0 || len(audit.Samples.Anomalies) != 0 {
 			return errors.New("final database audit did not prove an empty consistent queue")
+		}
+		usage, err := store.Usage(runCtx)
+		if err != nil {
+			return err
+		}
+		if usage.RetainedMessages != 0 || usage.RetainedBytes != 0 {
+			return errors.New("final admission usage did not prove an empty namespace")
 		}
 		var metrics metricdata.ResourceMetrics
 		if err = reader.Collect(runCtx, &metrics); err != nil {
