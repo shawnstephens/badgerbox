@@ -16,9 +16,6 @@ type keyspace struct {
 	queueStateVersionKey    []byte
 	readyCreatedPrefix      []byte
 	processingCreatedPrefix []byte
-	readyCountPrefix        []byte
-	processingCountPrefix   []byte
-	deadLetterCountPrefix   []byte
 	sequenceKey             []byte
 }
 
@@ -35,9 +32,6 @@ func newKeyspace(namespace string) keyspace {
 		queueStateVersionKey:    []byte(queueStateBase + "version"),
 		readyCreatedPrefix:      []byte(queueStateBase + "ready-created/"),
 		processingCreatedPrefix: []byte(queueStateBase + "processing-created/"),
-		readyCountPrefix:        []byte(queueStateBase + "count/ready/"),
-		processingCountPrefix:   []byte(queueStateBase + "count/processing/"),
-		deadLetterCountPrefix:   []byte(queueStateBase + "count/dlq/"),
 		sequenceKey:             []byte(base + "seq/message-id"),
 	}
 }
@@ -66,18 +60,6 @@ func (k keyspace) processingCreatedKey(createdAt time.Time, id MessageID) []byte
 	return appendTimeAndID(k.processingCreatedPrefix, createdAt.UnixNano(), uint64(id))
 }
 
-func (k keyspace) readyCountShardKey(shard byte) []byte {
-	return appendShardSuffix(k.readyCountPrefix, shard)
-}
-
-func (k keyspace) processingCountShardKey(shard byte) []byte {
-	return appendShardSuffix(k.processingCountPrefix, shard)
-}
-
-func (k keyspace) deadLetterCountShardKey(shard byte) []byte {
-	return appendShardSuffix(k.deadLetterCountPrefix, shard)
-}
-
 func appendBinarySuffix(prefix []byte, suffix [8]byte) []byte {
 	key := make([]byte, len(prefix)+len(suffix))
 	copy(key, prefix)
@@ -93,13 +75,6 @@ func appendTimeAndID(prefix []byte, ts int64, id uint64) []byte {
 	copy(key[len(prefix):], timePart[:])
 	key[len(prefix)+8] = '/'
 	copy(key[len(prefix)+9:], idPart[:])
-	return key
-}
-
-func appendShardSuffix(prefix []byte, shard byte) []byte {
-	key := make([]byte, len(prefix)+1)
-	copy(key, prefix)
-	key[len(prefix)] = shard
 	return key
 }
 

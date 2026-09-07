@@ -47,4 +47,6 @@ var (
 	ErrNilContext         = errors.New("badgerbox: context is nil")
 	ErrInvalidNamespace   = errors.New("badgerbox: namespace contains separator")
 	ErrIncompatibleFormat = errors.New("badgerbox: incompatible storage format; use a new directory")
+	// ErrInconsistentIndex means lifecycle indexes cannot provide a reliable snapshot.
+	ErrInconsistentIndex = errors.New("badgerbox: inconsistent queue index")
 )
