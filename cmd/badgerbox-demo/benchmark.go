@@ -149,6 +149,9 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	if err != nil {
 		return err
 	}
+	if opts.NumCompactors == 0 {
+		return errors.New("benchmark requires --badger-num-compactors to be at least 2; disabled compaction can stall writes beyond the timeout")
+	}
 	parent := cmd.String("db-path")
 	if parent != "" {
 		if err := os.MkdirAll(parent, 0700); err != nil {
@@ -170,24 +173,8 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	report.Config.TimelineMaxPoints = cmd.Int("timeline-max-points")
 	report.Config.ObserveAfterDrain = cmd.Duration("observe-after-drain").String()
 	report.Config.Maintenance = maintenance.Options{FlattenOnStartup: cmd.Bool("badger-compact-on-startup"), ValueLogGCInterval: cmd.Duration("badger-gc-interval"), ValueLogGCDiscardRatio: ratio, ValueLogGCMaxRuns: cmd.Int("badger-gc-max-runs"), ValueLogGCMaxDuration: cmd.Duration("badger-gc-max-duration")}
-	defer func() {
-		report.Passed = resultErr == nil
-		if resultErr != nil {
-			report.Error = resultErr.Error()
-		}
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			resultErr = errors.Join(resultErr, err)
-			return
-		}
-		data = append(data, '\n')
-		if cmd.String("output") == "-" {
-			_, err = cmd.Root().Writer.Write(data)
-		} else {
-			err = os.WriteFile(cmd.String("output"), data, 0600)
-		}
-		resultErr = errors.Join(resultErr, err)
-	}()
+	verificationComplete := false
+	defer finalizeBenchmarkReport(cmd, &report, &verificationComplete, &resultErr)
 	signalCtx, stopSignals := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
 	runCtx, cancel := context.WithTimeout(signalCtx, cmd.Duration("timeout"))
@@ -561,8 +548,35 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		if report.Metrics["badgerbox_enqueue_total"] != float64(count) {
 			return errors.New("enqueue metric does not match accepted count")
 		}
+		verificationComplete = true
 		return nil
 	}
+}
+
+// This must be deferred directly so it observes panics from the run or its
+// cleanup. Preserve the panic after writing failure evidence instead of treating
+// a still-nil named return error as successful verification.
+func finalizeBenchmarkReport(cmd *cli.Command, report *benchmarkReport, verificationComplete *bool, resultErr *error) {
+	if recovered := recover(); recovered != nil {
+		*resultErr = errors.Join(*resultErr, fmt.Errorf("benchmark panicked: %v", recovered))
+		defer func() { panic(recovered) }()
+	}
+	report.Passed = *verificationComplete && *resultErr == nil
+	if *resultErr != nil {
+		report.Error = (*resultErr).Error()
+	}
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		*resultErr = errors.Join(*resultErr, err)
+		return
+	}
+	data = append(data, '\n')
+	if cmd.String("output") == "-" {
+		_, err = cmd.Root().Writer.Write(data)
+	} else {
+		err = os.WriteFile(cmd.String("output"), data, 0600)
+	}
+	*resultErr = errors.Join(*resultErr, err)
 }
 
 func benchmarkMetricTotals(metrics metricdata.ResourceMetrics) map[string]float64 {

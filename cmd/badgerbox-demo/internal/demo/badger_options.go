@@ -168,8 +168,8 @@ func validateBadgerOptions(opts badger.Options) error {
 		return fmt.Errorf("--badger-num-level-zero-tables must be at least 1")
 	case opts.NumLevelZeroTablesStall <= opts.NumLevelZeroTables:
 		return fmt.Errorf("--badger-num-level-zero-tables-stall must be greater than --badger-num-level-zero-tables")
-	case opts.NumCompactors == 1:
-		return fmt.Errorf("--badger-num-compactors cannot be 1; Badger requires 0 or at least 2 compactors")
+	case opts.NumCompactors < 0 || opts.NumCompactors == 1:
+		return fmt.Errorf("--badger-num-compactors must be 0 or at least 2")
 	case opts.BlockCacheSize < 0:
 		return fmt.Errorf("--badger-block-cache-size must be greater than or equal to 0")
 	case opts.IndexCacheSize < 0:
