@@ -86,7 +86,7 @@ func benchmarkMetricSeriesValues(metrics metricdata.ResourceMetrics) []benchmark
 			add := func(attrs attribute.Set, value float64) {
 				labels := make(map[string]string, attrs.Len())
 				for _, kv := range attrs.ToSlice() {
-					labels[string(kv.Key)] = kv.Value.Emit()
+					labels[string(kv.Key)] = kv.Value.String()
 				}
 				result = append(result, benchmarkMetricSeries{Name: metric.Name, Scope: scope.Scope.Name, Unit: metric.Unit, Attributes: labels, Value: value})
 			}
