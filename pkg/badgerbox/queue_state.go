@@ -1,6 +1,7 @@
 package badgerbox
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -93,7 +94,7 @@ func (s *Store[M, D]) loadQueueSnapshotFromIndexes(ctx context.Context, txn *bad
 		{prefix: s.keys.deadLetterPrefix, depth: &snapshot.DeadLetterDepth},
 	}
 	for _, count := range counts {
-		depth, err := countTimeAndIDIndex(ctx, it, count.prefix)
+		depth, err := s.countVisibleTimeAndIDIndex(ctx, txn, it, count.prefix)
 		if err != nil {
 			return queueSnapshot{}, err
 		}
@@ -112,7 +113,7 @@ func (s *Store[M, D]) loadQueueSnapshotFromIndexes(ctx context.Context, txn *bad
 		if state.depth == 0 {
 			continue
 		}
-		age, err := oldestIndexAge(ctx, it, state.prefix, now)
+		age, err := s.oldestVisibleIndexAge(ctx, txn, it, state.prefix, now)
 		if err != nil {
 			return queueSnapshot{}, err
 		}
@@ -121,30 +122,50 @@ func (s *Store[M, D]) loadQueueSnapshotFromIndexes(ctx context.Context, txn *bad
 
 	return snapshot, nil
 }
-func countTimeAndIDIndex(ctx context.Context, it *badger.Iterator, prefix []byte) (int64, error) {
+func (s *Store[M, D]) countVisibleTimeAndIDIndex(ctx context.Context, txn *badger.Txn, it *badger.Iterator, prefix []byte) (int64, error) {
 	var count int64
 	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 		if err := ctxErr(ctx); err != nil {
 			return 0, err
 		}
-		if _, _, err := parseTimeAndIDKey(prefix, it.Item().Key()); err != nil {
+		_, id, err := parseTimeAndIDKey(prefix, it.Item().Key())
+		if err != nil {
 			return 0, err
+		}
+		if !bytes.Equal(prefix, s.keys.deadLetterPrefix) {
+			marker, err := s.quarantineDLQKey(txn, id)
+			if err != nil {
+				return 0, err
+			}
+			if marker != nil {
+				continue
+			}
 		}
 		count++
 	}
 	return count, nil
 }
-func oldestIndexAge(ctx context.Context, it *badger.Iterator, prefix []byte, now time.Time) (time.Duration, error) {
-	if err := ctxErr(ctx); err != nil {
-		return 0, err
+
+// Quarantine preserves creation metadata because the creation timestamp is
+// unknown until its oversized source is read. Skip those entries using only the
+// bounded point marker; a quarantined row never contributes to live queue age.
+func (s *Store[M, D]) oldestVisibleIndexAge(ctx context.Context, txn *badger.Txn, it *badger.Iterator, prefix []byte, now time.Time) (time.Duration, error) {
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		if err := ctxErr(ctx); err != nil {
+			return 0, err
+		}
+		createdAt, id, err := parseTimeAndIDKey(prefix, it.Item().Key())
+		if err != nil {
+			return 0, err
+		}
+		marker, err := s.quarantineDLQKey(txn, id)
+		if err != nil {
+			return 0, err
+		}
+		if marker != nil {
+			continue
+		}
+		return positiveDuration(now.Sub(createdAt)), nil
 	}
-	it.Seek(prefix)
-	if !it.ValidForPrefix(prefix) {
-		return 0, fmt.Errorf("%w: nonempty queue has no creation key under %q", ErrInconsistentIndex, prefix)
-	}
-	createdAt, _, err := parseTimeAndIDKey(prefix, it.Item().Key())
-	if err != nil {
-		return 0, err
-	}
-	return positiveDuration(now.Sub(createdAt)), nil
+	return 0, fmt.Errorf("%w: nonempty queue has no visible creation key under %q", ErrInconsistentIndex, prefix)
 }

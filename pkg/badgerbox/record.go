@@ -75,16 +75,39 @@ func requireRecordField(fields map[string]json.RawMessage, field string, allowNu
 
 func decodeStoredDeadLetter(data []byte) (storedDeadLetter, error) {
 	var envelope struct {
-		Record    json.RawMessage `json:"record"`
-		FailedAt  *int64          `json:"failed_at_unix_nano"`
-		Error     string          `json:"error"`
-		Permanent bool            `json:"permanent"`
+		Record            json.RawMessage `json:"record"`
+		QuarantinedSource json.RawMessage `json:"quarantined_source"`
+		FailedAt          *int64          `json:"failed_at_unix_nano"`
+		Error             string          `json:"error"`
+		Permanent         bool            `json:"permanent"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return storedDeadLetter{}, err
 	}
 	if envelope.FailedAt == nil {
 		return storedDeadLetter{}, fmt.Errorf("badgerbox: dead-letter failed_at_unix_nano is missing or null")
+	}
+	if len(envelope.QuarantinedSource) > 0 {
+		if len(envelope.Record) > 0 {
+			return storedDeadLetter{}, fmt.Errorf("badgerbox: dead letter must contain one source form")
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.QuarantinedSource, &fields); err != nil {
+			return storedDeadLetter{}, err
+		}
+		for _, field := range []string{"id", "stored_bytes", "version", "available_at_unix_nano"} {
+			if err := requireRecordField(fields, field, false); err != nil {
+				return storedDeadLetter{}, err
+			}
+		}
+		var source storedQuarantinedSource
+		if err := json.Unmarshal(envelope.QuarantinedSource, &source); err != nil {
+			return storedDeadLetter{}, err
+		}
+		if source.StoredBytes <= 0 || source.Version == 0 {
+			return storedDeadLetter{}, fmt.Errorf("badgerbox: quarantine source size must be positive")
+		}
+		return storedDeadLetter{QuarantinedSource: &source, FailedAt: *envelope.FailedAt, Error: envelope.Error, Permanent: envelope.Permanent}, nil
 	}
 	record, err := decodeStoredRecord(envelope.Record)
 	if err != nil {

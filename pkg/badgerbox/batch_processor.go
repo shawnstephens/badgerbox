@@ -60,6 +60,13 @@ type BatchProcessFunc[M any, D any] func(ctx context.Context, messages []Message
 type BatchProcessorOptions struct {
 	ProcessorOptions
 	ClaimBatchSize int
+	// ClaimMaxBytes limits the sum of stored source values read by one claim.
+	// Zero disables this limit; negative values are invalid. Badger metadata is
+	// checked before copying or decoding. Values larger than the entire limit
+	// enter referenced quarantine without being loaded; healthy records continue.
+	// This is a source-byte budget, not a Go heap or RSS limit: account for JSON,
+	// codec expansion, callback copies, and Concurrency when sizing memory.
+	ClaimMaxBytes int64
 }
 
 func normalizeBatchProcessorOptions(opts BatchProcessorOptions) BatchProcessorOptions {
@@ -101,6 +108,10 @@ func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, 
 	}
 	if opts.ClaimBatchSize < 0 {
 		return nil, boxErrorf("ClaimBatchSize must be nonnegative; zero selects the default")
+	}
+
+	if opts.ClaimMaxBytes < 0 {
+		return nil, boxErrorf("ClaimMaxBytes must be nonnegative; zero disables the limit")
 	}
 
 	processor := &BatchProcessor[M, D]{
@@ -407,7 +418,7 @@ func (p *BatchProcessor[M, D]) dispatchAvailable(ctx context.Context, workCh cha
 		}
 
 		claimedAt := p.store.runtime.Now().UTC()
-		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithEffectiveLimit(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithLimits(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.ClaimMaxBytes, p.opts.LeaseDuration, p.opts.MaxAttempts)
 		if err != nil {
 			workerSlots <- struct{}{}
 			return err

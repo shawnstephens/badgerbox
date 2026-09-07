@@ -70,6 +70,8 @@ func failureKind(err error) string {
 	switch {
 	case err == nil:
 		return ""
+	case errors.Is(err, ErrClaimTooLarge):
+		return "claim_bytes"
 	case errors.Is(err, ErrCodecDecode):
 		return "codec"
 	case IsPermanent(err):

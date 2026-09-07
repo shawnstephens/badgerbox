@@ -12,6 +12,7 @@ type keyspace struct {
 	readyPrefix             []byte
 	processingPrefix        []byte
 	deadLetterPrefix        []byte
+	quarantinePrefix        []byte
 	queueStatePrefix        []byte
 	queueStateVersionKey    []byte
 	readyCreatedPrefix      []byte
@@ -29,6 +30,7 @@ func newKeyspace(namespace string) keyspace {
 		readyPrefix:             []byte(base + "ready/"),
 		processingPrefix:        []byte(base + "processing/"),
 		deadLetterPrefix:        []byte(base + "dlq/"),
+		quarantinePrefix:        []byte(base + "quarantine/"),
 		queueStatePrefix:        []byte(queueStateBase),
 		queueStateVersionKey:    []byte(queueStateBase + "version"),
 		readyCreatedPrefix:      []byte(queueStateBase + "ready-created/"),
@@ -120,4 +122,8 @@ func encodeUint64(value uint64) [8]byte {
 	var data [8]byte
 	binary.BigEndian.PutUint64(data[:], value)
 	return data
+}
+
+func (k keyspace) quarantineKey(id MessageID) []byte {
+	return appendBinarySuffix(k.quarantinePrefix, encodeUint64(uint64(id)))
 }

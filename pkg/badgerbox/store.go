@@ -72,10 +72,11 @@ type storedRecord struct {
 }
 
 type storedDeadLetter struct {
-	Record    storedRecord `json:"record"`
-	FailedAt  int64        `json:"failed_at_unix_nano"`
-	Error     string       `json:"error"`
-	Permanent bool         `json:"permanent"`
+	Record            storedRecord             `json:"record"`
+	QuarantinedSource *storedQuarantinedSource `json:"quarantined_source,omitempty"`
+	FailedAt          int64                    `json:"failed_at_unix_nano"`
+	Error             string                   `json:"error"`
+	Permanent         bool                     `json:"permanent"`
 }
 
 type enqueueResult struct {
@@ -347,7 +348,7 @@ func (s *Store[M, D]) ListDeadLettersWithOptions(ctx context.Context, options De
 			// ValueSize reads metadata, not the value. In particular, reject an
 			// oversized first record without allocating or decoding its payload.
 			if options.MaxBytes > 0 {
-				size := it.Item().ValueSize()
+				size := storedValueUpperBound(it.Item())
 				if size > remaining {
 					if len(deadLetters) == 0 {
 						return ErrDeadLetterTooLarge
@@ -357,12 +358,45 @@ func (s *Store[M, D]) ListDeadLettersWithOptions(ctx context.Context, options De
 				}
 				remaining -= size
 			}
-			value, err := it.Item().ValueCopy(nil)
+			value, err := copyStoredValue(it.Item())
 			if err != nil {
 				return err
 			}
 
-			deadLetter, err := s.decodeDeadLetter(value)
+			stored, err := decodeStoredDeadLetter(value)
+			if err != nil {
+				return err
+			}
+			failedAt, id, err := parseTimeAndIDKey(s.keys.deadLetterPrefix, key)
+			if err != nil {
+				return err
+			}
+			if stored.QuarantinedSource != nil {
+				source, err := s.referencedSourceItem(txn, key, stored)
+				if err != nil {
+					return err
+				}
+				if options.MaxBytes > 0 {
+					if storedValueUpperBound(source) > remaining {
+						if len(deadLetters) == 0 {
+							return ErrDeadLetterTooLarge
+						}
+						nextCursor = lastKey
+						break
+					}
+					remaining -= storedValueUpperBound(source)
+				}
+				stored.Record, err = decodeRecordItem(source, id)
+				if err != nil {
+					return err
+				}
+				if err := validateQuarantineSource(stored.Record, stored.QuarantinedSource); err != nil {
+					return err
+				}
+			} else if stored.Record.ID != id || stored.FailedAt != failedAt.UnixNano() {
+				return boxErrorf("dead-letter key disagrees with record")
+			}
+			deadLetter, err := s.deadLetterToMessage(stored)
 			if err != nil {
 				return err
 			}
@@ -432,11 +466,11 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 				return err
 			}
 
-			if options.MaxBytes > 0 && item.ValueSize() > options.MaxBytes {
+			if options.MaxBytes > 0 && storedValueUpperBound(item) > options.MaxBytes {
 				return ErrDeadLetterTooLarge
 			}
 
-			value, err := item.ValueCopy(nil)
+			value, err := copyStoredValue(item)
 			if err != nil {
 				return err
 			}
@@ -447,13 +481,35 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 			}
 
 			record := deadLetter.Record
-			if record.ID != id || deadLetter.FailedAt != failedAt.UnixNano() {
-				return boxErrorf("dead-letter key disagrees with record")
-			}
-			if _, err := txn.Get(s.keys.messageKey(id)); err == nil {
-				return ErrLiveMessageExists
-			} else if !errors.Is(err, badger.ErrKeyNotFound) {
-				return err
+			if deadLetter.QuarantinedSource != nil {
+				source, err := s.referencedSourceItem(txn, key, deadLetter)
+				if err != nil {
+					return err
+				}
+				if options.MaxBytes > 0 && storedValueUpperBound(source) > options.MaxBytes-storedValueUpperBound(item) {
+					return ErrDeadLetterTooLarge
+				}
+				record, err = decodeRecordItem(source, id)
+				if err != nil {
+					return err
+				}
+				if err := validateQuarantineSource(record, deadLetter.QuarantinedSource); err != nil {
+					return err
+				}
+				if _, err := txn.Get(s.keys.readyKey(time.Unix(0, record.AvailableAtUnix), id)); err == nil {
+					return fmt.Errorf("%w: quarantined source still scheduled", ErrInconsistentIndex)
+				} else if !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
+			} else {
+				if record.ID != id || deadLetter.FailedAt != failedAt.UnixNano() {
+					return boxErrorf("dead-letter key disagrees with record")
+				}
+				if _, err := txn.Get(s.keys.messageKey(id)); err == nil {
+					return ErrLiveMessageExists
+				} else if !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
 			}
 			record.Attempt = 0
 			record.Status = recordStatusPending
@@ -480,6 +536,11 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 
 			if err := txn.Delete(key); err != nil {
 				return err
+			}
+			if deadLetter.QuarantinedSource != nil {
+				if err := txn.Delete(s.keys.quarantineKey(id)); err != nil {
+					return err
+				}
 			}
 
 			requeued = true
@@ -756,12 +817,21 @@ func (s *Store[M, D]) ensureOpen() error {
 }
 
 func (s *Store[M, D]) loadRecord(txn *badger.Txn, id MessageID) (storedRecord, error) {
-	var record storedRecord
+	if key, err := s.quarantineDLQKey(txn, id); err != nil {
+		return storedRecord{}, err
+	} else if key != nil {
+		return storedRecord{}, ErrMessageQuarantined
+	}
 	item, err := txn.Get(s.keys.messageKey(id))
 	if err != nil {
-		return record, err
+		return storedRecord{}, err
 	}
-	value, err := item.ValueCopy(nil)
+	return decodeRecordItem(item, id)
+}
+
+func decodeRecordItem(item *badger.Item, id MessageID) (storedRecord, error) {
+	var record storedRecord
+	value, err := copyStoredValue(item)
 	if err != nil {
 		return record, err
 	}
@@ -807,14 +877,8 @@ func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error
 	}, nil
 }
 
-func (s *Store[M, D]) decodeDeadLetter(data []byte) (DeadLetter[M, D], error) {
+func (s *Store[M, D]) deadLetterToMessage(encoded storedDeadLetter) (DeadLetter[M, D], error) {
 	var result DeadLetter[M, D]
-
-	encoded, err := decodeStoredDeadLetter(data)
-	if err != nil {
-		return result, err
-	}
-
 	message, err := s.recordToMessage(encoded.Record)
 	if err != nil {
 		return result, err
@@ -887,6 +951,13 @@ func ctxErr(ctx context.Context) error {
 }
 
 func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now time.Time, batchSize int, leaseDuration time.Duration, maxAttempts int) ([]claimedRecord[M, D], int, error) {
+	return s.claimReadyBatchWithLimits(ctx, now, batchSize, 0, leaseDuration, maxAttempts)
+}
+
+func (s *Store[M, D]) claimReadyBatchWithLimits(ctx context.Context, now time.Time, batchSize int, maxBytes int64, leaseDuration time.Duration, maxAttempts int) ([]claimedRecord[M, D], int, error) {
+	if maxBytes < 0 {
+		return nil, 0, boxErrorf("claim max bytes must be nonnegative")
+	}
 	if batchSize < 0 {
 		return nil, 0, boxErrorf("claim batch size must be non-negative: %d", batchSize)
 	}
@@ -897,9 +968,10 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		maxAttempts = defaultMaxAttempts
 	}
 
-	claimed := make([]claimedRecord[M, D], 0, batchSize)
+	claimed := make([]claimedRecord[M, D], 0, min(batchSize, defaultClaimBatchSize))
 	effectiveBatchSize := batchSize
 	var quarantined []error
+	var byteLimited bool
 	now = now.UTC()
 
 	for {
@@ -909,6 +981,9 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 			clear(claimed)
 			claimed = claimed[:0]
 			quarantined = quarantined[:0]
+			byteLimited = false
+			var readBytes int64
+			disposedIDs := make(map[MessageID]bool)
 			return s.db.Update(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
 				opts.PrefetchValues = false
@@ -930,7 +1005,22 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					}
 					examined++
 
-					record, err := s.loadRecord(txn, id)
+					if disposedIDs[id] {
+						if err := txn.Delete(key); err != nil {
+							return err
+						}
+						continue
+					}
+					if marker, err := s.quarantineDLQKey(txn, id); err != nil {
+						return err
+					} else if marker != nil {
+						// A stale scheduling index cannot reactivate quarantine.
+						if err := txn.Delete(key); err != nil {
+							return err
+						}
+						continue
+					}
+					item, err := txn.Get(s.keys.messageKey(id))
 					if errors.Is(err, badger.ErrKeyNotFound) {
 						deleteErr := txn.Delete(key)
 						if deleteErr != nil {
@@ -938,6 +1028,27 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 						}
 						continue
 					}
+					if err != nil {
+						return err
+					}
+
+					size := storedValueUpperBound(item)
+					if maxBytes > 0 {
+						if size > maxBytes {
+							if err := s.quarantineOversizedRecord(txn, id, availableAt, now, size, maxBytes, item.Version()); err != nil {
+								return err
+							}
+							disposedIDs[id] = true
+							quarantined = append(quarantined, claimSizeError(size, maxBytes))
+							continue
+						}
+						if size > maxBytes-readBytes {
+							byteLimited = true
+							break
+						}
+						readBytes += size
+					}
+					record, err := decodeRecordItem(item, id)
 					if err != nil {
 						return err
 					}
@@ -983,6 +1094,7 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 						if err := s.quarantineReadyRecord(txn, record, now, err); err != nil {
 							return err
 						}
+						disposedIDs[id] = true
 						quarantined = append(quarantined, err)
 						continue
 					}
@@ -1008,6 +1120,7 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					if setErr != nil {
 						return setErr
 					}
+					disposedIDs[id] = true
 					claimed = append(claimed, claimedRecord[M, D]{
 						Message:      message,
 						LeaseToken:   token,
@@ -1051,6 +1164,11 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		}
 	}
 
+	if byteLimited && len(claimed) > 0 {
+		// A smaller batch caused by bytes is full for dispatch purposes; continue
+		// immediately when another worker slot is available, without a poll delay.
+		effectiveBatchSize = len(claimed)
+	}
 	return claimed, effectiveBatchSize, nil
 }
 func (s *Store[M, D]) collectExpiredProcessingCandidates(ctx context.Context, now time.Time, pageSize int) ([]expiredProcessingCandidate, error) {
@@ -1100,7 +1218,7 @@ func (s *Store[M, D]) requeueExpiredCandidate(ctx context.Context, now time.Time
 			if err != nil {
 				return err
 			}
-			tokenBytes, err := item.ValueCopy(nil)
+			tokenBytes, err := copyStoredValue(item)
 			if err != nil {
 				return err
 			}
