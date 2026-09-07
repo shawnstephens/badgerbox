@@ -3,6 +3,7 @@ package badgerbox
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,6 +25,10 @@ type BatchProcessResult struct {
 // return before that work completes. In both cases, they must stream exactly one
 // BatchProcessResult per claimed message into results. Sending additional results
 // violates the contract and can block after the batch-sized buffer fills.
+//
+// The function must return when its context is canceled. Run joins function
+// invocations before returning; caller-owned asynchronous clients must be flushed
+// and closed after Run returns.
 //
 // The processor owns Badger settlement. It acknowledges, retries, or dead-letters
 // records as results arrive; the batch function must not mutate the store. The
@@ -48,23 +53,39 @@ type BatchProcessResult struct {
 // assign a permanent disposition to individual records that produced no result.
 type BatchProcessFunc[M any, D any] func(ctx context.Context, messages []Message[M, D], results chan<- BatchProcessResult) error
 
+// BatchProcessorOptions adds batch sizing to the shared worker options.
+type BatchProcessorOptions struct {
+	ProcessorOptions
+	ClaimBatchSize int
+}
+
+func normalizeBatchProcessorOptions(opts BatchProcessorOptions) BatchProcessorOptions {
+	opts.ProcessorOptions = normalizeProcessorOptions(opts.ProcessorOptions)
+	if opts.ClaimBatchSize <= 0 {
+		opts.ClaimBatchSize = defaultClaimBatchSize
+	}
+	return opts
+}
+
 // BatchProcessor claims ready messages from a Store in batches and delivers each
 // batch to a BatchProcessFunc.
 //
 // ProcessorOptions.Concurrency controls how many batch workers run concurrently.
-// ProcessorOptions.ClaimBatchSize controls the maximum number of messages claimed
+// BatchProcessorOptions.ClaimBatchSize controls the maximum number of messages claimed
 // for one BatchProcessFunc call. Settlement remains per-message even though
 // processing is scheduled per-batch.
 type BatchProcessor[M any, D any] struct {
-	store *Store[M, D]
-	fn    BatchProcessFunc[M, D]
-	opts  ProcessorOptions
+	store     *Store[M, D]
+	fn        BatchProcessFunc[M, D]
+	opts      BatchProcessorOptions
+	callbacks sync.WaitGroup
+	runMu     sync.Mutex
 }
 
 // NewBatchProcessor builds a BatchProcessor for store and fn.
 //
 // Zero-value options are replaced with package defaults.
-func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts ProcessorOptions) (*BatchProcessor[M, D], error) {
+func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts BatchProcessorOptions) (*BatchProcessor[M, D], error) {
 	if store == nil {
 		return nil, ErrNilStore
 	}
@@ -75,7 +96,7 @@ func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, 
 	processor := &BatchProcessor[M, D]{
 		store: store,
 		fn:    fn,
-		opts:  normalizeProcessorOptions(opts),
+		opts:  normalizeBatchProcessorOptions(opts),
 	}
 	return processor, nil
 }
@@ -96,6 +117,11 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 		p.store.obs.recordProcessBatch(ctx, len(work), duration)
 	}()
 
+	if ctxErr(ctx) != nil || p.resultWaitDuration(work) <= 0 {
+		return p.releaseClaimedBatch(ctx, work)
+	}
+	ctx, endTraces := p.startMessageTraces(ctx, work, start)
+	defer endTraces()
 	processCtx, cancelProcess := context.WithCancel(contextWithOTelInstrumentation(ctx, p.store.obs))
 	defer cancelProcess()
 	// The result channel is sized to the claimed batch so producer callbacks can
@@ -110,15 +136,28 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 	}
 	resultWaitDuration := p.resultWaitDuration(work)
 	if resultWaitDuration <= 0 {
-		return p.failPendingBatchResults(ctx, pending, start, ErrBatchResultMissing)
+		return p.releaseClaimedBatch(ctx, work)
 	}
 
 	processDone := make(chan error, 1)
+	invoked := make(chan bool, 1)
+	p.callbacks.Add(1)
 	go func() {
+		defer p.callbacks.Done()
+		// Commit to invoking the callback only after the final cancellation
+		// and lease check. After sending true, always call it, even if canceled.
+		if ctxErr(processCtx) != nil || p.resultWaitDuration(work) <= 0 {
+			invoked <- false
+			return
+		}
+		invoked <- true
 		processDone <- p.invokeBatchProcess(processCtx, messages, resultCh)
 	}()
 
-	resultWait := time.NewTimer(resultWaitDuration)
+	if !<-invoked {
+		return p.releaseClaimedBatch(ctx, work)
+	}
+	resultWait := time.NewTimer(p.resultWaitDuration(work))
 	defer resultWait.Stop()
 
 	var processDoneCh <-chan error = processDone
@@ -263,44 +302,47 @@ func (p *BatchProcessor[M, D]) failPendingBatchResults(ctx context.Context, pend
 }
 
 // batchSettlementContext strips caller cancellation before Badger settlement and
-// replaces it with ProcessorOptions.BatchSettlementTimeout. Once a result has
+// replaces it with ProcessorOptions.SettlementTimeout. Once a result has
 // arrived, or once pending work must be retried during shutdown, settlement
 // should get a bounded chance to complete instead of immediately failing with
 // context.Canceled and waiting for lease expiry.
 func (p *BatchProcessor[M, D]) batchSettlementContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), p.opts.BatchSettlementTimeout)
+	return context.WithTimeout(context.WithoutCancel(ctx), p.opts.SettlementTimeout)
 }
 
 func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord[M, D], started time.Time, processErr error) error {
-	ctx, span := p.store.obs.startProcessSpan(ctx, work.Message.ID, work.Message.Attempt, work.Message.MaxAttempts, work.Message.CreatedAt, work.Message.AvailableAt, work.TraceCarrier, oteltrace.WithTimestamp(started))
+	ctx = ContextForMessage(ctx, work.Message.ID)
+	delivery := ctx.Value(messageTracesKey{}).(messageTraces)[work.Message.ID]
+	span := delivery.span
 	if processErr != nil {
 		span.RecordError(processErr)
 		result, failErr := p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, processErr, p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
 		if failErr != nil {
 			span.RecordError(failErr)
-			p.store.obs.endSpan(span, "error", oteltrace.WithTimestamp(p.store.runtime.Now().UTC()))
-			return boxErrorf("settle message %s: %w", work.Message.ID, failErr)
+			delivery.end("error", p.store.runtime.Now().UTC())
+			return markSettlementError(boxErrorf("settle message %s: %w", work.Message.ID, failErr))
 		}
-		p.finishProcessing(ctx, span, started, processErr, result)
+		p.finishProcessing(ctx, delivery, started, processErr, result)
 		return nil
 	}
 
 	acknowledged, err := p.store.acknowledgeOwned(ctx, work.Message.ID, work.LeaseToken)
 	if err != nil {
 		span.RecordError(err)
-		p.store.obs.endSpan(span, "error", oteltrace.WithTimestamp(p.store.runtime.Now().UTC()))
-		return boxErrorf("settle message %s: %w", work.Message.ID, err)
+		delivery.end("error", p.store.runtime.Now().UTC())
+		return markSettlementError(boxErrorf("settle message %s: %w", work.Message.ID, err))
 	}
 
 	result := failProcessingResult{}
 	if acknowledged {
 		result.outcome = metricOutcomeSuccess
 	}
-	p.finishProcessing(ctx, span, started, nil, result)
+	p.finishProcessing(ctx, delivery, started, nil, result)
 	return nil
 }
 
-func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, span oteltrace.Span, started time.Time, processErr error, result failProcessingResult) {
+func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, delivery *messageTrace, started time.Time, processErr error, result failProcessingResult) {
+	span := delivery.span
 	finished := p.store.runtime.Now().UTC()
 	duration := positiveDuration(finished.Sub(started))
 
@@ -317,5 +359,255 @@ func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, span oteltr
 		span.AddEvent("dead_lettered", oteltrace.WithAttributes(attribute.String("failure_kind", failureKind(processErr))))
 	}
 
-	p.store.obs.endSpan(span, result.outcome, oteltrace.WithTimestamp(finished))
+	delivery.end(result.outcome, finished)
+}
+
+func (p *BatchProcessor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan struct{}, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
+	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		if err := p.dispatchAvailable(ctx, workCh, workerSlots); err != nil {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.Chan():
+		case <-notifyCh:
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-workerSlots:
+		}
+
+		claimedAt := p.store.runtime.Now().UTC()
+		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithEffectiveLimit(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		if err != nil {
+			workerSlots <- struct{}{}
+			return err
+		}
+		if len(claimed) == 0 {
+			workerSlots <- struct{}{}
+			return nil
+		}
+		if err := ctxErr(ctx); err != nil {
+			workerSlots <- struct{}{}
+			return p.releaseClaimedBatch(ctx, claimed)
+		}
+
+		p.store.obs.workQueuedBatch(len(claimed))
+		select {
+		case <-ctx.Done():
+			p.store.obs.workDequeuedBatch(len(claimed))
+			workerSlots <- struct{}{}
+			return p.releaseClaimedBatch(ctx, claimed)
+		case workCh <- claimed:
+		}
+
+		if len(claimed) < effectiveBatchSize {
+			return nil
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) releaseClaimedBatch(ctx context.Context, work []claimedRecord[M, D]) error {
+	if len(work) == 0 {
+		return nil
+	}
+
+	settlementCtx, cancel := p.batchSettlementContext(ctx)
+	defer cancel()
+	_, err := p.store.releaseClaimed(settlementCtx, work)
+	return markSettlementError(err)
+}
+func (p *BatchProcessor[M, D]) releaseQueuedBatch(ctx context.Context, work []claimedRecord[M, D]) error {
+	if len(work) == 0 {
+		return nil
+	}
+
+	p.store.obs.workDequeuedBatch(len(work))
+	return p.releaseClaimedBatch(ctx, work)
+}
+func (p *BatchProcessor[M, D]) workerLoop(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return p.drainQueuedWork(ctx, workCh, workerSlots)
+		case work, ok := <-workCh:
+			if !ok {
+				return nil
+			}
+			if err := ctxErr(ctx); err != nil {
+				releaseErr := p.releaseQueuedBatch(ctx, work)
+				workerSlots <- struct{}{}
+				return releaseErr
+			}
+			err := p.processWorkerBatch(ctx, work)
+			workerSlots <- struct{}{}
+			if err != nil {
+				return err
+			}
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) processWorkerBatch(ctx context.Context, work []claimedRecord[M, D]) error {
+	p.store.obs.workStartedBatch(len(work))
+	defer p.store.obs.workFinished()
+	return p.processBatch(ctx, work)
+}
+func (p *BatchProcessor[M, D]) drainQueuedWork(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
+	var releaseErrors []error
+	for {
+		select {
+		case work, ok := <-workCh:
+			if !ok {
+				return errors.Join(releaseErrors...)
+			}
+			err := p.releaseQueuedBatch(ctx, work)
+			workerSlots <- struct{}{}
+			if err != nil {
+				releaseErrors = append(releaseErrors, err)
+			}
+		default:
+			return errors.Join(releaseErrors...)
+		}
+	}
+}
+func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
+	if !p.runMu.TryLock() {
+		return boxErrorf("processor is already running")
+	}
+	defer p.runMu.Unlock()
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if err := p.store.StartObservability(runCtx); err != nil {
+		return err
+	}
+
+	notifyCh := make(chan struct{}, 1)
+	listenerID := p.store.registerListener(notifyCh)
+	defer p.store.unregisterListener(listenerID)
+
+	// workerSlots is the admission limit for durable claims. Each claimed batch
+	// owns one removed token until it is processed or released, so buffering
+	// workCh decouples dispatch from worker scheduling without allowing more than
+	// Concurrency batches to be claimed.
+	workCh := make(chan []claimedRecord[M, D], p.opts.Concurrency)
+	workerSlots := make(chan struct{}, p.opts.Concurrency)
+	for range p.opts.Concurrency {
+		workerSlots <- struct{}{}
+	}
+	errCh := make(chan error, p.opts.Concurrency+2)
+
+	var wg sync.WaitGroup
+	start := func(fn func(context.Context) error) {
+		wg.Go(func() {
+			if err := fn(runCtx); reportableLoopError(runCtx, err) {
+				// Each loop sends at most one error; errCh has one slot per loop.
+				errCh <- err
+				cancel()
+			}
+		})
+	}
+
+	start(func(ctx context.Context) error {
+		return p.dispatchLoop(ctx, notifyCh, workCh, workerSlots)
+	})
+	start(func(ctx context.Context) error {
+		return p.reaperLoop(ctx)
+	})
+	for range p.opts.Concurrency {
+		start(func(ctx context.Context) error {
+			return p.workerLoop(ctx, workCh, workerSlots)
+		})
+	}
+
+	var runErrors []error
+	select {
+	case err := <-errCh:
+		runErrors = append(runErrors, err)
+	case <-ctx.Done():
+	}
+	cancel()
+
+	wg.Wait()
+	p.callbacks.Wait()
+	runErrors = append(runErrors, p.drainQueuedWork(runCtx, workCh, workerSlots))
+	close(errCh)
+	for err := range errCh {
+		runErrors = append(runErrors, err)
+	}
+	return errors.Join(runErrors...)
+}
+func reportableLoopError(ctx context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	var settlement settlementError
+	if errors.As(err, &settlement) || ctx == nil || ctx.Err() == nil {
+		return true
+	}
+	return !onlyContextErrors(err)
+}
+
+// Check every branch of a joined error: cancellation in one branch cannot hide
+// a storage or application failure in another.
+func onlyContextErrors(err error) bool {
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		children := wrapped.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if child != nil && !onlyContextErrors(child) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		if cause := wrapped.Unwrap(); cause != nil {
+			return onlyContextErrors(cause)
+		}
+	}
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+func (p *BatchProcessor[M, D]) reaperLoop(ctx context.Context) error {
+	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
+	defer ticker.Stop()
+	for {
+		if _, err := p.store.requeueExpired(ctx, p.store.runtime.Now().UTC(), p.opts.RequeuePageSize); err != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.Chan():
+		}
+	}
+}
+
+func (p *BatchProcessor[M, D]) startMessageTraces(ctx context.Context, work []claimedRecord[M, D], start time.Time) (context.Context, func()) {
+	traces := make(messageTraces, len(work))
+	for _, record := range work {
+		messageCtx, span := p.store.obs.startProcessSpan(ctx, record.Message.ID, record.Message.Attempt, record.Message.MaxAttempts, record.Message.CreatedAt, record.Message.AvailableAt, record.TraceCarrier, oteltrace.WithTimestamp(start))
+		traces[record.Message.ID] = newMessageTrace(messageCtx, span)
+	}
+	ctx = context.WithValue(ctx, messageTracesKey{}, traces)
+	return ctx, func() {
+		for _, delivery := range traces {
+			delivery.end("", p.store.runtime.Now().UTC())
+		}
+	}
 }

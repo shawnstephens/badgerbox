@@ -58,7 +58,7 @@ func TestBatchSettlementContinuesAfterRecordErrors(t *testing.T) {
 					cancel()
 				}
 				return nil
-			}, ProcessorOptions{BatchSettlementTimeout: time.Second})
+			}, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{SettlementTimeout: time.Second}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,25 +106,20 @@ func TestPendingBatchFailuresAreAggregated(t *testing.T) {
 	if err != nil || len(work) != 3 {
 		t.Fatalf("claim=%v err=%v", work, err)
 	}
-	pending := make(map[MessageID]claimedRecord[string, string])
-	for _, record := range work {
-		pending[record.Message.ID] = record
-	}
 	for _, record := range work[:2] {
 		corruptRecordTestValue(t, db, s.keys.messageKey(record.Message.ID), func(data []byte) []byte { return changeRecordTestField(t, data, "attempt", nil, true) })
 	}
-	p, err := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error { return nil }, ProcessorOptions{})
+	p, err := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error {
+		return errors.New("callback failed")
+	}, BatchProcessorOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.failPendingBatchResults(t.Context(), pending, time.Now(), errors.New("callback failed"))
+	err = p.processBatch(t.Context(), work)
 	for _, record := range work[:2] {
 		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("message %s:", record.Message.ID)) {
 			t.Fatalf("missing error for %s: %v", record.Message.ID, err)
 		}
-	}
-	if len(pending) != 0 {
-		t.Fatalf("%d outcomes were not attempted", len(pending))
 	}
 	if message, err := s.Get(t.Context(), work[2].Message.ID); err != nil || message.State != MessageStateReady {
 		t.Fatalf("healthy pending message was not retried: %+v %v", message, err)
@@ -155,7 +150,7 @@ func TestBatchLargeFailureDoesNotAbandonSuccess(t *testing.T) {
 		results <- BatchProcessResult{ID: messages[0].ID, Err: Permanent(errors.New(strings.Repeat("x", 2<<20)))}
 		results <- BatchProcessResult{ID: messages[1].ID}
 		return nil
-	}, ProcessorOptions{})
+	}, BatchProcessorOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

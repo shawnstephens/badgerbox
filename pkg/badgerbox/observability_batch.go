@@ -52,3 +52,7 @@ type instrumentationContextKey struct{}
 func contextWithOTelInstrumentation(ctx context.Context, o *otelInstrumentation) context.Context {
 	return context.WithValue(ctx, instrumentationContextKey{}, o)
 }
+
+func (o *otelInstrumentation) workQueuedBatch(n int)   { o.workDepth.Add(int64(n)) }
+func (o *otelInstrumentation) workDequeuedBatch(n int) { o.workDepth.Add(-int64(n)) }
+func (o *otelInstrumentation) workStartedBatch(n int)  { o.workDequeuedBatch(n); o.activeWorkers.Add(1) }

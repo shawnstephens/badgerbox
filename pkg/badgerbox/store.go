@@ -1061,3 +1061,67 @@ func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, 
 	}
 	return acknowledged, nil
 }
+
+func (s *Store[M, D]) releaseClaimed(ctx context.Context, work []claimedRecord[M, D]) (int, error) {
+	if len(work) == 0 {
+		return 0, nil
+	}
+
+	var released int
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
+		s.obs.recordConflictRetry(ctx)
+	}, func() error {
+		released = 0
+		return s.db.Update(func(txn *badger.Txn) error {
+			for _, claimed := range work {
+				if err := ctxErr(ctx); err != nil {
+					return err
+				}
+
+				record, err := s.loadRecord(txn, claimed.Message.ID)
+				if errors.Is(err, badger.ErrKeyNotFound) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				if record.Status != recordStatusProcessing || record.LeaseToken != claimed.LeaseToken {
+					continue
+				}
+
+				processingKey := s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), record.ID)
+				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+				availableAt := time.Unix(0, record.AvailableAtUnix).UTC()
+				record.Attempt = max(0, record.Attempt-1)
+				record.Status = recordStatusPending
+				record.LeaseToken = ""
+				record.LeaseUntilUnix = 0
+
+				if err := s.storeRecord(txn, record); err != nil {
+					return err
+				}
+				if err := txn.Delete(processingKey); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
+				if err := txn.Set(s.keys.readyKey(availableAt, record.ID), emptyValue); err != nil {
+					return err
+				}
+				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, record.ID)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
+				if err := txn.Set(s.keys.readyCreatedKey(createdAt, record.ID), emptyValue); err != nil {
+					return err
+				}
+				released++
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return 0, err
+	}
+	if released > 0 {
+		s.notifyListeners()
+	}
+	return released, nil
+}

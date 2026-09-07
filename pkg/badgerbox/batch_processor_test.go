@@ -45,7 +45,7 @@ func TestBatchSettlementMixedAndIncompleteResults(t *testing.T) {
 				}
 				return nil
 			}
-			p, err := NewBatchProcessor(s, fn, ProcessorOptions{BatchSettlementTimeout: time.Second})
+			p, err := NewBatchProcessor(s, fn, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{SettlementTimeout: time.Second}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,7 +83,7 @@ func TestExpiredBatchDoesNotInvokeCallback(t *testing.T) {
 	p, _ := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error {
 		t.Error("expired callback invoked")
 		return nil
-	}, ProcessorOptions{})
+	}, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{}})
 	if err := p.processBatch(t.Context(), work); err != nil {
 		t.Fatal(err)
 	}
