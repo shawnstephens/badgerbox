@@ -34,7 +34,7 @@ type Store[M any, D any] struct {
 	serde   Serde[M, D]
 	opts    Options
 	keys    keyspace
-	seq     *badger.Sequence
+	seq     *messageSequence
 	obs     *otelInstrumentation
 	runtime Runtime
 	closed  atomic.Bool
@@ -114,7 +114,12 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 	if err := store.initializeQueueState(); err != nil {
 		return nil, err
 	}
-	seq, err := db.GetSequence(store.keys.sequenceKey, opts.IDLeaseSize)
+	var seq *messageSequence
+	err := withConflictRetry(context.Background(), store.runtime, func() error {
+		var err error
+		seq, err = newMessageSequence(db, store.keys.sequenceKey, opts.IDLeaseSize)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +141,7 @@ func (s *Store[M, D]) Close() error {
 		}
 		s.closed.Store(true)
 		if s.seq != nil {
-			s.closeErr = errors.Join(s.closeErr, s.seq.Release())
+			s.closeErr = errors.Join(s.closeErr, withConflictRetry(context.Background(), s.runtime, s.seq.Release))
 		}
 	})
 	return s.closeErr

@@ -24,6 +24,34 @@ type claimedRecord[M any, D any] struct {
 	TraceCarrier map[string]string
 }
 
+func validateProcessorOptions(opts ProcessorOptions) error {
+	for _, option := range []struct {
+		name     string
+		negative bool
+	}{
+		{"Concurrency", opts.Concurrency < 0},
+		{"PollInterval", opts.PollInterval < 0},
+		{"LeaseDuration", opts.LeaseDuration < 0},
+		{"RetryBaseDelay", opts.RetryBaseDelay < 0},
+		{"RetryMaxDelay", opts.RetryMaxDelay < 0},
+		{"MaxAttempts", opts.MaxAttempts < 0},
+		{"RequeuePageSize", opts.RequeuePageSize < 0},
+		{"SettlementTimeout", opts.SettlementTimeout < 0},
+	} {
+		if option.negative {
+			return boxErrorf("%s must be nonnegative; zero selects the default", option.name)
+		}
+	}
+	base := opts.RetryBaseDelay
+	if base == 0 {
+		base = defaultRetryBaseDelay
+	}
+	if opts.RetryMaxDelay > 0 && base > opts.RetryMaxDelay {
+		return boxErrorf("RetryMaxDelay must be at least RetryBaseDelay")
+	}
+	return nil
+}
+
 func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 	if opts.Concurrency <= 0 {
 		opts.Concurrency = defaultConcurrency
