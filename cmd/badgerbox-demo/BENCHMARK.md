@@ -24,6 +24,9 @@ an aggregate 1,000 messages per second; the default rate of zero saturates the
 enqueue workers. The offered rate is a schedule, not a guarantee: enqueue stalls
 can make it fall behind and later catch up. `--timeout` bounds startup, intake,
 and drain; cleanup uses separate bounded shutdown contexts.
+The benchmark requires at least two Badger compactors. Unlike the producer's
+explicit zero-compactor mode, a finite write benchmark must keep compaction
+running: exhausted L0 capacity can block Badger commits beyond context deadlines.
 
 Without `--brokers`, the destination is an in-process verified sink. With
 `--brokers localhost:9092`, the command creates a unique Kafka topic and uses a

@@ -20,6 +20,8 @@ retained source still occupies its original admission quota, and its old
 creation index is treated as auxiliary metadata rather than live queue depth.
 `Get` returns `ErrMessageQuarantined` before loading it. The dead-letter counter
 records `failure_kind=claim_bytes`; no delivery callback runs for that record.
+If a callback from an earlier, expired lease finishes after quarantine, its
+settlement is a lost-ownership no-op and does not release admission capacity.
 
 If an in-budget source has a valid storage envelope but an application codec
 returns an error or panics, the processor moves it to an ordinary permanent

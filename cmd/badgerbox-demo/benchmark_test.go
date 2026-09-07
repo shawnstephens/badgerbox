@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	cli "github.com/urfave/cli/v3"
 )
 
 func runBenchmarkTest(t *testing.T, extra ...string) (benchmarkReport, error) {
@@ -130,5 +133,86 @@ func TestBenchmarkMinimumPayloadIntegrity(t *testing.T) {
 	v.receive(payload, now)
 	if v.unique != 1 || v.invalid != 1 {
 		t.Fatalf("unique=%d invalid=%d", v.unique, v.invalid)
+	}
+}
+
+func TestCommandsRejectUnsupportedCompactorsBeforeDatabaseCreation(t *testing.T) {
+	t.Setenv("BADGERBOX_DEMO_BROKERS", "")
+	for _, tc := range []struct{ subcommand, compactors string }{
+		{"benchmark", "-1"},
+		{"producer", "-1"},
+		{"benchmark", "0"},
+	} {
+		t.Run(tc.subcommand+"/compactors="+tc.compactors, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "database")
+			args := []string{"badgerbox-demo", tc.subcommand, "--badger-num-compactors=" + tc.compactors, "--db-path", path}
+			if tc.subcommand == "producer" {
+				args = append(args, "--logging-producer")
+			}
+			err := newRootCommand().Run(t.Context(), args)
+			if err == nil || !strings.Contains(err.Error(), "badger-num-compactors") {
+				t.Fatalf("invalid compactor error = %v", err)
+			}
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("invalid options created a database: %v", err)
+			}
+		})
+	}
+}
+
+func TestBenchmarkReportRequiresVerificationAndSuccessfulCleanup(t *testing.T) {
+	cleanupErr := errors.New("cleanup failed")
+	panicValue := errors.New("injected panic")
+	for _, tc := range []struct {
+		name     string
+		verified bool
+		err      error
+		panics   bool
+		passed   bool
+	}{
+		{name: "verified", verified: true, passed: true},
+		{name: "unverified"},
+		{name: "cleanup error", verified: true, err: cleanupErr},
+		{name: "startup panic", panics: true},
+		{name: "cleanup panic", verified: true, panics: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			cmd := &cli.Command{
+				Writer: &output,
+				Flags:  []cli.Flag{&cli.StringFlag{Name: "output", Value: "-"}},
+				Action: func(_ context.Context, cmd *cli.Command) (resultErr error) {
+					report := benchmarkReport{}
+					verified := tc.verified
+					defer finalizeBenchmarkReport(cmd, &report, &verified, &resultErr)
+					defer func() {
+						if tc.panics {
+							panic(panicValue)
+						}
+					}()
+					return tc.err
+				},
+			}
+			var recovered any
+			func() {
+				defer func() { recovered = recover() }()
+				if err := cmd.Run(t.Context(), []string{"report-test"}); !errors.Is(err, tc.err) {
+					t.Fatalf("returned error = %v, want %v", err, tc.err)
+				}
+			}()
+			if tc.panics && recovered != panicValue || !tc.panics && recovered != nil {
+				t.Fatalf("panic changed or swallowed: %v", recovered)
+			}
+			var report benchmarkReport
+			if err := json.Unmarshal(output.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report.Passed != tc.passed {
+				t.Fatalf("passed = %t, want %t", report.Passed, tc.passed)
+			}
+			if tc.panics && !strings.Contains(report.Error, panicValue.Error()) {
+				t.Fatalf("report omitted panic: %q", report.Error)
+			}
+		})
 	}
 }
