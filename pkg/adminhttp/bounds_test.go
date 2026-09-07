@@ -188,9 +188,10 @@ func TestAdminNeverDecodesOrMarshalsApplicationPayloads(t *testing.T) {
 
 type deadlineWriter struct {
 	*httptest.ResponseRecorder
-	deadline time.Time
-	reset    bool
-	flushErr error
+	deadline     time.Time
+	readDeadline time.Time
+	reset        bool
+	flushErr     error
 }
 
 func (w *deadlineWriter) SetWriteDeadline(at time.Time) error {
@@ -202,14 +203,18 @@ func (w *deadlineWriter) SetWriteDeadline(at time.Time) error {
 	return nil
 }
 func (w *deadlineWriter) FlushError() error { return w.flushErr }
+func (w *deadlineWriter) SetReadDeadline(at time.Time) error {
+	w.readDeadline = at
+	return nil
+}
 func TestDeadlinePrecedesStorageAndSurvivesFailedFlush(t *testing.T) {
 	w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder(), flushErr: errors.New("write timeout")}
 	s := &fakeStore{audit: func(ctx context.Context) (badgerbox.AuditReport, error) {
-		if w.deadline.IsZero() {
-			t.Error("deadline set after storage")
+		if w.deadline.IsZero() || w.readDeadline.IsZero() {
+			t.Error("read/write deadline set after storage")
 		}
 		deadline, _ := ctx.Deadline()
-		if !deadline.Equal(w.deadline) {
+		if !deadline.Equal(w.deadline) || !deadline.Equal(w.readDeadline) {
 			t.Error("storage and write deadlines differ")
 		}
 		return badgerbox.AuditReport{Complete: true}, nil

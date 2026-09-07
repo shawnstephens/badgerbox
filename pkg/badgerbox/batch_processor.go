@@ -320,7 +320,7 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 		if failErr != nil {
 			span.RecordError(failErr)
 			delivery.end("error", p.store.runtime.Now().UTC())
-			return boxErrorf("settle message %s: %w", work.Message.ID, failErr)
+			return markSettlementError(boxErrorf("settle message %s: %w", work.Message.ID, failErr))
 		}
 		p.finishProcessing(ctx, delivery, started, processErr, result)
 		return nil
@@ -330,7 +330,7 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 	if err != nil {
 		span.RecordError(err)
 		delivery.end("error", p.store.runtime.Now().UTC())
-		return boxErrorf("settle message %s: %w", work.Message.ID, err)
+		return markSettlementError(boxErrorf("settle message %s: %w", work.Message.ID, err))
 	}
 
 	result := failProcessingResult{}
@@ -424,7 +424,7 @@ func (p *BatchProcessor[M, D]) releaseClaimedBatch(ctx context.Context, work []c
 	settlementCtx, cancel := p.batchSettlementContext(ctx)
 	defer cancel()
 	_, err := p.store.releaseClaimed(settlementCtx, work)
-	return err
+	return markSettlementError(err)
 }
 func (p *BatchProcessor[M, D]) releaseQueuedBatch(ctx context.Context, work []claimedRecord[M, D]) error {
 	if len(work) == 0 {
@@ -462,19 +462,20 @@ func (p *BatchProcessor[M, D]) processWorkerBatch(ctx context.Context, work []cl
 	return p.processBatch(ctx, work)
 }
 func (p *BatchProcessor[M, D]) drainQueuedWork(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
+	var releaseErrors []error
 	for {
 		select {
 		case work, ok := <-workCh:
 			if !ok {
-				return nil
+				return errors.Join(releaseErrors...)
 			}
 			err := p.releaseQueuedBatch(ctx, work)
 			workerSlots <- struct{}{}
 			if err != nil {
-				return err
+				releaseErrors = append(releaseErrors, err)
 			}
 		default:
-			return nil
+			return errors.Join(releaseErrors...)
 		}
 	}
 }
@@ -513,10 +514,8 @@ func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
 	start := func(fn func(context.Context) error) {
 		wg.Go(func() {
 			if err := fn(runCtx); reportableLoopError(runCtx, err) {
-				select {
-				case errCh <- err:
-				default:
-				}
+				// Each loop sends at most one error; errCh has one slot per loop.
+				errCh <- err
 				cancel()
 			}
 		})
@@ -534,44 +533,55 @@ func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
 		})
 	}
 
-	var err error
+	var runErrors []error
 	select {
-	case err = <-errCh:
-		cancel()
+	case err := <-errCh:
+		runErrors = append(runErrors, err)
 	case <-ctx.Done():
-		cancel()
-		err = queuedLoopError(errCh)
 	}
+	cancel()
 
 	wg.Wait()
 	p.callbacks.Wait()
-	if drainErr := p.drainQueuedWork(runCtx, workCh, workerSlots); err == nil && drainErr != nil {
-		err = drainErr
+	runErrors = append(runErrors, p.drainQueuedWork(runCtx, workCh, workerSlots))
+	close(errCh)
+	for err := range errCh {
+		runErrors = append(runErrors, err)
 	}
-	if err == nil {
-		err = queuedLoopError(errCh)
-	}
-	if err != nil {
-		return err
-	}
-	return nil
+	return errors.Join(runErrors...)
 }
 func reportableLoopError(ctx context.Context, err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) {
+	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return ctxErr(ctx) == nil
+	var settlement settlementError
+	if errors.As(err, &settlement) || ctx == nil || ctx.Err() == nil {
+		return true
 	}
-	return true
+	return !onlyContextErrors(err)
 }
-func queuedLoopError(errCh <-chan error) error {
-	select {
-	case err := <-errCh:
-		return err
-	default:
-		return nil
+
+// Check every branch of a joined error: cancellation in one branch cannot hide
+// a storage or application failure in another.
+func onlyContextErrors(err error) bool {
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		children := wrapped.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if child != nil && !onlyContextErrors(child) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		if cause := wrapped.Unwrap(); cause != nil {
+			return onlyContextErrors(cause)
+		}
 	}
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 func (p *BatchProcessor[M, D]) reaperLoop(ctx context.Context) error {
 	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
