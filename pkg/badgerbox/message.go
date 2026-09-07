@@ -40,3 +40,11 @@ type EnqueueRequest[M any, D any] struct {
 	Destination D
 	AvailableAt time.Time
 }
+
+// DeadLetterListOptions bounds a page by count and encoded storage bytes.
+// MaxBytes zero disables the byte limit. Cursor is opaque and namespace-specific.
+type DeadLetterListOptions struct {
+	Limit    int
+	Cursor   []byte
+	MaxBytes int64
+}

@@ -205,8 +205,13 @@ func TestMalformedDeadLettersNeverDecodeOrRequeue(t *testing.T) {
 				t.Fatal(err)
 			}
 			values := recordTestNamespace(t, db, store.opts.Namespace)
+			var failedAt time.Time
 			for key := range values {
 				if bytes.HasPrefix([]byte(key), store.keys.deadLetterPrefix) {
+					failedAt, _, err = parseTimeAndIDKey(store.keys.deadLetterPrefix, []byte(key))
+					if err != nil {
+						t.Fatal(err)
+					}
 					corruptRecordTestValue(t, db, []byte(key), func(data []byte) []byte {
 						var envelope map[string]json.RawMessage
 						if err := json.Unmarshal(data, &envelope); err != nil {
@@ -222,7 +227,7 @@ func TestMalformedDeadLettersNeverDecodeOrRequeue(t *testing.T) {
 			if _, _, err := store.ListDeadLetters(t.Context(), 10, nil); err == nil {
 				t.Error("list accepted malformed dead letter")
 			}
-			if err := store.RequeueDeadLetter(t.Context(), id, time.Now()); err == nil {
+			if err := store.RequeueDeadLetter(t.Context(), id, failedAt, time.Now()); err == nil {
 				t.Error("requeue accepted malformed dead letter")
 			}
 			if decodes.Load() != 0 {

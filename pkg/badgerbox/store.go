@@ -1,6 +1,7 @@
 package badgerbox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -252,11 +253,24 @@ func (s *Store[M, D]) Get(ctx context.Context, id MessageID) (Message[M, D], err
 }
 
 func (s *Store[M, D]) ListDeadLetters(ctx context.Context, limit int, cursor []byte) ([]DeadLetter[M, D], []byte, error) {
+	return s.ListDeadLettersWithOptions(ctx, DeadLetterListOptions{Limit: limit, Cursor: cursor})
+}
+
+func (s *Store[M, D]) ListDeadLettersWithOptions(ctx context.Context, options DeadLetterListOptions) ([]DeadLetter[M, D], []byte, error) {
 	if err := s.ensureOpen(); err != nil {
 		return nil, nil, err
 	}
 	if err := ctxErr(ctx); err != nil {
 		return nil, nil, err
+	}
+	if options.MaxBytes < 0 {
+		return nil, nil, boxErrorf("dead-letter page max bytes must be nonnegative")
+	}
+	limit, cursor := options.Limit, options.Cursor
+	if len(cursor) > 0 {
+		if _, _, err := parseTimeAndIDKey(s.keys.deadLetterPrefix, cursor); err != nil {
+			return nil, nil, err
+		}
 	}
 	if limit <= 0 {
 		return nil, nil, nil
@@ -264,6 +278,8 @@ func (s *Store[M, D]) ListDeadLetters(ctx context.Context, limit int, cursor []b
 
 	deadLetters := make([]DeadLetter[M, D], 0, limit)
 	var nextCursor []byte
+	var lastKey []byte
+	remaining := options.MaxBytes
 
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
@@ -283,12 +299,25 @@ func (s *Store[M, D]) ListDeadLetters(ctx context.Context, limit int, cursor []b
 			}
 
 			key := it.Item().KeyCopy(nil)
-			if skipCurrent && string(key) == string(cursor) {
+			if skipCurrent && bytes.Equal(key, cursor) {
 				skipCurrent = false
 				continue
 			}
 			skipCurrent = false
 
+			// ValueSize reads metadata, not the value. In particular, reject an
+			// oversized first record without allocating or decoding its payload.
+			if options.MaxBytes > 0 {
+				size := it.Item().ValueSize()
+				if size > remaining {
+					if len(deadLetters) == 0 {
+						return ErrDeadLetterTooLarge
+					}
+					nextCursor = lastKey
+					break
+				}
+				remaining -= size
+			}
 			value, err := it.Item().ValueCopy(nil)
 			if err != nil {
 				return err
@@ -300,8 +329,12 @@ func (s *Store[M, D]) ListDeadLetters(ctx context.Context, limit int, cursor []b
 			}
 
 			deadLetters = append(deadLetters, deadLetter)
-			nextCursor = key
+			lastKey = key
 			if len(deadLetters) == limit {
+				it.Next()
+				if it.ValidForPrefix(s.keys.deadLetterPrefix) {
+					nextCursor = key
+				}
 				break
 			}
 		}
@@ -314,11 +347,27 @@ func (s *Store[M, D]) ListDeadLetters(ctx context.Context, limit int, cursor []b
 	return deadLetters, nextCursor, nil
 }
 
-func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at time.Time) error {
+func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, failedAt time.Time, at time.Time) error {
+	return s.RequeueDeadLetterWithOptions(ctx, id, failedAt, DeadLetterRequeueOptions{AvailableAt: at})
+}
+
+// RequeueDeadLetterWithOptions checks the stored size before loading an exact record.
+func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id MessageID, failedAt time.Time, options DeadLetterRequeueOptions) error {
+	if options.MaxBytes < 0 {
+		return boxErrorf("requeue max bytes must be nonnegative")
+	}
+	at := options.AvailableAt
 	if err := s.ensureOpen(); err != nil {
 		return err
 	}
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
+	if failedAt.IsZero() {
+		return boxErrorf("failed_at is required")
+	}
 
+	failedAt = failedAt.UTC()
 	if at.IsZero() {
 		at = s.runtime.Now().UTC()
 	} else {
@@ -329,67 +378,73 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
+		requeued = false
 		return s.db.Update(func(txn *badger.Txn) error {
-			opts := badger.DefaultIteratorOptions
-			opts.PrefetchValues = false
-			it := txn.NewIterator(opts)
-			defer it.Close()
-
-			for it.Seek(s.keys.deadLetterPrefix); it.ValidForPrefix(s.keys.deadLetterPrefix); it.Next() {
-				key := it.Item().KeyCopy(nil)
-				_, currentID, err := parseTimeAndIDKey(s.keys.deadLetterPrefix, key)
-				if err != nil {
-					return err
-				}
-				if currentID != id {
-					continue
-				}
-
-				value, err := it.Item().ValueCopy(nil)
-				if err != nil {
-					return err
-				}
-
-				deadLetter, err := decodeStoredDeadLetter(value)
-				if err != nil {
-					return err
-				}
-
-				record := deadLetter.Record
-				record.Attempt = 0
-				record.Status = recordStatusPending
-				record.LeaseToken = ""
-				record.LeaseUntilUnix = 0
-				record.AvailableAtUnix = at.UnixNano()
-
-				encodedRecord, err := json.Marshal(record)
-				if err != nil {
-					return err
-				}
-
-				if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
-					return err
-				}
-				if err := txn.Set(s.keys.messageKey(record.ID), encodedRecord); err != nil {
-					return err
-				}
-				if err := txn.Set(s.keys.readyKey(at, record.ID), emptyValue); err != nil {
-					return err
-				}
-
-				if err := txn.Set(s.keys.readyCreatedKey(time.Unix(0, record.CreatedAtUnix).UTC(), record.ID), emptyValue); err != nil {
-					return err
-				}
-
-				if err := txn.Delete(key); err != nil {
-					return err
-				}
-
-				requeued = true
-				return nil
+			if err := ctxErr(ctx); err != nil {
+				return err
 			}
 
-			return ErrNotFound
+			key := s.keys.deadLetterKey(failedAt, id)
+			item, err := txn.Get(key)
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return ErrNotFound
+			}
+			if err != nil {
+				return err
+			}
+
+			if options.MaxBytes > 0 && item.ValueSize() > options.MaxBytes {
+				return ErrDeadLetterTooLarge
+			}
+
+			value, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+
+			deadLetter, unmarshalErr := decodeStoredDeadLetter(value)
+			if unmarshalErr != nil {
+				return unmarshalErr
+			}
+
+			record := deadLetter.Record
+			if record.ID != id || deadLetter.FailedAt != failedAt.UnixNano() {
+				return boxErrorf("dead-letter key disagrees with record")
+			}
+			if _, err := txn.Get(s.keys.messageKey(id)); err == nil {
+				return ErrLiveMessageExists
+			} else if !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
+			}
+			record.Attempt = 0
+			record.Status = recordStatusPending
+			record.LeaseToken = ""
+			record.LeaseUntilUnix = 0
+			record.AvailableAtUnix = at.UnixNano()
+
+			encoded, err := json.Marshal(record)
+			if err != nil {
+				return err
+			}
+			if err := s.validateRecordSize(record, len(encoded)); err != nil {
+				return err
+			}
+			if err := txn.Set(s.keys.messageKey(record.ID), encoded); err != nil {
+				return err
+			}
+			if err := txn.Set(s.keys.readyKey(at, record.ID), emptyValue); err != nil {
+				return err
+			}
+			if err := txn.Set(s.keys.readyCreatedKey(time.Unix(0, record.CreatedAtUnix).UTC(), record.ID), emptyValue); err != nil {
+				return err
+			}
+
+			if err := txn.Delete(key); err != nil {
+				return err
+			}
+
+			requeued = true
+			return nil
 		})
 	})
 	if err != nil {

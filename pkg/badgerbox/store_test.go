@@ -296,7 +296,11 @@ func TestRequeueDeadLetter(t *testing.T) {
 	})
 	stopProcessor(t, cancel, done)
 
-	if err := store.RequeueDeadLetter(context.Background(), id, time.Now().UTC()); err != nil {
+	letters, _, err := store.ListDeadLetters(context.Background(), 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RequeueDeadLetter(context.Background(), id, letters[0].FailedAt, time.Now().UTC()); err != nil {
 		t.Fatalf("requeue dead letter: %v", err)
 	}
 
@@ -351,7 +355,7 @@ func TestStoreGuardsAndHelpers(t *testing.T) {
 		if _, _, err := store.ListDeadLetters(context.Background(), 1, nil); !errors.Is(err, ErrStoreClosed) {
 			t.Fatalf("ListDeadLetters err = %v, want %v", err, ErrStoreClosed)
 		}
-		if err := store.RequeueDeadLetter(context.Background(), 1, time.Time{}); !errors.Is(err, ErrStoreClosed) {
+		if err := store.RequeueDeadLetter(context.Background(), 1, time.Now(), time.Time{}); !errors.Is(err, ErrStoreClosed) {
 			t.Fatalf("RequeueDeadLetter err = %v, want %v", err, ErrStoreClosed)
 		}
 		if err := store.StartObservability(context.Background()); !errors.Is(err, ErrStoreClosed) {
@@ -379,7 +383,7 @@ func TestStoreGuardsAndHelpers(t *testing.T) {
 		_, store, cleanup := openTestStore[testPayload, testDestination](t, "dead-letter-missing", Serde[testPayload, testDestination]{})
 		defer cleanup()
 
-		if err := store.RequeueDeadLetter(context.Background(), 999, time.Time{}); !errors.Is(err, ErrNotFound) {
+		if err := store.RequeueDeadLetter(context.Background(), 999, time.Now(), time.Time{}); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("RequeueDeadLetter err = %v, want %v", err, ErrNotFound)
 		}
 	})

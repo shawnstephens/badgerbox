@@ -131,7 +131,7 @@ func TestAcceptedRecordsCompleteLifecycleNearBadgerLimits(t *testing.T) {
 				if len(letters[0].Error) > maxStoredErrorBytes || !strings.HasSuffix(letters[0].Error, "[truncated]") {
 					t.Fatal("failure text was not bounded")
 				}
-				if err := s.RequeueDeadLetter(t.Context(), id, runtime.Now()); err != nil {
+				if err := s.RequeueDeadLetter(t.Context(), id, letters[0].FailedAt, runtime.Now()); err != nil {
 					t.Fatalf("size=%d: requeue dead letter: %v", size, err)
 				}
 				work = claim()

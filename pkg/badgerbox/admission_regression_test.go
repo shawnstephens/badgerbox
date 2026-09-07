@@ -101,7 +101,7 @@ func TestAcceptedBoundaryRecordCanBeRequeuedAfterMetadataChanges(t *testing.T) {
 		if _, err := s.failProcessing(t.Context(), id, work[0].LeaseToken, Permanent(errors.New("failed")), time.Second, time.Second); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.RequeueDeadLetter(t.Context(), id, time.Unix(0, math.MinInt64+1)); err != nil {
+		if err := s.RequeueDeadLetter(t.Context(), id, runtime.Now(), time.Unix(0, math.MinInt64+1)); err != nil {
 			t.Fatalf("requeue unchanged payload with limit=%d: %v", limit, err)
 		}
 		got, err := s.Get(t.Context(), id)
