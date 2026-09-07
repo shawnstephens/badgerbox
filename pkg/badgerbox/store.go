@@ -146,6 +146,8 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 		return nil, err
 	}
 
+	store.obs.AdmissionSnapshot = store.admissionSnapshot
+
 	return store, nil
 }
 

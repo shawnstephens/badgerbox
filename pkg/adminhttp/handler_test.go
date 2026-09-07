@@ -13,6 +13,7 @@ import (
 )
 
 type fakeStore struct {
+	usage          func(context.Context) (badgerbox.UsageSnapshot, error)
 	audit          func(context.Context) (badgerbox.AuditReport, error)
 	letters        []badgerbox.DeadLetterMetadata
 	next           []byte
@@ -22,6 +23,12 @@ type fakeStore struct {
 	requeueErr     error
 }
 
+func (s *fakeStore) Usage(ctx context.Context) (badgerbox.UsageSnapshot, error) {
+	if s.usage != nil {
+		return s.usage(ctx)
+	}
+	return badgerbox.UsageSnapshot{}, nil
+}
 func (s *fakeStore) Audit(ctx context.Context, _ badgerbox.AuditOptions) (badgerbox.AuditReport, error) {
 	if s.audit != nil {
 		return s.audit(ctx)

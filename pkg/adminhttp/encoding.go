@@ -97,13 +97,14 @@ type auditSummary struct {
 	LiveRows     int64                           `json:"live_rows"`
 	States       badgerbox.AuditStateReports     `json:"states"`
 	DeadLetters  badgerbox.AuditDeadLetterReport `json:"dead_letters"`
+	Usage        badgerbox.AuditUsageReport      `json:"usage"`
 }
 
 func (h handler) encodeAudit(ctx context.Context, report badgerbox.AuditReport, code string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	summary := auditSummary{Complete: report.Complete, Code: code, GeneratedAt: report.GeneratedAt, Namespace: h.namespace, ScannedKeys: report.ScannedKeys, ScannedBytes: report.ScannedBytes, LiveRows: report.LiveRows, States: report.States, DeadLetters: report.DeadLetters}
+	summary := auditSummary{Complete: report.Complete, Code: code, GeneratedAt: report.GeneratedAt, Namespace: h.namespace, ScannedKeys: report.ScannedKeys, ScannedBytes: report.ScannedBytes, LiveRows: report.LiveRows, States: report.States, DeadLetters: report.DeadLetters, Usage: report.Usage}
 	data, err := json.Marshal(summary)
 	if err != nil {
 		return nil, err

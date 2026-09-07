@@ -104,3 +104,14 @@ func positiveDuration(value time.Duration) time.Duration {
 func contextWithOTelInstrumentation(ctx context.Context, o *otelInstrumentation) context.Context {
 	return instrumentation.WithDeliveryObserver(ctx, o)
 }
+
+func (s *Store[M, D]) admissionSnapshot(ctx context.Context) (instrumentation.AdmissionSnapshot, error) {
+	usage, err := s.Usage(ctx)
+	if err != nil {
+		return instrumentation.AdmissionSnapshot{}, err
+	}
+	return instrumentation.AdmissionSnapshot{
+		RetainedMessages: usage.RetainedMessages, RetainedBytes: usage.RetainedBytes,
+		MaxRetainedMessages: usage.Limits.MaxRetainedMessages, MaxRetainedBytes: usage.Limits.MaxRetainedBytes,
+	}, nil
+}

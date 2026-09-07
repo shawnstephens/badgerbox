@@ -137,3 +137,38 @@ need disk workspace and can fail if the volume fills. The guard automatically
 admits new messages again after a fresh healthy sample. Apply one shared guard
 to every producer store using the protected volumes; it is an advisory process
 policy, not persistent namespace configuration.
+
+## HTTP and metric inspection
+
+`GET /usage` on the `adminhttp` handler returns the namespace together with
+`limits`, `retained_messages`, and `retained_bytes` from the same `UsageSnapshot`.
+
+The endpoint is read-only, uses the handler's response and request time limits,
+and permits four concurrent usage requests by default. Set `MaxConcurrentUsage`
+to change that bound. Busy requests receive HTTP 429 with `Retry-After: 1`.
+`GET /audit` additionally exposes `usage.persisted`, independently reconstructed
+`usage.retained_messages` and `usage.retained_bytes`, and `usage.matches`. Only
+interpret `matches` when the audit's `complete` field is true.
+
+The queue's existing observability snapshot poll exports:
+
+| OpenTelemetry instrument | Meaning |
+| --- | --- |
+| `badgerbox_retained_messages` | Retained message count |
+| `badgerbox_retained_bytes` | Canonical retained record bytes |
+| `badgerbox_retained_messages_limit` | Current persisted count limit; zero means unlimited |
+| `badgerbox_retained_bytes_limit` | Current persisted byte limit; zero means unlimited |
+| `badgerbox_admission_snapshot_error_total` | Failed reads of retained accounting |
+
+All five instruments have only the `namespace` attribute. The four gauges use
+`float64` to represent the full nonnegative `uint64` range; values above 2^53 may
+round. `Store.Usage` and the HTTP JSON preserve integer values; decode HTTP numbers
+into integer-capable types when exact large values matter. An accounting read
+failure increments the error counter and leaves prior gauge values unchanged.
+Usage collection proceeds even when a separate queue-index snapshot fails.
+
+Use a nonzero limit as the denominator when calculating utilization. Alert on
+usage approaching a finite limit and on accounting snapshot errors. Change
+persisted limits explicitly with `CompareAndSwapAdmissionLimits(ctx, expected,
+next)`, then update the configuration used by future Store constructors. Open
+Stores enforce the new limits immediately on their next committed admission.

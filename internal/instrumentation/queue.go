@@ -71,15 +71,17 @@ func positiveDuration(value time.Duration) time.Duration {
 }
 
 type Queue struct {
-	extraCounters  map[string]metric.Int64Counter
-	extraDurations map[string]metric.Float64Histogram
-	claimTooBig    metric.Int64Counter
-	claimRetrySize metric.Int64Histogram
-	classify       func(error) string
-	closeOnce      sync.Once
-	closed         bool
-	namespace      string
-	Snapshot       func(context.Context) (queueSnapshot, error)
+	extraCounters     map[string]metric.Int64Counter
+	extraDurations    map[string]metric.Float64Histogram
+	claimTooBig       metric.Int64Counter
+	claimRetrySize    metric.Int64Histogram
+	classify          func(error) string
+	closeOnce         sync.Once
+	closed            bool
+	namespace         string
+	Snapshot          func(context.Context) (queueSnapshot, error)
+	AdmissionSnapshot func(context.Context) (AdmissionSnapshot, error)
+	admission         admissionGauges
 
 	tracer     oteltrace.Tracer
 	propagator propagation.TextMapPropagator
@@ -168,6 +170,10 @@ func NewQueue(opts ObservabilityOptions, namespace string, queueSnapshot func(co
 		return nil, err
 	}
 	var extraErr error
+	inst.admission, extraErr = newAdmissionGauges(meter)
+	if extraErr != nil {
+		return nil, extraErr
+	}
 	inst.claimTooBig, extraErr = meter.Int64Counter("badgerbox_claim_transaction_too_big_total")
 	if extraErr != nil {
 		return nil, extraErr
@@ -335,7 +341,7 @@ func (o *Queue) RecordSnapshot(ctx context.Context) error {
 
 	started := time.Now()
 	defer func() { o.Observe(ctx, "snapshot_duration_seconds", time.Since(started).Seconds()) }()
-	var recordErr error
+	recordErr := o.recordAdmissionSnapshot(ctx)
 	attrs := namespaceAttributes(o.namespace)
 
 	if o.Snapshot != nil {

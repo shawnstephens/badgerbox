@@ -26,6 +26,7 @@ const (
 
 // Store is the generic administration surface used by the handler.
 type Store interface {
+	Usage(context.Context) (badgerbox.UsageSnapshot, error)
 	Audit(context.Context, badgerbox.AuditOptions) (badgerbox.AuditReport, error)
 	ListDeadLetterMetadata(context.Context, badgerbox.DeadLetterListOptions) ([]badgerbox.DeadLetterMetadata, []byte, error)
 	RequeueDeadLetterWithOptions(context.Context, badgerbox.MessageID, time.Time, badgerbox.DeadLetterRequeueOptions) error
@@ -46,6 +47,8 @@ type Options struct {
 	// writing. Zero uses four. Audits always allow only one in-flight request.
 	// Excess requests receive HTTP 429 immediately rather than waiting.
 	MaxConcurrentLists int
+	// MaxConcurrentUsage bounds lightweight usage requests through response flushing. Zero uses four.
+	MaxConcurrentUsage int
 	// MaxConcurrentRequeues bounds mutations through response flushing. Zero uses one.
 	MaxConcurrentRequeues int
 	// MaxRequeueBytes caps stored bytes before loading a requeue record. Zero uses 2 MiB.
@@ -54,7 +57,7 @@ type Options struct {
 	Now func() time.Time
 }
 
-// New returns a standard HTTP handler with relative audit, dead-letter, and
+// New returns a standard HTTP handler with relative usage, audit, dead-letter, and
 // requeue routes. A nil store keeps the routes available and returns HTTP 503.
 // Network middleware must preserve http.ResponseController read/write-deadline and
 // flush support. An unsupported writer receives a small HTTP 500 error, never
@@ -76,6 +79,12 @@ func New(store Store, options Options) (http.Handler, error) {
 	}
 	if options.MaxConcurrentLists == 0 {
 		options.MaxConcurrentLists = defaultMaxConcurrentLists
+	}
+	if options.MaxConcurrentUsage == 0 {
+		options.MaxConcurrentUsage = defaultMaxConcurrentLists
+	}
+	if options.MaxConcurrentUsage < 1 {
+		return nil, fmt.Errorf("queue admin max concurrent usage must be positive")
 	}
 	if options.MaxConcurrentLists < 1 {
 		return nil, fmt.Errorf("queue admin max concurrent lists must be positive")
@@ -103,8 +112,10 @@ func New(store Store, options Options) (http.Handler, error) {
 		maxResponseBytes: options.MaxResponseBytes,
 		maxRequeueBytes:  options.MaxRequeueBytes, requeueSlots: make(chan struct{}, options.MaxConcurrentRequeues),
 		auditSlots: make(chan struct{}, 1), listSlots: make(chan struct{}, options.MaxConcurrentLists),
+		usageSlots: make(chan struct{}, options.MaxConcurrentUsage),
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /usage", h.withDeadline(h.admit(h.usageSlots, h.usage)))
 	mux.HandleFunc("GET /audit", h.withDeadline(h.admit(h.auditSlots, h.audit)))
 	mux.HandleFunc("GET /dead-letters", h.withDeadline(h.admit(h.listSlots, h.listDeadLetters)))
 	mux.HandleFunc("POST /dead-letters/{message_id}/requeue", h.withDeadline(h.admit(h.requeueSlots, h.requeueDeadLetter)))
@@ -121,6 +132,7 @@ type handler struct {
 	requeueSlots     chan struct{}
 	auditSlots       chan struct{}
 	listSlots        chan struct{}
+	usageSlots       chan struct{}
 }
 
 type deadLetterPage struct {
@@ -172,6 +184,34 @@ func (h handler) admit(slots chan struct{}, next http.HandlerFunc) http.HandlerF
 			h.writeError(w, http.StatusTooManyRequests, "queue administration busy; retry later")
 		}
 	}
+}
+
+type usageResponse struct {
+	Namespace string `json:"namespace"`
+	badgerbox.UsageSnapshot
+}
+
+// usage reads only fixed-size accounting metadata, independent of queue depth.
+func (h handler) usage(w http.ResponseWriter, request *http.Request) {
+	query, err := parseQuery(request)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(query) != 0 {
+		h.writeError(w, http.StatusBadRequest, "usage does not accept query parameters")
+		return
+	}
+	if h.store == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "queue runtime unavailable")
+		return
+	}
+	usage, err := h.store.Usage(request.Context())
+	if err != nil {
+		h.writeOperationError(w, request.Context(), err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, usageResponse{Namespace: h.namespace, UsageSnapshot: usage})
 }
 
 func (h handler) audit(w http.ResponseWriter, request *http.Request) {
@@ -430,7 +470,7 @@ func (h handler) writeError(w http.ResponseWriter, status int, message string) {
 	h.writeJSON(w, status, errorResponse{Error: text})
 }
 
-// writeJSON is used only for the small, owned requeue and error response types.
+// writeJSON is used only for the small, owned usage, requeue and error response types.
 func (h handler) writeJSON(w http.ResponseWriter, status int, value any) {
 	data, err := json.Marshal(value)
 	if err != nil {
