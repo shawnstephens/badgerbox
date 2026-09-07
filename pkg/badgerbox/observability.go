@@ -70,6 +70,8 @@ func failureKind(err error) string {
 	switch {
 	case err == nil:
 		return ""
+	case errors.Is(err, ErrCodecDecode):
+		return "codec"
 	case IsPermanent(err):
 		return "permanent"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

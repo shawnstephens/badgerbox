@@ -786,11 +786,11 @@ func (s *Store[M, D]) storeRecord(txn *badger.Txn, record storedRecord) error {
 func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error) {
 	var zero Message[M, D]
 
-	payload, err := s.serde.Message.Unmarshal(record.PayloadBytes)
+	payload, err := decodeWithCodec(s.serde.Message, record.PayloadBytes, "payload")
 	if err != nil {
 		return zero, err
 	}
-	destination, err := s.serde.Destination.Unmarshal(record.DestinationBytes)
+	destination, err := decodeWithCodec(s.serde.Destination, record.DestinationBytes, "destination")
 	if err != nil {
 		return zero, err
 	}
@@ -899,13 +899,16 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 
 	claimed := make([]claimedRecord[M, D], 0, batchSize)
 	effectiveBatchSize := batchSize
+	var quarantined []error
 	now = now.UTC()
 
 	for {
 		err := withConflictRetryObserved(ctx, s.runtime, func() {
 			s.obs.RecordConflictRetry(ctx)
 		}, func() error {
+			clear(claimed)
 			claimed = claimed[:0]
+			quarantined = quarantined[:0]
 			return s.db.Update(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
 				opts.PrefetchValues = false
@@ -975,6 +978,15 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					}
 					record.LeaseToken = token
 
+					message, err := s.recordToMessage(record)
+					if err != nil {
+						if err := s.quarantineReadyRecord(txn, record, now, err); err != nil {
+							return err
+						}
+						quarantined = append(quarantined, err)
+						continue
+					}
+
 					storeErr := s.storeRecord(txn, record)
 					if storeErr != nil {
 						return storeErr
@@ -996,11 +1008,6 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					if setErr != nil {
 						return setErr
 					}
-					message, err := s.recordToMessage(record)
-					if err != nil {
-						return err
-					}
-
 					claimed = append(claimed, claimedRecord[M, D]{
 						Message:      message,
 						LeaseToken:   token,
@@ -1029,6 +1036,14 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		effectiveBatchSize = retryBatchSize
 	}
 
+	for _, err := range quarantined {
+		s.obs.RecordDeadLetter(ctx, err)
+	}
+	if len(quarantined) > 0 {
+		// Quarantine may consume the scan page before a healthy record is found.
+		// Wake the dispatcher immediately instead of waiting for the poll interval.
+		s.notifyListeners()
+	}
 	if len(claimed) > 0 {
 		s.obs.RecordClaimBatch(ctx, len(claimed))
 		for _, record := range claimed {

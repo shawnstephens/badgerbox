@@ -89,3 +89,6 @@ func (e retryableBatchError) Unwrap() error { return e.err }
 
 var ErrDeadLetterTooLarge = errors.New("badgerbox: dead letter exceeds page byte limit")
 var ErrLiveMessageExists = errors.New("badgerbox: message already exists in live queue")
+
+// ErrCodecDecode identifies an application codec error or recovered panic.
+var ErrCodecDecode = errors.New("badgerbox: codec decode failed")
