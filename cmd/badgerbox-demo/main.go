@@ -40,6 +40,7 @@ func newRootCommand() *cli.Command {
 			newKafkaCommand(),
 			newProducerCommand(),
 			newConsumerCommand(),
+			newBenchmarkCommand(),
 		},
 	}
 }
@@ -475,30 +476,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	}
 	expvarListenAddr := cmd.String("expvar-listen-addr")
 
-	badgerOpts, err := demo.BuildBadgerOptions(dbPath, demo.BadgerOptionsOverrides{
-		SyncWritesSet:              cmd.IsSet("badger-sync-writes"),
-		SyncWrites:                 cmd.Bool("badger-sync-writes"),
-		MemTableSizeSet:            cmd.IsSet("badger-memtable-size"),
-		MemTableSize:               cmd.String("badger-memtable-size"),
-		NumMemtablesSet:            cmd.IsSet("badger-num-memtables"),
-		NumMemtables:               cmd.Int("badger-num-memtables"),
-		NumLevelZeroTablesSet:      cmd.IsSet("badger-num-level-zero-tables"),
-		NumLevelZeroTables:         cmd.Int("badger-num-level-zero-tables"),
-		NumLevelZeroTablesStallSet: cmd.IsSet("badger-num-level-zero-tables-stall"),
-		NumLevelZeroTablesStall:    cmd.Int("badger-num-level-zero-tables-stall"),
-		NumCompactorsSet:           cmd.IsSet("badger-num-compactors"),
-		NumCompactors:              cmd.Int("badger-num-compactors"),
-		BaseTableSizeSet:           cmd.IsSet("badger-base-table-size"),
-		BaseTableSize:              cmd.String("badger-base-table-size"),
-		ValueLogFileSizeSet:        cmd.IsSet("badger-value-log-file-size"),
-		ValueLogFileSize:           cmd.String("badger-value-log-file-size"),
-		BlockCacheSizeSet:          cmd.IsSet("badger-block-cache-size"),
-		BlockCacheSize:             cmd.String("badger-block-cache-size"),
-		IndexCacheSizeSet:          cmd.IsSet("badger-index-cache-size"),
-		IndexCacheSize:             cmd.String("badger-index-cache-size"),
-		ValueThresholdSet:          cmd.IsSet("badger-value-threshold"),
-		ValueThreshold:             cmd.String("badger-value-threshold"),
-	})
+	badgerOpts, err := producerBadgerOptions(cmd)
 	if err != nil {
 		return fmt.Errorf("build badger options: %w", err)
 	}

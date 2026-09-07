@@ -10,9 +10,19 @@ Constructing a store registers instruments but starts no polling goroutine. `Sta
 
 `runner.Open` registers database and maintenance observers when a meter provider is supplied. One process-wide database collector is permitted because Badger's compaction statistics are process-global. Its callback must be closed before the database or the next collector is created. Directory-size values are refreshed by Badger, typically once per minute; they are not filesystem scans on every queue tick.
 
+The database collector requires disk-backed Badger with `MetricsEnabled=true`
+(the default). In-memory or metrics-disabled databases return a configuration
+error; `runner.Open` propagates it when a meter provider is configured. Direct
+store queue telemetry does not require the database collector.
+
 ## Queue metrics
 
 Names are fixed across namespaces. Namespace, outcome, mode, and failure are bounded attributes rather than parts of instrument names. Message IDs are span attributes and never metric labels.
+
+Duration histograms specify seconds units and bucket hints from 10 microseconds
+through one day, including submillisecond and subsecond boundaries. The standard
+OTel SDK uses these defaults without a demo-specific view; application views can
+override them. Histogram percentiles remain estimates within bucket boundaries.
 
 The existing `badgerbox_enqueue_duration_seconds_max` and `badgerbox_process_duration_seconds_max` gauges use `telemetry.Options.DurationMaxWindow` (zero selects one minute; negative values are invalid). Each queue retains maxima from its current and immediately previous fixed window and exports the larger value per attribute set. Windows advance with time, not collection: multiple readers and repeated collections do not consume observations. Samples remain eligible for between one and two window lengths; older data expires and idle series stop producing points. Configure the window at least as long as the longest reader collection interval. Storage holds at most two maxima per attribute set, independent of event rate. Runner queue options inherit this window when zero, and explicit queue values override the runner setting. These are window maxima, not exact rolling five-minute maxima or lifetime high-water marks.
 
@@ -44,6 +54,14 @@ Database gauges cover `badgerbox_badger_lsm_size_bytes`, `badgerbox_badger_vlog_
 Maintenance counters cover attempts, outcomes, and successful rewrites; the duration histogram is `badgerbox_badger_maintenance_duration_seconds`. Attributes identify `flatten` or `value_log_gc` and `success`, `no_rewrite`, or `error`. Badger's `ErrNoRewrite` is a normal outcome, not an error or successful rewrite.
 
 Prometheus exporters may add counter suffixes such as `_total`. Dashboard queries use the exported names.
+
+Disk-capacity gauges report one filesystem selected by `BadgerMetricsOptions.DiskPath`,
+defaulting to Badger's `Dir`. Monitor `ValueDir` separately if it is on another
+volume. Failed collections or snapshots mean the last successful queue/size
+observation can be stale; alert on collection/snapshot errors and exporter
+availability alongside depth and free space. An old zero-depth sample is not
+proof that a disconnected or failed queue has drained. Use the
+[capacity guide](TUNING.md) to relate queue trends to an outage budget.
 
 ## Local stack
 
