@@ -59,6 +59,7 @@ func (s *Store[M, D]) queueSnapshot(ctx context.Context) (QueueSnapshot, error) 
 
 // QueueSnapshot reads lifecycle and creation index keys without decoding payloads.
 // Depth collection is O(N); use Audit for row/index reconciliation.
+// It returns ErrInconsistentIndex when a nonempty state has no creation index.
 func (s *Store[M, D]) QueueSnapshot(ctx context.Context) (QueueSnapshot, error) {
 	if err := s.ensureOpen(); err != nil {
 		return QueueSnapshot{}, err

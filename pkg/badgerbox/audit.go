@@ -3,7 +3,7 @@ package badgerbox
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"sort"
 	"time"
 
@@ -11,6 +11,46 @@ import (
 )
 
 const defaultAuditSampleLimit = 20
+const defaultAuditMaxScannedKeys int64 = 100_000
+const defaultAuditMaxScannedBytes int64 = 64 << 20
+
+// ErrAuditLimitExceeded means a report is incomplete because its scan budget was exhausted.
+var ErrAuditLimitExceeded = errors.New("badgerbox: audit scan budget exceeded")
+
+// AuditLimitError identifies the exhausted budget. The returned report contains progress.
+type AuditLimitError struct {
+	Budget string
+	Limit  int64
+}
+
+func (e *AuditLimitError) Error() string {
+	return boxErrorf("audit %s budget of %d exceeded", e.Budget, e.Limit).Error()
+}
+func (e *AuditLimitError) Unwrap() error { return ErrAuditLimitExceeded }
+
+type auditBudget struct {
+	maxKeys, maxBytes int64
+	report            *AuditReport
+}
+
+func (b *auditBudget) charge(item *badger.Item) error {
+	if b.report.ScannedKeys >= b.maxKeys {
+		return &AuditLimitError{Budget: "keys", Limit: b.maxKeys}
+	}
+	size := int64(len(item.Key())) + item.ValueSize()
+	if size > b.maxBytes-b.report.ScannedBytes {
+		return &AuditLimitError{Budget: "bytes", Limit: b.maxBytes}
+	}
+	b.report.ScannedKeys++
+	b.report.ScannedBytes += size
+	return nil
+}
+
+func auditIterator(txn *badger.Txn) *badger.Iterator {
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = false
+	return txn.NewIterator(opts)
+}
 
 // AuditQueueState identifies the lifecycle state associated with an audit anomaly.
 type AuditQueueState string
@@ -64,6 +104,12 @@ const (
 
 // AuditOptions controls diagnostic queue index auditing.
 type AuditOptions struct {
+	// MaxScannedKeys bounds all retained live and dead-letter IDs and scanned index keys.
+	// Zero uses 100,000; negative values are invalid.
+	MaxScannedKeys int64
+	// MaxScannedBytes bounds encoded key/value bytes before copying or decoding.
+	// Zero uses 64 MiB; negative values are invalid. This is not an exact heap limit.
+	MaxScannedBytes int64
 	// SampleLimit is the maximum sample count per anomaly class; values below one use the default.
 	SampleLimit int
 	// Now overrides the due/future reference clock; zero uses the store runtime.
@@ -72,6 +118,10 @@ type AuditOptions struct {
 
 // AuditReport summarizes queue row/index consistency without mutating storage.
 type AuditReport struct {
+	// Complete is true only when every required scan and reconciliation finished.
+	Complete     bool  `json:"complete"`
+	ScannedKeys  int64 `json:"scanned_keys"`
+	ScannedBytes int64 `json:"scanned_bytes"`
 	// GeneratedAt is the reference time used to classify audit results.
 	GeneratedAt time.Time `json:"generated_at"`
 	// Namespace is the Badger namespace audited by the store.
@@ -198,6 +248,15 @@ func (s *Store[M, D]) Audit(ctx context.Context, opts AuditOptions) (AuditReport
 	if err := ctxErr(ctx); err != nil {
 		return AuditReport{}, err
 	}
+	if opts.MaxScannedKeys < 0 || opts.MaxScannedBytes < 0 {
+		return AuditReport{}, boxErrorf("audit budgets must be nonnegative")
+	}
+	if opts.MaxScannedKeys == 0 {
+		opts.MaxScannedKeys = defaultAuditMaxScannedKeys
+	}
+	if opts.MaxScannedBytes == 0 {
+		opts.MaxScannedBytes = defaultAuditMaxScannedBytes
+	}
 	now := opts.Now.UTC()
 	if now.IsZero() {
 		now = s.runtime.Now().UTC()
@@ -207,28 +266,33 @@ func (s *Store[M, D]) Audit(ctx context.Context, opts AuditOptions) (AuditReport
 		limit = defaultAuditSampleLimit
 	}
 	report := AuditReport{GeneratedAt: now, Namespace: s.keys.namespace}
+	budget := auditBudget{maxKeys: opts.MaxScannedKeys, maxBytes: opts.MaxScannedBytes, report: &report}
 	sampler := auditSampler{limit: limit, counts: make(map[string]int), items: &report.Samples.Anomalies}
 	err := s.db.View(func(txn *badger.Txn) error {
-		records, err := s.collectAuditRows(ctx, txn, &report)
+		records, err := s.collectAuditRows(ctx, txn, &report, &budget)
 		if err != nil {
 			return err
 		}
 		for _, spec := range s.auditIndexSpecs(&report) {
-			if err := s.auditIndex(ctx, txn, records, spec, &sampler); err != nil {
+			if err := s.auditIndex(ctx, txn, records, spec, &sampler, &budget); err != nil {
 				return err
 			}
 		}
-		return s.auditDeadLetters(ctx, txn, records, &report, &sampler)
+		return s.auditDeadLetters(ctx, txn, records, &report, &sampler, &budget)
 	})
+	report.Complete = err == nil
 	return report, err
 }
 
-func (s *Store[M, D]) collectAuditRows(ctx context.Context, txn *badger.Txn, report *AuditReport) (map[MessageID]auditRecordView, error) {
+func (s *Store[M, D]) collectAuditRows(ctx context.Context, txn *badger.Txn, report *AuditReport, budget *auditBudget) (map[MessageID]auditRecordView, error) {
 	records := make(map[MessageID]auditRecordView)
-	it := txn.NewIterator(badger.DefaultIteratorOptions)
+	it := auditIterator(txn)
 	defer it.Close()
 	for it.Seek(s.keys.messagePrefix); it.ValidForPrefix(s.keys.messagePrefix); it.Next() {
 		if err := ctxErr(ctx); err != nil {
+			return nil, err
+		}
+		if err := budget.charge(it.Item()); err != nil {
 			return nil, err
 		}
 		id, err := parseMessageKey(s.keys.messagePrefix, it.Item().Key())
@@ -261,13 +325,16 @@ func (s *Store[M, D]) auditIndexSpecs(report *AuditReport) []auditIndexSpec {
 	}
 }
 
-func (s *Store[M, D]) auditIndex(ctx context.Context, txn *badger.Txn, records map[MessageID]auditRecordView, spec auditIndexSpec, sampler *auditSampler) error {
+func (s *Store[M, D]) auditIndex(ctx context.Context, txn *badger.Txn, records map[MessageID]auditRecordView, spec auditIndexSpec, sampler *auditSampler, budget *auditBudget) error {
 	seen := make(map[MessageID]int)
 	firstSeenAt := make(map[MessageID]time.Time)
-	it := txn.NewIterator(badger.DefaultIteratorOptions)
+	it := auditIterator(txn)
 	defer it.Close()
 	for it.Seek(spec.prefix); it.ValidForPrefix(spec.prefix); it.Next() {
 		if err := ctxErr(ctx); err != nil {
+			return err
+		}
+		if err := budget.charge(it.Item()); err != nil {
 			return err
 		}
 		indexAt, id, err := parseTimeAndIDKey(spec.prefix, it.Item().Key())
@@ -336,14 +403,17 @@ func (s *Store[M, D]) auditIndex(ctx context.Context, txn *badger.Txn, records m
 	return nil
 }
 
-func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, records map[MessageID]auditRecordView, report *AuditReport, sampler *auditSampler) error {
+func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, records map[MessageID]auditRecordView, report *AuditReport, sampler *auditSampler, budget *auditBudget) error {
 	spec := auditIndexSpec{state: AuditQueueStateDeadLetter, kind: AuditIndexKindDeadLetter}
 	seenKeyIDs := make(map[MessageID]int)
 	seenRecordIDs := make(map[MessageID]int)
-	it := txn.NewIterator(badger.DefaultIteratorOptions)
+	it := auditIterator(txn)
 	defer it.Close()
 	for it.Seek(s.keys.deadLetterPrefix); it.ValidForPrefix(s.keys.deadLetterPrefix); it.Next() {
 		if err := ctxErr(ctx); err != nil {
+			return err
+		}
+		if err := budget.charge(it.Item()); err != nil {
 			return err
 		}
 		failedAt, id, err := parseTimeAndIDKey(s.keys.deadLetterPrefix, it.Item().Key())
@@ -405,78 +475,16 @@ func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, rec
 }
 
 func decodeAuditDeadLetter(value []byte) (storedDeadLetter, error) {
-	var deadLetter storedDeadLetter
-	if err := json.Unmarshal(value, &deadLetter); err != nil {
-		return storedDeadLetter{}, err
-	}
-	var rawDeadLetter struct {
-		FailedAt json.RawMessage `json:"failed_at_unix_nano"`
-		Record   struct {
-			ID json.RawMessage `json:"id"`
-		} `json:"record"`
-	}
-	if err := json.Unmarshal(value, &rawDeadLetter); err != nil {
-		return storedDeadLetter{}, err
-	}
-	rawID := bytes.TrimSpace(rawDeadLetter.Record.ID)
-	if len(rawID) == 0 {
-		return storedDeadLetter{}, boxErrorf("dead-letter record ID is missing")
-	}
-	if bytes.Equal(rawID, []byte("null")) {
-		return storedDeadLetter{}, boxErrorf("dead-letter record ID is null")
-	}
-	rawFailedAt := bytes.TrimSpace(rawDeadLetter.FailedAt)
-	if len(rawFailedAt) == 0 {
-		return storedDeadLetter{}, boxErrorf("dead-letter failed_at_unix_nano is missing")
-	}
-	if bytes.Equal(rawFailedAt, []byte("null")) {
-		return storedDeadLetter{}, boxErrorf("dead-letter failed_at_unix_nano is null")
-	}
-
-	var envelope struct {
-		Record json.RawMessage `json:"record"`
-	}
-	if err := json.Unmarshal(value, &envelope); err != nil {
-		return storedDeadLetter{}, err
-	}
-	if _, err := decodeAuditRecord(deadLetter.Record.ID, envelope.Record); err != nil {
-		return storedDeadLetter{}, err
-	}
-	return deadLetter, nil
+	return decodeStoredDeadLetter(value)
 }
 
 func decodeAuditRecord(id MessageID, value []byte) (auditRecordView, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(value, &fields); err != nil {
+	record, err := decodeStoredRecord(value)
+	if err != nil {
 		return auditRecordView{}, err
 	}
-	for _, field := range []string{"id", "status", "payload_bytes", "destination_bytes"} {
-		if _, ok := fields[field]; !ok {
-			return auditRecordView{}, boxErrorf("record field %s is missing", field)
-		}
-	}
-
-	var record storedRecord
-	if err := json.Unmarshal(value, &record); err != nil {
-		return auditRecordView{}, err
-	}
-	var rawRecord struct {
-		ID json.RawMessage `json:"id"`
-	}
-	if err := json.Unmarshal(value, &rawRecord); err != nil {
-		return auditRecordView{}, err
-	}
-	if len(rawRecord.ID) == 0 {
-		return auditRecordView{}, boxErrorf("record ID is missing for message key %s", id)
-	} else if bytes.Equal(rawRecord.ID, []byte("null")) {
-		return auditRecordView{}, boxErrorf("record ID is null for message key %s", id)
-	} else if err := json.Unmarshal(rawRecord.ID, &record.ID); err != nil {
-		return auditRecordView{}, err
-	} else if record.ID != id {
+	if record.ID != id {
 		return auditRecordView{}, boxErrorf("record ID %s does not match message key %s", record.ID, id)
-	}
-	if !isValidRecordState(record.Status) {
-		return auditRecordView{}, boxErrorf("invalid record status %q", record.Status)
 	}
 	return auditRecordView{
 		status: record.Status, createdAt: time.Unix(0, record.CreatedAtUnix).UTC(),

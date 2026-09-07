@@ -16,7 +16,7 @@ func TestDeadLetterBytePagesAndExactRequeue(t *testing.T) {
 	var size int64
 	for i := range 3 {
 		id := MessageID(100 + i)
-		rec := storedRecord{ID: id, PayloadBytes: []byte{255, 0}, DestinationBytes: []byte{128}, Status: recordStatusProcessing, CreatedAtUnix: failed.UnixNano()}
+		rec := storedRecord{ID: id, PayloadBytes: []byte{255, 0}, DestinationBytes: []byte{128}, Status: recordStatusProcessing, Attempt: 1, MaxAttempts: 1, LeaseToken: "lease", LeaseUntilUnix: 1, CreatedAtUnix: failed.UnixNano()}
 		b, _ := json.Marshal(storedDeadLetter{Record: rec, FailedAt: failed.UnixNano()})
 		size = int64(len(b))
 		if err := db.Update(func(txn *badger.Txn) error { return txn.Set(s.keys.deadLetterKey(failed, id), b) }); err != nil {

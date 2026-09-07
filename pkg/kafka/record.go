@@ -11,8 +11,8 @@ import (
 const kafkaUnassignedPartition int32 = -1
 const kafkaDefaultUniformBytes = 64 << 10
 
-// KafkaAsyncProducer is the subset of franz-go async producer behavior required by the batch Kafka adapter.
-type KafkaAsyncProducer interface {
+// asyncProducer is the internal seam for deterministic delivery tests.
+type asyncProducer interface {
 	Produce(context.Context, *kgo.Record, func(*kgo.Record, error))
 }
 
