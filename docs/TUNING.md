@@ -211,6 +211,37 @@ The [recorded local measurements](benchmarks/2026-09-06/README.md) include the
 large-payload RSS and retained disk demonstrate why short-run throughput and
 small caches are insufficient evidence of a fixed resource ceiling.
 
+The [final-controls container run](../scripts/benchmark/evidence/2026-09-07-cgroup-controls/README.md)
+verified 90,000 16 KiB messages at 499.87/s over three minutes, followed by 30
+seconds of ordinary maintenance. It used the following explicit constraints:
+
+| Control | Measured run setting |
+| --- | --- |
+| Linux cgroup CPU quota | 2 CPUs |
+| Linux cgroup memory / swap | 256 MiB / disabled |
+| `GOMAXPROCS` / `GOMEMLIMIT` | 2 / 96 MiB |
+| Retained count / logical-byte quotas | 128 messages / 64 MiB |
+| Claim source-byte budget | 2 MiB per claim |
+| Free-disk admission margin | 512 MiB |
+| Durability | `SyncWrites=true` |
+
+The message quota bound intake: 37 rejected attempts retried successfully, and
+final retained usage was zero. GC completed 618 rewrites with no errors. The
+kernel recorded no OOM or swap use, but its memory peak was 256 MiB plus 4 KiB,
+and sampled process RSS reached 257.74 MiB. Cgroup accounting and process RSS
+are separate observations. The kernel documents that `memory.max` can be
+temporarily exceeded; [cgroup v2 documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#memory)
+also defines the recorded pressure and OOM counters.
+
+This workload encountered memory pressure: 11,447 `memory.events.max` events
+occurred without an OOM. At one limit sample, anonymous memory was about 41 MiB
+and file memory about 204 MiB. Heap limits alone do not describe the footprint.
+Use the preserved kernel and process series, rather than a single RSS number,
+when comparing deployment budgets. The count quota bound this run; its byte
+quota and free-disk margin did not. The separate full-filesystem test exercises
+disk rejection. This offered-rate result is not a saturation or permanent
+disk-plateau claim. Reproduce the full command from the evidence manifest.
+
 Benchmarks complement the race, process-crash, retry, broker-outage and storage
 tests; they do not establish deployment-specific availability or power-loss
 guarantees.
