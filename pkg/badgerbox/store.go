@@ -507,11 +507,17 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 
 func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseToken string, processErr error, retryBase, retryMax time.Duration) (failProcessingResult, error) {
 	var result failProcessingResult
+	if processErr == nil {
+		processErr = boxErrorf("process error is nil")
+	}
+	processErrMessage := storedFailureText(processErr)
+	processErrPermanent := IsPermanent(processErr)
 	now := s.runtime.Now().UTC()
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
 		s.obs.recordConflictRetry(ctx)
 	}, func() error {
-		return s.db.Update(func(txn *badger.Txn) error {
+		attemptResult := failProcessingResult{}
+		err := s.db.Update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
 			if errors.Is(err, badger.ErrKeyNotFound) {
 				return nil
@@ -525,12 +531,12 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 
 			processingKey := s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), id)
 
-			if IsPermanent(processErr) || record.Attempt >= record.MaxAttempts {
+			if processErrPermanent || record.Attempt >= record.MaxAttempts {
 				dlq := storedDeadLetter{
 					Record:    record,
 					FailedAt:  now.UnixNano(),
-					Error:     storedFailureText(processErr),
-					Permanent: IsPermanent(processErr),
+					Error:     processErrMessage,
+					Permanent: processErrPermanent,
 				}
 				encodedDeadLetter, err := json.Marshal(dlq)
 				if err != nil {
@@ -546,13 +552,12 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 				if err := txn.Delete(processingKey); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 					return err
 				}
-
 				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
 				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 					return err
 				}
 
-				result.outcome = metricOutcomeDeadLetter
+				attemptResult.outcome = metricOutcomeDeadLetter
 				return nil
 			}
 
@@ -571,7 +576,6 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 			if err := txn.Set(s.keys.readyKey(time.Unix(0, record.AvailableAtUnix).UTC(), id), emptyValue); err != nil {
 				return err
 			}
-
 			createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
 			if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 				return err
@@ -580,13 +584,21 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 				return err
 			}
 
-			result.outcome = metricOutcomeRetried
-			result.retryDelay = delay
+			attemptResult.outcome = metricOutcomeRetried
+			attemptResult.retryDelay = delay
 			return nil
 		})
+		if err != nil {
+			return err
+		}
+		result = attemptResult
+		return nil
 	})
 	if err != nil {
 		return failProcessingResult{}, err
+	}
+	if result.outcome == metricOutcomeRetried {
+		s.notifyListeners()
 	}
 	return result, nil
 }
@@ -1005,4 +1017,47 @@ type expiredProcessingCandidate struct {
 	key        []byte
 	leaseUntil time.Time
 	id         MessageID
+}
+
+func (s *Store[M, D]) acknowledgeOwned(ctx context.Context, id MessageID, leaseToken string) (bool, error) {
+	return s.acknowledgeUsingUpdate(ctx, id, leaseToken, s.db.Update)
+}
+func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, leaseToken string, update func(func(*badger.Txn) error) error) (bool, error) {
+	var acknowledged bool
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
+		s.obs.recordConflictRetry(ctx)
+	}, func() error {
+		acknowledged = false
+		err := update(func(txn *badger.Txn) error {
+			record, err := s.loadRecord(txn, id)
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if record.Status != recordStatusProcessing || record.LeaseToken != leaseToken {
+				return nil
+			}
+
+			if err := txn.Delete(s.keys.messageKey(id)); err != nil {
+				return err
+			}
+			if err := txn.Delete(s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
+			}
+			createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+			if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
+			}
+
+			acknowledged = true
+			return nil
+		})
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return acknowledged, nil
 }
