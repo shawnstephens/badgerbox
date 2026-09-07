@@ -236,6 +236,12 @@ func (r *Runner) Start(ctx context.Context) error {
 	for _, q := range r.queues {
 		r.workers.Go(func() {
 			if err := q.run(runCtx); err != nil {
+				// Run can return bare cancellation before startup finishes. After
+				// startup it joins failures, including detached settlement errors;
+				// keep those even when their cause is cancellation.
+				if err == context.Canceled && runCtx.Err() != nil {
+					return
+				}
 				queueErr := &QueueError{Namespace: q.namespace, Err: err}
 				r.mu.Lock()
 				r.runErr = errors.Join(r.runErr, queueErr)
