@@ -13,11 +13,13 @@ import (
 )
 
 type fakeStore struct {
-	audit   func(context.Context) (badgerbox.AuditReport, error)
-	letters []badgerbox.DeadLetter[[]byte, string]
-	next    []byte
-	failed  time.Time
-	opts    badgerbox.DeadLetterListOptions
+	audit          func(context.Context) (badgerbox.AuditReport, error)
+	letters        []badgerbox.DeadLetterMetadata
+	next           []byte
+	failed         time.Time
+	opts           badgerbox.DeadLetterListOptions
+	requeueOptions badgerbox.DeadLetterRequeueOptions
+	requeueErr     error
 }
 
 func (s *fakeStore) Audit(ctx context.Context, _ badgerbox.AuditOptions) (badgerbox.AuditReport, error) {
@@ -26,11 +28,15 @@ func (s *fakeStore) Audit(ctx context.Context, _ badgerbox.AuditOptions) (badger
 	}
 	return badgerbox.AuditReport{Namespace: "test"}, nil
 }
-func (s *fakeStore) ListDeadLettersWithOptions(_ context.Context, o badgerbox.DeadLetterListOptions) ([]badgerbox.DeadLetter[[]byte, string], []byte, error) {
+func (s *fakeStore) ListDeadLetterMetadata(_ context.Context, o badgerbox.DeadLetterListOptions) ([]badgerbox.DeadLetterMetadata, []byte, error) {
 	s.opts = o
 	return s.letters, s.next, nil
 }
-func (s *fakeStore) RequeueDeadLetter(_ context.Context, _ badgerbox.MessageID, f, _ time.Time) error {
+func (s *fakeStore) RequeueDeadLetterWithOptions(_ context.Context, _ badgerbox.MessageID, f time.Time, options badgerbox.DeadLetterRequeueOptions) error {
+	s.requeueOptions = options
+	if s.requeueErr != nil {
+		return s.requeueErr
+	}
 	s.failed = f
 	return nil
 }
@@ -42,6 +48,7 @@ type writer struct {
 }
 
 func (w writer) SetWriteDeadline(time.Time) error { return nil }
+func (w writer) SetReadDeadline(time.Time) error  { return nil }
 func (w writer) FlushError() error {
 	if w.entered != nil {
 		close(w.entered)
@@ -55,23 +62,23 @@ func call(h http.Handler, method, path, body string) *httptest.ResponseRecorder 
 	return r
 }
 func TestGenericRoutesValidationAndLimits(t *testing.T) {
-	s := &fakeStore{letters: []badgerbox.DeadLetter[[]byte, string]{{Message: badgerbox.Message[[]byte, string]{ID: 5, Payload: []byte{255, 0}, Destination: "custom"}}}, next: []byte("key")}
-	h, err := New[[]byte, string](s, Options{Namespace: "test", MaxResponseBytes: 1024})
+	s := &fakeStore{letters: []badgerbox.DeadLetterMetadata{{ID: 5, Cursor: []byte("key"), Oversized: true, StoredBytes: 4096}}, next: []byte("key")}
+	h, err := New(s, Options{Namespace: "test", MaxResponseBytes: 1024})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := call(h, "GET", "/dead-letters", "")
-	if r.Code != 200 || !strings.Contains(r.Body.String(), "/wA=") {
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"oversized":true`) || strings.Contains(r.Body.String(), `"payload"`) {
 		t.Fatalf("%d %s", r.Code, r.Body)
 	}
 	if s.opts.MaxBytes != 256 {
 		t.Fatal(s.opts)
 	}
-	var page deadLetterPage[[]byte, string]
+	var page deadLetterPage
 	if err = json.Unmarshal(r.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
-	other, _ := New[[]byte, string](s, Options{Namespace: "other"})
+	other, _ := New(s, Options{Namespace: "other"})
 	if r = call(other, "GET", "/dead-letters?cursor="+page.NextCursor, ""); r.Code != 400 {
 		t.Fatal(r.Code)
 	}
@@ -89,8 +96,8 @@ func TestGenericRoutesValidationAndLimits(t *testing.T) {
 	if r.Code != 200 || s.failed.Nanosecond() != 123456789 {
 		t.Fatalf("%d %v", r.Code, s.failed)
 	}
-	s.letters[0].Message.Payload = make([]byte, 2048)
-	if r = call(h, "GET", "/dead-letters", ""); r.Code != 413 || r.Body.Len() > 1024 {
+	s.letters[0].Details = &badgerbox.DeadLetterDetails{FailureText: strings.Repeat("\x00", 2048)}
+	if r = call(h, "GET", "/dead-letters", ""); r.Code != 200 || r.Body.Len() > 1024 {
 		t.Fatalf("%d bytes=%d", r.Code, r.Body.Len())
 	}
 	unsupported := httptest.NewRecorder()
@@ -100,7 +107,7 @@ func TestGenericRoutesValidationAndLimits(t *testing.T) {
 	}
 }
 func TestAdmissionIncludesResponseFlush(t *testing.T) {
-	h, _ := New[[]byte, string](&fakeStore{}, Options{Namespace: "test", MaxConcurrentLists: 1})
+	h, _ := New(&fakeStore{}, Options{Namespace: "test", MaxConcurrentLists: 1})
 	entered, blocked, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
@@ -121,7 +128,7 @@ func TestAuditTimeout(t *testing.T) {
 		<-ctx.Done()
 		return badgerbox.AuditReport{}, ctx.Err()
 	}}
-	h, _ := New[[]byte, string](s, Options{Namespace: "test", Timeout: time.Millisecond})
+	h, _ := New(s, Options{Namespace: "test", Timeout: time.Millisecond})
 	if r := call(h, "GET", "/audit", ""); r.Code != 504 {
 		t.Fatal(r.Code)
 	}

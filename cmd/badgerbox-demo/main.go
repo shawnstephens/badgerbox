@@ -208,8 +208,8 @@ func newProducerCommand() *cli.Command {
 			},
 			&cli.IntFlag{
 				Name:    "processor-claim-batch-size",
-				Usage:   "Maximum number of ready records to claim in one processor batch",
-				Value:   32,
+				Usage:   "Single-message claim size (must be 1)",
+				Value:   1,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PROCESSOR_CLAIM_BATCH_SIZE"),
 			},
 			&cli.DurationFlag{
@@ -387,8 +387,8 @@ func runKafka(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	logger.Printf("ready", "command=kafka brokers=%s topic=%s topic_partitions=%d state_file=%s container_id=%s", demo.ShortBrokerList(brokers), topic, topicPartitions, stateFile, container.GetContainerID())
-	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo producer\"")
-	logger.Printf("ready", "command=kafka next=\"go run ./cmd/badgerbox-demo consumer\"")
+	logger.Printf("ready", "command=kafka working_directory=cmd/badgerbox-demo next=\"GOWORK=off go run . producer\"")
+	logger.Printf("ready", "command=kafka working_directory=cmd/badgerbox-demo next=\"GOWORK=off go run . consumer\"")
 
 	<-runCtx.Done()
 	return nil
@@ -422,8 +422,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("processor-concurrency must be at least 1")
 	}
 	processorClaimBatchSize := cmd.Int("processor-claim-batch-size")
-	if processorClaimBatchSize < 1 {
-		return errors.New("processor-claim-batch-size must be at least 1")
+	if processorClaimBatchSize != 1 {
+		return errors.New("processor-claim-batch-size must be 1 for single-message processing")
 	}
 	retryBaseDelay := cmd.Duration("retry-base-delay")
 	if retryBaseDelay <= 0 {
@@ -592,8 +592,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
-		Concurrency:    processorConcurrency,
-		ClaimBatchSize: processorClaimBatchSize,
+		Concurrency: processorConcurrency,
+
 		PollInterval:   pollInterval,
 		LeaseDuration:  leaseDuration,
 		RetryBaseDelay: retryBaseDelay,

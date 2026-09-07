@@ -25,18 +25,18 @@ const (
 )
 
 // Store is the generic administration surface used by the handler.
-type Store[M, D any] interface {
+type Store interface {
 	Audit(context.Context, badgerbox.AuditOptions) (badgerbox.AuditReport, error)
-	ListDeadLettersWithOptions(context.Context, badgerbox.DeadLetterListOptions) ([]badgerbox.DeadLetter[M, D], []byte, error)
-	RequeueDeadLetter(context.Context, badgerbox.MessageID, time.Time, time.Time) error
+	ListDeadLetterMetadata(context.Context, badgerbox.DeadLetterListOptions) ([]badgerbox.DeadLetterMetadata, []byte, error)
+	RequeueDeadLetterWithOptions(context.Context, badgerbox.MessageID, time.Time, badgerbox.DeadLetterRequeueOptions) error
 }
 
 // Options configures a namespace-bound administration handler.
 type Options struct {
-	// Namespace binds reports and opaque pagination cursors to one queue namespace.
+	// Namespace binds reports and opaque cursors to one queue (at most 256 bytes).
 	Namespace string
-	// Timeout separately bounds storage work and response writing. Nonpositive
-	// values use 30 seconds for each phase.
+	// Timeout bounds the entire request, including body reading, storage and flushing.
+	// Nonpositive values use 30 seconds.
 	Timeout time.Duration
 	// MaxResponseBytes caps encoded JSON responses including the final newline.
 	// Zero uses 8 MiB; explicit values must be at least 1 KiB. Dead-letter reads
@@ -46,17 +46,21 @@ type Options struct {
 	// writing. Zero uses four. Audits always allow only one in-flight request.
 	// Excess requests receive HTTP 429 immediately rather than waiting.
 	MaxConcurrentLists int
+	// MaxConcurrentRequeues bounds mutations through response flushing. Zero uses one.
+	MaxConcurrentRequeues int
+	// MaxRequeueBytes caps stored bytes before loading a requeue record. Zero uses 2 MiB.
+	MaxRequeueBytes int64
 	// Now supplies the default requeue availability time. Nil uses time.Now.
 	Now func() time.Time
 }
 
 // New returns a standard HTTP handler with relative audit, dead-letter, and
 // requeue routes. A nil store keeps the routes available and returns HTTP 503.
-// Network middleware must preserve http.ResponseController write-deadline and
+// Network middleware must preserve http.ResponseController read/write-deadline and
 // flush support. An unsupported writer receives a small HTTP 500 error, never
 // the potentially large response. Reuse one handler per namespace to share its
 // admission limits.
-func New[M, D any](store Store[M, D], options Options) (http.Handler, error) {
+func New(store Store, options Options) (http.Handler, error) {
 	namespace := strings.TrimSpace(options.Namespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("queue admin namespace is empty")
@@ -76,48 +80,69 @@ func New[M, D any](store Store[M, D], options Options) (http.Handler, error) {
 	if options.MaxConcurrentLists < 1 {
 		return nil, fmt.Errorf("queue admin max concurrent lists must be positive")
 	}
+	if len(namespace) > 256 {
+		return nil, fmt.Errorf("queue admin namespace must be at most 256 bytes")
+	}
+	if options.MaxConcurrentRequeues == 0 {
+		options.MaxConcurrentRequeues = 1
+	}
+	if options.MaxConcurrentRequeues < 1 {
+		return nil, fmt.Errorf("queue admin max concurrent requeues must be positive")
+	}
+	if options.MaxRequeueBytes == 0 {
+		options.MaxRequeueBytes = 2 << 20
+	}
+	if options.MaxRequeueBytes < 1 {
+		return nil, fmt.Errorf("queue admin max requeue bytes must be positive")
+	}
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	h := handler[M, D]{
+	h := handler{
 		store: store, namespace: namespace, timeout: options.Timeout, now: options.Now,
 		maxResponseBytes: options.MaxResponseBytes,
-		auditSlots:       make(chan struct{}, 1), listSlots: make(chan struct{}, options.MaxConcurrentLists),
+		maxRequeueBytes:  options.MaxRequeueBytes, requeueSlots: make(chan struct{}, options.MaxConcurrentRequeues),
+		auditSlots: make(chan struct{}, 1), listSlots: make(chan struct{}, options.MaxConcurrentLists),
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /audit", h.admit(h.auditSlots, h.audit))
-	mux.HandleFunc("GET /dead-letters", h.admit(h.listSlots, h.listDeadLetters))
-	mux.HandleFunc("POST /dead-letters/{message_id}/requeue", h.requeueDeadLetter)
+	mux.HandleFunc("GET /audit", h.withDeadline(h.admit(h.auditSlots, h.audit)))
+	mux.HandleFunc("GET /dead-letters", h.withDeadline(h.admit(h.listSlots, h.listDeadLetters)))
+	mux.HandleFunc("POST /dead-letters/{message_id}/requeue", h.withDeadline(h.admit(h.requeueSlots, h.requeueDeadLetter)))
 	return mux, nil
 }
 
-type handler[M, D any] struct {
-	store            Store[M, D]
+type handler struct {
+	store            Store
 	namespace        string
 	timeout          time.Duration
 	now              func() time.Time
 	maxResponseBytes int
+	maxRequeueBytes  int64
+	requeueSlots     chan struct{}
 	auditSlots       chan struct{}
 	listSlots        chan struct{}
 }
 
-type deadLetterPage[M, D any] struct {
-	DeadLetters []deadLetterResponse[M, D] `json:"dead_letters"`
-	NextCursor  string                     `json:"next_cursor"`
+type deadLetterPage struct {
+	DeadLetters []deadLetterResponse `json:"dead_letters"`
+	NextCursor  string               `json:"next_cursor"`
 }
-
-type deadLetterResponse[M, D any] struct {
-	MessageID   string    `json:"message_id"`
-	Status      string    `json:"status"`
-	Payload     M         `json:"payload"`
-	Destination D         `json:"destination"`
-	CreatedAt   time.Time `json:"created_at"`
-	AvailableAt time.Time `json:"available_at"`
-	FailedAt    time.Time `json:"failed_at"`
-	Attempt     int       `json:"attempt"`
-	MaxAttempts int       `json:"max_attempts"`
-	FailureText string    `json:"failure_text"`
-	Permanent   bool      `json:"permanent"`
+type deadLetterResponse struct {
+	MessageID   string             `json:"message_id"`
+	Status      string             `json:"status"`
+	FailedAt    time.Time          `json:"failed_at"`
+	StoredBytes int64              `json:"stored_bytes"`
+	Oversized   bool               `json:"oversized"`
+	Metadata    *deadLetterDetails `json:"metadata,omitempty"`
+}
+type deadLetterDetails struct {
+	CreatedAt            time.Time `json:"created_at"`
+	AvailableAt          time.Time `json:"available_at"`
+	Attempt              int       `json:"attempt"`
+	MaxAttempts          int       `json:"max_attempts"`
+	FailureText          string    `json:"failure_text"`
+	FailureTextTruncated bool      `json:"failure_text_truncated"`
+	Permanent            bool      `json:"permanent"`
 }
 
 type requeueRequest struct {
@@ -136,7 +161,7 @@ type cursorEnvelope struct {
 	Cursor    string `json:"cursor"`
 }
 
-func (h handler[M, D]) admit(slots chan struct{}, next http.HandlerFunc) http.HandlerFunc {
+func (h handler) admit(slots chan struct{}, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, request *http.Request) {
 		select {
 		case slots <- struct{}{}:
@@ -149,7 +174,7 @@ func (h handler[M, D]) admit(slots chan struct{}, next http.HandlerFunc) http.Ha
 	}
 }
 
-func (h handler[M, D]) audit(w http.ResponseWriter, request *http.Request) {
+func (h handler) audit(w http.ResponseWriter, request *http.Request) {
 	query, err := parseQuery(request)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
@@ -164,17 +189,32 @@ func (h handler[M, D]) audit(w http.ResponseWriter, request *http.Request) {
 		h.writeError(w, http.StatusServiceUnavailable, "queue runtime unavailable")
 		return
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), h.timeout)
-	defer cancel()
+	ctx := request.Context()
 	report, err := h.store.Audit(ctx, badgerbox.AuditOptions{SampleLimit: sampleLimit})
-	if err != nil {
+	if err != nil && !errors.Is(err, badgerbox.ErrAuditLimitExceeded) {
 		h.writeOperationError(w, ctx, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, report)
+	status := http.StatusOK
+	code := ""
+	if err != nil {
+		report.Complete = false
+		status = http.StatusRequestEntityTooLarge
+		code = "audit_incomplete"
+	}
+	data, encodeErr := h.encodeAudit(ctx, report, code)
+	if errors.Is(encodeErr, errResponseBudget) && code == "audit_incomplete" {
+		h.writeJSON(w, http.StatusRequestEntityTooLarge, auditProgress{Code: code, ScannedKeys: report.ScannedKeys, ScannedBytes: report.ScannedBytes})
+		return
+	}
+	if encodeErr != nil {
+		h.writeEncodingError(w, ctx, encodeErr)
+		return
+	}
+	h.writeData(w, status, data)
 }
 
-func (h handler[M, D]) listDeadLetters(w http.ResponseWriter, request *http.Request) {
+func (h handler) listDeadLetters(w http.ResponseWriter, request *http.Request) {
 	query, err := parseQuery(request)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
@@ -194,28 +234,23 @@ func (h handler[M, D]) listDeadLetters(w http.ResponseWriter, request *http.Requ
 		h.writeError(w, http.StatusServiceUnavailable, "queue runtime unavailable")
 		return
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), h.timeout)
-	defer cancel()
-	deadLetters, nextCursor, err := h.store.ListDeadLettersWithOptions(ctx, badgerbox.DeadLetterListOptions{
+	ctx := request.Context()
+	deadLetters, nextCursor, err := h.store.ListDeadLetterMetadata(ctx, badgerbox.DeadLetterListOptions{
 		Limit: pageSize, Cursor: cursor, MaxBytes: int64(h.maxResponseBytes / 4),
 	})
 	if err != nil {
 		h.writeOperationError(w, ctx, err)
 		return
 	}
-	response := deadLetterPage[M, D]{DeadLetters: make([]deadLetterResponse[M, D], 0, len(deadLetters))}
-	for _, deadLetter := range deadLetters {
-		response.DeadLetters = append(response.DeadLetters, newDeadLetterResponse(deadLetter))
-	}
-	response.NextCursor, err = h.encodeCursor(nextCursor)
+	data, err := h.encodeDeadLetters(ctx, deadLetters, nextCursor)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, "queue cursor encoding failed")
+		h.writeEncodingError(w, ctx, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, response)
+	h.writeData(w, http.StatusOK, data)
 }
 
-func (h handler[M, D]) requeueDeadLetter(w http.ResponseWriter, request *http.Request) {
+func (h handler) requeueDeadLetter(w http.ResponseWriter, request *http.Request) {
 	messageID, err := strconv.ParseUint(request.PathValue("message_id"), 10, 64)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, "message_id must be a decimal uint64")
@@ -233,9 +268,8 @@ func (h handler[M, D]) requeueDeadLetter(w http.ResponseWriter, request *http.Re
 	if availableAt.IsZero() {
 		availableAt = h.now().UTC()
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), h.timeout)
-	defer cancel()
-	err = h.store.RequeueDeadLetter(ctx, badgerbox.MessageID(messageID), failedAt, availableAt)
+	ctx := request.Context()
+	err = h.store.RequeueDeadLetterWithOptions(ctx, badgerbox.MessageID(messageID), failedAt, badgerbox.DeadLetterRequeueOptions{AvailableAt: availableAt, MaxBytes: h.maxRequeueBytes})
 	if err != nil {
 		h.writeOperationError(w, ctx, err)
 		return
@@ -245,9 +279,13 @@ func (h handler[M, D]) requeueDeadLetter(w http.ResponseWriter, request *http.Re
 	})
 }
 
-func newDeadLetterResponse[M, D any](deadLetter badgerbox.DeadLetter[M, D]) deadLetterResponse[M, D] {
-	message := deadLetter.Message
-	return deadLetterResponse[M, D]{MessageID: message.ID.String(), Status: "dead_letter", Payload: message.Payload, Destination: message.Destination, CreatedAt: message.CreatedAt, AvailableAt: message.AvailableAt, FailedAt: deadLetter.FailedAt, Attempt: message.Attempt, MaxAttempts: message.MaxAttempts, FailureText: deadLetter.Error, Permanent: deadLetter.Permanent}
+func newDeadLetterResponse(row badgerbox.DeadLetterMetadata) deadLetterResponse {
+	result := deadLetterResponse{MessageID: row.ID.String(), Status: "dead_letter", FailedAt: row.FailedAt, StoredBytes: row.StoredBytes, Oversized: row.Oversized}
+	if d := row.Details; d != nil {
+		text, truncated := boundedText(d.FailureText, 1024)
+		result.Metadata = &deadLetterDetails{CreatedAt: d.CreatedAt, AvailableAt: d.AvailableAt, Attempt: d.Attempt, MaxAttempts: d.MaxAttempts, FailureText: text, FailureTextTruncated: d.FailureTextTruncated || truncated, Permanent: d.Permanent}
+	}
+	return result
 }
 
 func decodeRequeueRequest(w http.ResponseWriter, request *http.Request) (time.Time, time.Time, error) {
@@ -295,9 +333,12 @@ func queryInt(query url.Values, key string, fallback, minimum, maximum int) (int
 	return value, nil
 }
 
-func (h handler[M, D]) encodeCursor(cursor []byte) (string, error) {
+func (h handler) encodeCursor(cursor []byte) (string, error) {
 	if len(cursor) == 0 {
 		return "", nil
+	}
+	if len(cursor) > 1024 {
+		return "", fmt.Errorf("queue cursor is too large")
 	}
 	encoded, err := json.Marshal(cursorEnvelope{
 		Namespace: h.namespace, Cursor: base64.StdEncoding.EncodeToString(cursor),
@@ -308,7 +349,7 @@ func (h handler[M, D]) encodeCursor(cursor []byte) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(encoded), nil
 }
 
-func (h handler[M, D]) decodeCursor(query url.Values) ([]byte, error) {
+func (h handler) decodeCursor(query url.Values) ([]byte, error) {
 	values, present := query["cursor"]
 	if !present || len(values) == 1 && values[0] == "" {
 		return nil, nil
@@ -367,12 +408,14 @@ func requireJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func (h handler[M, D]) writeOperationError(w http.ResponseWriter, ctx context.Context, err error) {
+func (h handler) writeOperationError(w http.ResponseWriter, ctx context.Context, err error) {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded):
 		h.writeError(w, http.StatusGatewayTimeout, "queue operation timed out")
 	case errors.Is(err, badgerbox.ErrDeadLetterTooLarge):
-		h.writeError(w, http.StatusRequestEntityTooLarge, "dead letter exceeds administration response limit")
+		h.writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "dead letter exceeds administration requeue limit", Code: "dead_letter_too_large"})
+	case errors.Is(err, badgerbox.ErrMessageTooLarge):
+		h.writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "record exceeds lifecycle storage limits", Code: "message_too_large"})
 	case errors.Is(err, badgerbox.ErrLiveMessageExists):
 		h.writeError(w, http.StatusConflict, "message already exists in live queue")
 	case errors.Is(err, badgerbox.ErrNotFound):
@@ -382,23 +425,28 @@ func (h handler[M, D]) writeOperationError(w http.ResponseWriter, ctx context.Co
 	}
 }
 
-func (h handler[M, D]) writeError(w http.ResponseWriter, status int, message string) {
-	h.writeJSON(w, status, map[string]string{"error": message})
+func (h handler) writeError(w http.ResponseWriter, status int, message string) {
+	text, _ := boundedText(message, 128)
+	h.writeJSON(w, status, errorResponse{Error: text})
 }
 
-func (h handler[M, D]) writeJSON(w http.ResponseWriter, status int, value any) {
+// writeJSON is used only for the small, owned requeue and error response types.
+func (h handler) writeJSON(w http.ResponseWriter, status int, value any) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		status, data = http.StatusInternalServerError, []byte(`{"error":"queue response encoding failed"}`)
 	}
-	if len(data) >= h.maxResponseBytes { // Include the newline in the byte budget.
-		status, data = http.StatusRequestEntityTooLarge, []byte(`{"error":"queue response too large; reduce page_size or sample_limit"}`)
-	}
-	controller := http.NewResponseController(w)
-	if err := controller.SetWriteDeadline(time.Now().Add(h.timeout)); err != nil {
-		// Do not send a large response through middleware that hides deadlines.
-		w.Header().Set("Connection", "close")
-		status, data = http.StatusInternalServerError, []byte(`{"error":"queue response deadlines unavailable"}`)
+	h.writeData(w, status, data)
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
+}
+
+func (h handler) writeData(w http.ResponseWriter, status int, data []byte) {
+	if len(data) >= h.maxResponseBytes {
+		status, data = http.StatusRequestEntityTooLarge, []byte(`{"error":"queue response too large"}`)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
@@ -407,10 +455,48 @@ func (h handler[M, D]) writeJSON(w http.ResponseWriter, status int, value any) {
 	if _, err := w.Write(append(data, '\n')); err != nil {
 		return
 	}
-	// Flush even small buffered responses before clearing the deadline. Clearing
-	// it first would leave net/http's post-handler flush unbounded.
-	if err := controller.Flush(); err != nil {
-		return
+	_ = http.NewResponseController(w).Flush()
+}
+
+func (h handler) withDeadline(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		ctx, cancel := context.WithTimeout(request.Context(), h.timeout)
+		defer cancel()
+		deadline, _ := ctx.Deadline()
+		controller := http.NewResponseController(w)
+		if err := controller.SetWriteDeadline(deadline); err != nil {
+			w.Header().Set("Connection", "close")
+			h.writeError(w, http.StatusInternalServerError, "queue response deadlines unavailable")
+			return
+		}
+		tracked := &flushTrackingWriter{ResponseWriter: w}
+		defer func() {
+			if tracked.flushed {
+				_ = controller.SetWriteDeadline(time.Time{})
+			}
+		}()
+		if request.Method == http.MethodPost {
+			if err := controller.SetReadDeadline(deadline); err != nil {
+				w.Header().Set("Connection", "close")
+				h.writeError(w, http.StatusInternalServerError, "queue request deadlines unavailable")
+				return
+			}
+			// Leave the read deadline in place while net/http drains any unread
+			// request body. The server resets it when reading the next request.
+		}
+		next(tracked, request.WithContext(ctx))
 	}
-	_ = controller.SetWriteDeadline(time.Time{})
+}
+
+// Preserve a failed flush's deadline for net/http's final buffered write.
+type flushTrackingWriter struct {
+	http.ResponseWriter
+	flushed bool
+}
+
+func (w *flushTrackingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w *flushTrackingWriter) FlushError() error {
+	err := http.NewResponseController(w.ResponseWriter).Flush()
+	w.flushed = err == nil
+	return err
 }

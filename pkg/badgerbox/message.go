@@ -28,8 +28,9 @@ type Message[M any, D any] struct {
 }
 
 type DeadLetter[M any, D any] struct {
-	Message   Message[M, D]
-	FailedAt  time.Time
+	Message  Message[M, D]
+	FailedAt time.Time
+	// Error is valid UTF-8, limited to 4 KiB with a marker when truncated.
 	Error     string
 	Permanent bool
 }

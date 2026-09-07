@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/dgraph-io/badger/v4"
+	"reflect"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/dgraph-io/badger/v4"
 )
 
 type binaryCodec struct{}
@@ -88,3 +92,71 @@ func TestPublicStoreRejectsNilContext(t *testing.T) {
 		t.Fatalf("enqueue canceled: %v", err)
 	}
 }
+
+func TestEnqueueTxRejectsInvalidContextWithoutMutation(t *testing.T) {
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	expired, cancelDeadline := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancelDeadline()
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		want error
+	}{
+		{"nil", nil, ErrNilContext},
+		{"canceled", canceled, context.Canceled},
+		{"expired", expired, context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			codec := &contextValidationCodec{}
+			db, store, cleanup := openTestStore[string, string](t, "invalid-context", Serde[string, string]{Message: codec, Destination: codec})
+			defer cleanup()
+			firstID, err := store.Enqueue(t.Context(), EnqueueRequest[string, string]{Payload: "existing"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := recordTestNamespace(t, db, store.opts.Namespace)
+			codec.marshals.Store(0)
+			var enqueueErr error
+			if err := db.Update(func(txn *badger.Txn) error {
+				_, enqueueErr = store.EnqueueTx(tc.ctx, txn, EnqueueRequest[string, string]{Payload: "rejected"})
+				// A caller may commit other work after a rejected enqueue. Ensure
+				// that doing so cannot commit any partial queue changes.
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if !errors.Is(enqueueErr, tc.want) {
+				t.Errorf("EnqueueTx returned %v, want %v", enqueueErr, tc.want)
+			}
+			if codec.marshals.Load() != 0 {
+				t.Error("invalid context invoked application codecs")
+			}
+			if after := recordTestNamespace(t, db, store.opts.Namespace); !reflect.DeepEqual(after, before) {
+				t.Error("invalid context changed namespace storage")
+			}
+			var nextID MessageID
+			if err := db.Update(func(txn *badger.Txn) error {
+				var err error
+				nextID, err = store.EnqueueTx(t.Context(), txn, EnqueueRequest[string, string]{Payload: "accepted"})
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if nextID != firstID+1 {
+				t.Errorf("invalid context consumed an ID: next=%s, want=%s", nextID, firstID+1)
+			}
+			if got, err := store.Get(t.Context(), nextID); err != nil || got.Payload != "accepted" {
+				t.Fatalf("valid transactional enqueue: message=%+v error=%v", got, err)
+			}
+		})
+	}
+}
+
+type contextValidationCodec struct{ marshals atomic.Int64 }
+
+func (c *contextValidationCodec) Marshal(value string) ([]byte, error) {
+	c.marshals.Add(1)
+	return []byte(value), nil
+}
+func (*contextValidationCodec) Unmarshal(data []byte) (string, error) { return string(data), nil }

@@ -19,7 +19,7 @@ func (s *asyncStub) Produce(_ context.Context, r *kgo.Record, cb func(*kgo.Recor
 }
 func TestAsyncBatchValidationAndLateResult(t *testing.T) {
 	producer := &asyncStub{}
-	fn := NewBatchProducerFunc(producer)
+	fn := newBatchProducerFunc(producer)
 	results := make(chan badgerbox.BatchProcessResult, 2)
 	partition := int32(-1)
 	messages := []badgerbox.Message[KafkaMessage, KafkaDestination]{{ID: 1, Payload: KafkaMessage{Value: []byte{255}}, Destination: KafkaDestination{Topic: "test"}}, {ID: 2, Destination: KafkaDestination{Topic: "test", Partition: &partition}}}
