@@ -16,22 +16,6 @@ func NewBatchProcessFunc(p BatchPublisher, timeout time.Duration, logger *Logger
 		}
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		failed := false
-		defer func() {
-			// Cancel asynchronous publishing before closing/replacing its client. A
-			// publish timeout permits recovery; parent cancellation means shutdown.
-			cancel()
-			if parentCtx.Err() != nil || (!failed && deliveryErr == nil) {
-				return
-			}
-			if reloader, ok := p.(interface{ ReloadFromState() (ReloadResult, error) }); ok {
-				result, err := reloader.ReloadFromState()
-				if err != nil && logger != nil {
-					logger.Printf("warning", "event=reload_state err=%q", err)
-				} else if result.BrokersChanged && logger != nil {
-					logger.Printf("ready", "event=reconnected brokers=%s state_topic=%s", ShortBrokerList(result.Brokers), result.Topic)
-				}
-			}
-		}()
 		forward := func(result badgerbox.BatchProcessResult) error {
 			if result.Err != nil {
 				failed = true
@@ -57,19 +41,31 @@ func NewBatchProcessFunc(p BatchPublisher, timeout time.Duration, logger *Logger
 		}
 		// One slot per callback allows every late result to complete after timeout.
 		incoming := make(chan badgerbox.BatchProcessResult, len(messages))
-		if err := deliver(ctx, messages, incoming); err != nil {
+		defer func() {
+			// Cancel asynchronous publishing before closing/replacing its client. A
+			// publish timeout permits recovery; parent cancellation means shutdown.
 			cancel()
-			// The publisher may have produced outcomes before returning an error.
-			// Drain only the initially buffered results, retaining the original error.
+			// Snapshot the buffer after cancellation; late callbacks cannot extend
+			// cleanup indefinitely. Preserve known outcomes on every terminal exit.
 			for range len(incoming) {
 				result, ok := <-incoming
-				if !ok {
-					break
-				}
-				if forward(result) != nil {
+				if !ok || forward(result) != nil {
 					break
 				}
 			}
+			if parentCtx.Err() != nil || (!failed && deliveryErr == nil) {
+				return
+			}
+			if reloader, ok := p.(interface{ ReloadFromState() (ReloadResult, error) }); ok {
+				result, err := reloader.ReloadFromState()
+				if err != nil && logger != nil {
+					logger.Printf("warning", "event=reload_state err=%q", err)
+				} else if result.BrokersChanged && logger != nil {
+					logger.Printf("ready", "event=reconnected brokers=%s state_topic=%s", ShortBrokerList(result.Brokers), result.Topic)
+				}
+			}
+		}()
+		if err := deliver(ctx, messages, incoming); err != nil {
 			return err
 		}
 		for range messages {
