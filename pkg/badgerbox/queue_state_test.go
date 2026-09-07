@@ -2,8 +2,7 @@ package badgerbox
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/json"
+
 	"errors"
 	"testing"
 	"time"
@@ -16,10 +15,6 @@ func TestNewInitializesQueueStateForFreshNamespace(t *testing.T) {
 
 	_, store, cleanup := openTestStore[testPayload, testDestination](t, "queue-state-fresh", Serde[testPayload, testDestination]{})
 	defer cleanup()
-
-	if !store.queueStateEnabled() {
-		t.Fatal("expected fresh namespace queue-state metadata to be enabled")
-	}
 
 	err := store.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(store.keys.queueStateVersionKey)
@@ -166,52 +161,13 @@ func TestQueueStateMetadataTracksDeadLetterRequeue(t *testing.T) {
 	}
 }
 
-func assertQueueStateCounts(t *testing.T, store *Store[testPayload, testDestination], ready, processing, deadLetter int64) {
+func assertQueueStateCounts(t *testing.T, s *Store[testPayload, testDestination], ready, processing, dead int64) {
 	t.Helper()
-
-	if got := queueStateCounterTotal(t, store.db, store.keys.readyCountPrefix); got != ready {
-		t.Fatalf("ready counter total = %d, want %d", got, ready)
-	}
-	if got := queueStateCounterTotal(t, store.db, store.keys.processingCountPrefix); got != processing {
-		t.Fatalf("processing counter total = %d, want %d", got, processing)
-	}
-	if got := queueStateCounterTotal(t, store.db, store.keys.deadLetterCountPrefix); got != deadLetter {
-		t.Fatalf("dead-letter counter total = %d, want %d", got, deadLetter)
-	}
-}
-
-func queueStateCounterTotal(t *testing.T, db *badger.DB, prefix []byte) int64 {
-	t.Helper()
-
-	var total int64
-	err := db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			value, err := it.Item().ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-			if len(value) != 8 {
-				t.Fatalf("counter value length = %d, want 8", len(value))
-			}
-			total += int64(binary.BigEndian.Uint64(value))
-		}
-		return nil
-	})
+	q, err := s.QueueSnapshot(t.Context())
 	if err != nil {
-		t.Fatalf("queueStateCounterTotal: %v", err)
+		t.Fatal(err)
 	}
-	return total
-}
-
-func storeLegacyRecord(txn *badger.Txn, keys keyspace, record storedRecord) error {
-	encoded, err := json.Marshal(record)
-	if err != nil {
-		return err
+	if q.ReadyDepth != ready || q.ProcessingDepth != processing || q.DeadLetterDepth != dead {
+		t.Fatalf("snapshot=%+v, want %d/%d/%d", q, ready, processing, dead)
 	}
-	return txn.Set(keys.messageKey(record.ID), encoded)
 }

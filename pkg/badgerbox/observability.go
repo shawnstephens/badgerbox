@@ -43,7 +43,7 @@ type ObservabilityOptions struct {
 	PollInterval   time.Duration
 }
 
-type queueSnapshot struct {
+type QueueSnapshot struct {
 	ReadyDepth          int64
 	ProcessingDepth     int64
 	DeadLetterDepth     int64
@@ -51,142 +51,29 @@ type queueSnapshot struct {
 	OldestProcessingAge time.Duration
 }
 
-func (s *Store[M, D]) queueSnapshot(ctx context.Context) (queueSnapshot, error) {
-	if s.queueStateEnabled() {
-		return s.queueSnapshotFast(ctx)
-	}
-	return s.queueSnapshotLegacy(ctx)
+type queueSnapshot = QueueSnapshot
+
+func (s *Store[M, D]) queueSnapshot(ctx context.Context) (QueueSnapshot, error) {
+	return s.QueueSnapshot(ctx)
 }
 
-func (s *Store[M, D]) queueSnapshotLegacy(ctx context.Context) (queueSnapshot, error) {
+// QueueSnapshot reads lifecycle and creation index keys without decoding payloads.
+// Depth collection is O(N); use Audit for row/index reconciliation.
+// It returns ErrInconsistentIndex when a nonempty state has no creation index.
+func (s *Store[M, D]) QueueSnapshot(ctx context.Context) (QueueSnapshot, error) {
 	if err := s.ensureOpen(); err != nil {
-		return queueSnapshot{}, err
+		return QueueSnapshot{}, err
 	}
 	if err := ctxErr(ctx); err != nil {
-		return queueSnapshot{}, err
+		return QueueSnapshot{}, err
 	}
-
-	var snapshot queueSnapshot
-	now := s.runtime.Now().UTC()
+	var result QueueSnapshot
 	err := s.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		var oldestReadyCreated int64
-		var oldestProcessingCreated int64
-
-		for it.Seek(s.keys.readyPrefix); it.ValidForPrefix(s.keys.readyPrefix); it.Next() {
-			if err := ctxErr(ctx); err != nil {
-				return err
-			}
-			key := it.Item().KeyCopy(nil)
-			availableAt, id, err := parseTimeAndIDKey(s.keys.readyPrefix, key)
-			if err != nil {
-				return err
-			}
-
-			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			if record.Status != recordStatusPending || record.AvailableAtUnix != availableAt.UnixNano() {
-				continue
-			}
-
-			snapshot.ReadyDepth++
-			if oldestReadyCreated == 0 || record.CreatedAtUnix < oldestReadyCreated {
-				oldestReadyCreated = record.CreatedAtUnix
-			}
-		}
-
-		for it.Seek(s.keys.processingPrefix); it.ValidForPrefix(s.keys.processingPrefix); it.Next() {
-			if err := ctxErr(ctx); err != nil {
-				return err
-			}
-			key := it.Item().KeyCopy(nil)
-			leaseUntil, id, err := parseTimeAndIDKey(s.keys.processingPrefix, key)
-			if err != nil {
-				return err
-			}
-			tokenBytes, err := it.Item().ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-
-			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			if record.Status != recordStatusProcessing || record.LeaseToken != string(tokenBytes) || record.LeaseUntilUnix != leaseUntil.UnixNano() {
-				continue
-			}
-
-			snapshot.ProcessingDepth++
-			if oldestProcessingCreated == 0 || record.CreatedAtUnix < oldestProcessingCreated {
-				oldestProcessingCreated = record.CreatedAtUnix
-			}
-		}
-
-		for it.Seek(s.keys.deadLetterPrefix); it.ValidForPrefix(s.keys.deadLetterPrefix); it.Next() {
-			if err := ctxErr(ctx); err != nil {
-				return err
-			}
-			snapshot.DeadLetterDepth++
-		}
-
-		if oldestReadyCreated > 0 {
-			snapshot.OldestReadyAge = now.Sub(time.Unix(0, oldestReadyCreated).UTC())
-		}
-		if oldestProcessingCreated > 0 {
-			snapshot.OldestProcessingAge = now.Sub(time.Unix(0, oldestProcessingCreated).UTC())
-		}
-		return nil
+		var err error
+		result, err = s.loadQueueSnapshotFromIndexes(ctx, txn, s.runtime.Now().UTC())
+		return err
 	})
-	return snapshot, err
-}
-
-func (s *Store[M, D]) queueSnapshotFast(ctx context.Context) (queueSnapshot, error) {
-	if err := s.ensureOpen(); err != nil {
-		return queueSnapshot{}, err
-	}
-	if err := ctxErr(ctx); err != nil {
-		return queueSnapshot{}, err
-	}
-
-	now := s.runtime.Now().UTC()
-	var snapshot queueSnapshot
-	err := s.db.View(func(txn *badger.Txn) error {
-		counters, err := s.loadQueueStateCounters(txn)
-		if err != nil {
-			return err
-		}
-		snapshot = counters
-
-		if snapshot.ReadyDepth > 0 {
-			oldestReadyAge, err := s.oldestReadyAgeFromCreatedIndex(ctx, txn, now)
-			if err != nil {
-				return err
-			}
-			snapshot.OldestReadyAge = oldestReadyAge
-		}
-		if snapshot.ProcessingDepth > 0 {
-			oldestProcessingAge, err := s.oldestProcessingAgeFromCreatedIndex(ctx, txn, now)
-			if err != nil {
-				return err
-			}
-			snapshot.OldestProcessingAge = oldestProcessingAge
-		}
-		return nil
-	})
-	return snapshot, err
+	return result, err
 }
 
 func normalizeObservabilityOptions(opts ObservabilityOptions) ObservabilityOptions {
