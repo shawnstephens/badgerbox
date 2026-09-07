@@ -477,7 +477,7 @@ func TestStoreCloneBytesAndCtxErr(t *testing.T) {
 		t.Fatalf("clone aliased source slice: %q", cloned)
 	}
 
-	if err := ctxErr(nil); err != nil {
+	if err := ctxErr(nil); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("ctxErr(nil) = %v, want nil", err)
 	}
 

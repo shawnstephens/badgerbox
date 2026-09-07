@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,8 +14,8 @@ import (
 )
 
 const (
-	recordStatusPending    = "pending"
-	recordStatusProcessing = "processing"
+	recordStatusPending    = MessageStateReady
+	recordStatusProcessing = MessageStateProcessing
 )
 
 var emptyValue = []byte{}
@@ -52,9 +54,9 @@ type storedRecord struct {
 	AvailableAtUnix  int64             `json:"available_at_unix_nano"`
 	Attempt          int               `json:"attempt"`
 	MaxAttempts      int               `json:"max_attempts"`
-	Status           string            `json:"status"`
+	Status           MessageState      `json:"status"`
 	LeaseToken       string            `json:"lease_token,omitempty"`
-	LeaseUntilUnix   int64             `json:"lease_until_unix_nano,omitempty"`
+	LeaseUntilUnix   int64             `json:"lease_until_unix_nano"`
 }
 
 type storedDeadLetter struct {
@@ -103,25 +105,18 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 	opts = normalizeOptions(opts)
 	serde = normalizeSerde(serde)
 
-	seq, err := db.GetSequence(newKeyspace(opts.Namespace).sequenceKey, opts.IDLeaseSize)
+	if strings.Contains(opts.Namespace, "/") {
+		return nil, ErrInvalidNamespace
+	}
+	store := &Store[M, D]{db: db, serde: serde, opts: opts, keys: newKeyspace(opts.Namespace), runtime: opts.Runtime, listeners: make(map[int]chan struct{})}
+	if err := store.initializeQueueState(); err != nil {
+		return nil, err
+	}
+	seq, err := db.GetSequence(store.keys.sequenceKey, opts.IDLeaseSize)
 	if err != nil {
 		return nil, err
 	}
-
-	store := &Store[M, D]{
-		db:        db,
-		serde:     serde,
-		opts:      opts,
-		keys:      newKeyspace(opts.Namespace),
-		seq:       seq,
-		runtime:   opts.Runtime,
-		listeners: make(map[int]chan struct{}),
-	}
-
-	if err := store.initializeQueueState(); err != nil {
-		_ = seq.Release()
-		return nil, err
-	}
+	store.seq = seq
 
 	store.obs, err = newOTelInstrumentation(opts.Observability, opts.Namespace, store.queueSnapshot)
 	if err != nil {
@@ -150,11 +145,17 @@ func (s *Store[M, D]) StartObservability(ctx context.Context) error {
 	if err := s.ensureOpen(); err != nil {
 		return err
 	}
+	if err := ctxErr(ctx); err != nil {
+		return err
+	}
 	return s.obs.start(ctx, s.runtime, s.opts.Observability.PollInterval)
 }
 
 func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
 	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	if err := ctxErr(ctx); err != nil {
 		return err
 	}
 	return s.obs.recordSnapshot(ctx)
@@ -164,8 +165,8 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	if err := ctxErr(ctx); err != nil {
+		return 0, err
 	}
 
 	start := s.runtime.Now().UTC()
@@ -200,8 +201,8 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	if err := ctxErr(ctx); err != nil {
+		return 0, err
 	}
 
 	start := s.runtime.Now().UTC()
@@ -345,8 +346,8 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 					return err
 				}
 
-				var deadLetter storedDeadLetter
-				if err := json.Unmarshal(value, &deadLetter); err != nil {
+				deadLetter, err := decodeStoredDeadLetter(value)
+				if err != nil {
 					return err
 				}
 
@@ -356,9 +357,6 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 				record.LeaseToken = ""
 				record.LeaseUntilUnix = 0
 				record.AvailableAtUnix = at.UnixNano()
-				if record.MaxAttempts <= 0 {
-					record.MaxAttempts = defaultMaxAttempts
-				}
 
 				encodedRecord, err := json.Marshal(record)
 				if err != nil {
@@ -513,9 +511,6 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 					return err
 				}
 
-				if record.Status == "" {
-					record.Status = recordStatusPending
-				}
 				if record.Status != recordStatusPending {
 					if err := txn.Delete(key); err != nil {
 						return err
@@ -850,19 +845,16 @@ func (s *Store[M, D]) loadRecord(txn *badger.Txn, id MessageID) (storedRecord, e
 	if err != nil {
 		return record, err
 	}
-
 	value, err := item.ValueCopy(nil)
 	if err != nil {
 		return record, err
 	}
-	if err := json.Unmarshal(value, &record); err != nil {
-		return record, err
+	record, err = decodeStoredRecord(value)
+	if err != nil {
+		return storedRecord{}, fmt.Errorf("badgerbox: message %s: %w", id, err)
 	}
-	if record.Status == "" {
-		record.Status = recordStatusPending
-	}
-	if record.ID == 0 {
-		record.ID = id
+	if record.ID != id {
+		return record, fmt.Errorf("badgerbox: record identity differs from key %d", id)
 	}
 	return record, nil
 }
@@ -895,14 +887,15 @@ func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error
 		AvailableAt: time.Unix(0, record.AvailableAtUnix).UTC(),
 		Attempt:     record.Attempt,
 		MaxAttempts: record.MaxAttempts,
+		State:       record.Status,
 	}, nil
 }
 
 func (s *Store[M, D]) decodeDeadLetter(data []byte) (DeadLetter[M, D], error) {
-	var encoded storedDeadLetter
 	var result DeadLetter[M, D]
 
-	if err := json.Unmarshal(data, &encoded); err != nil {
+	encoded, err := decodeStoredDeadLetter(data)
+	if err != nil {
 		return result, err
 	}
 
@@ -972,7 +965,7 @@ func cloneBytes(data []byte) []byte {
 
 func ctxErr(ctx context.Context) error {
 	if ctx == nil {
-		return nil
+		return ErrNilContext
 	}
 	return ctx.Err()
 }
