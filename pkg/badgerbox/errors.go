@@ -49,4 +49,8 @@ var (
 	ErrIncompatibleFormat = errors.New("badgerbox: incompatible storage format; use a new directory")
 	// ErrInconsistentIndex means lifecycle indexes cannot provide a reliable snapshot.
 	ErrInconsistentIndex = errors.New("badgerbox: inconsistent queue index")
+	// ErrMessageTooLarge means a record cannot safely fit its lifecycle transitions.
+	ErrMessageTooLarge = errors.New("badgerbox: message exceeds lifecycle storage budget")
 )
+
+func boxErrorf(format string, args ...any) error { return fmt.Errorf("badgerbox: "+format, args...) }

@@ -12,13 +12,14 @@ import (
 type ProcessFunc[M any, D any] func(ctx context.Context, msg Message[M, D]) error
 
 type ProcessorOptions struct {
-	Concurrency    int
-	ClaimBatchSize int
-	PollInterval   time.Duration
-	LeaseDuration  time.Duration
-	RetryBaseDelay time.Duration
-	RetryMaxDelay  time.Duration
-	MaxAttempts    int
+	Concurrency     int
+	ClaimBatchSize  int
+	PollInterval    time.Duration
+	LeaseDuration   time.Duration
+	RetryBaseDelay  time.Duration
+	RetryMaxDelay   time.Duration
+	MaxAttempts     int
+	RequeuePageSize int
 }
 
 type Processor[M any, D any] struct {
@@ -30,6 +31,7 @@ type Processor[M any, D any] struct {
 type claimedRecord[M any, D any] struct {
 	Message      Message[M, D]
 	LeaseToken   string
+	LeaseUntil   time.Time
 	TraceCarrier map[string]string
 }
 
@@ -57,6 +59,9 @@ func normalizeProcessorOptions(opts ProcessorOptions) ProcessorOptions {
 	}
 	if opts.MaxAttempts <= 0 {
 		opts.MaxAttempts = defaultMaxAttempts
+	}
+	if opts.RequeuePageSize <= 0 {
+		opts.RequeuePageSize = defaultRequeuePageSize
 	}
 	return opts
 }
@@ -186,7 +191,7 @@ func (p *Processor[M, D]) reaperLoop(ctx context.Context) error {
 	defer ticker.Stop()
 
 	for {
-		if _, err := p.store.requeueExpired(ctx, p.store.runtime.Now().UTC()); err != nil {
+		if _, err := p.store.requeueExpired(ctx, p.store.runtime.Now().UTC(), p.opts.RequeuePageSize); err != nil {
 			return err
 		}
 
