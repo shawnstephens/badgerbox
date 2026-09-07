@@ -86,3 +86,9 @@ func TestLatencyHistogramViewLeavesOtherMetricsUntouched(t *testing.T) {
 		t.Fatal("unexpected match for non-histogram instrument kind")
 	}
 }
+
+func TestSetupOTelRejectsUnsupportedProtocol(t *testing.T) {
+	if _, _, err := SetupOTel(t.Context(), OTelConfig{Endpoint: "localhost:4318", Protocol: "invalid"}); err == nil {
+		t.Fatal("unsupported transport accepted")
+	}
+}

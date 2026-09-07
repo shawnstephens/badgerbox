@@ -3,12 +3,16 @@ package demo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 
-	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
+	"github.com/shawnstephens/badgerbox/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -17,6 +21,8 @@ import (
 
 type OTelConfig struct {
 	Endpoint    string
+	Protocol    string
+	Insecure    bool
 	ServiceName string
 }
 
@@ -41,9 +47,9 @@ func (c OTelConfig) Enabled() bool {
 	return c.Endpoint != ""
 }
 
-func SetupOTel(ctx context.Context, cfg OTelConfig) (badgerbox.ObservabilityOptions, func(context.Context) error, error) {
+func SetupOTel(ctx context.Context, cfg OTelConfig) (telemetry.Options, func(context.Context) error, error) {
 	if !cfg.Enabled() {
-		return badgerbox.ObservabilityOptions{}, func(context.Context) error { return nil }, nil
+		return telemetry.Options{}, func(context.Context) error { return nil }, nil
 	}
 
 	serviceName := cfg.ServiceName
@@ -56,22 +62,58 @@ func SetupOTel(ctx context.Context, cfg OTelConfig) (badgerbox.ObservabilityOpti
 		attribute.String("service.namespace", "badgerbox-demo"),
 	))
 	if err != nil {
-		return badgerbox.ObservabilityOptions{}, nil, err
+		return telemetry.Options{}, nil, err
 	}
 
-	metricExporter, err := otlpmetrichttp.New(ctx,
-		otlpmetrichttp.WithEndpoint(cfg.Endpoint),
-		otlpmetrichttp.WithInsecure(),
-	)
-	if err != nil {
-		return badgerbox.ObservabilityOptions{}, nil, err
+	var metricExporter sdkmetric.Exporter
+	var traceExporter sdktrace.SpanExporter
+	switch cfg.Protocol {
+	case "", "http/protobuf":
+		mopts := []otlpmetrichttp.Option{}
+		topts := []otlptracehttp.Option{}
+		if strings.Contains(cfg.Endpoint, "://") {
+			mopts = append(mopts, otlpmetrichttp.WithEndpointURL(cfg.Endpoint))
+			topts = append(topts, otlptracehttp.WithEndpointURL(cfg.Endpoint))
+		} else {
+			mopts = append(mopts, otlpmetrichttp.WithEndpoint(cfg.Endpoint))
+			topts = append(topts, otlptracehttp.WithEndpoint(cfg.Endpoint))
+		}
+		if cfg.Insecure {
+			mopts = append(mopts, otlpmetrichttp.WithInsecure())
+			topts = append(topts, otlptracehttp.WithInsecure())
+		}
+		metricExporter, err = otlpmetrichttp.New(ctx, mopts...)
+		if err == nil {
+			traceExporter, err = otlptracehttp.New(ctx, topts...)
+		}
+	case "grpc":
+		mopts := []otlpmetricgrpc.Option{}
+		topts := []otlptracegrpc.Option{}
+		if strings.Contains(cfg.Endpoint, "://") {
+			mopts = append(mopts, otlpmetricgrpc.WithEndpointURL(cfg.Endpoint))
+			topts = append(topts, otlptracegrpc.WithEndpointURL(cfg.Endpoint))
+		} else {
+			mopts = append(mopts, otlpmetricgrpc.WithEndpoint(cfg.Endpoint))
+			topts = append(topts, otlptracegrpc.WithEndpoint(cfg.Endpoint))
+		}
+		if cfg.Insecure {
+			mopts = append(mopts, otlpmetricgrpc.WithInsecure())
+			topts = append(topts, otlptracegrpc.WithInsecure())
+		}
+		metricExporter, err = otlpmetricgrpc.New(ctx, mopts...)
+		if err == nil {
+			traceExporter, err = otlptracegrpc.New(ctx, topts...)
+		}
+	default:
+		return telemetry.Options{}, nil, fmt.Errorf("unsupported OTLP protocol %q", cfg.Protocol)
 	}
-	traceExporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(cfg.Endpoint),
-		otlptracehttp.WithInsecure(),
-	)
 	if err != nil {
-		return badgerbox.ObservabilityOptions{}, nil, err
+		if metricExporter != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			_ = metricExporter.Shutdown(cleanupCtx)
+		}
+		return telemetry.Options{}, nil, err
 	}
 
 	meterProvider := sdkmetric.NewMeterProvider(
@@ -79,13 +121,15 @@ func SetupOTel(ctx context.Context, cfg OTelConfig) (badgerbox.ObservabilityOpti
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(5*time.Second))),
 		sdkmetric.WithView(latencyHistogramView("badgerbox_enqueue_duration_seconds")),
 		sdkmetric.WithView(latencyHistogramView("badgerbox_process_duration_seconds")),
+		sdkmetric.WithView(latencyHistogramView("badgerbox_process_batch_duration_seconds")),
+		sdkmetric.WithView(latencyHistogramView("badgerbox_kafka_promise_duration_seconds")),
 	)
 	traceProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithBatcher(traceExporter),
 	)
 
-	obs := badgerbox.ObservabilityOptions{
+	obs := telemetry.Options{
 		MeterProvider:  meterProvider,
 		TracerProvider: traceProvider,
 	}
