@@ -192,8 +192,8 @@ func TestKafkaDemoConcurrentFlow(t *testing.T) {
 	}
 
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
-		Concurrency:    processorConcurrency,
-		ClaimBatchSize: 1,
+		Concurrency: processorConcurrency,
+
 		PollInterval:   5 * time.Millisecond,
 		LeaseDuration:  5 * time.Second,
 		RetryBaseDelay: 20 * time.Millisecond,

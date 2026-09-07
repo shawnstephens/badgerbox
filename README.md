@@ -322,6 +322,18 @@ err := db.Update(func(txn *badger.Txn) error {
 })
 ```
 
+Enqueue and EnqueueTx reject records with `ErrMessageTooLarge` when the encoded
+record cannot safely fit later claims, retries, recovery, and dead-letter writes.
+Admission reserves 32 KiB for lifecycle metadata and accounts for Badger's
+transaction, value, and index-key limits. Large values that safely use the value
+log remain supported. Keep the same storage limits when reopening a populated
+database; lowering them requires migrating its records. Stored failure text is
+limited to 4 KiB, with a truncation marker. Custom runtimes must return unique,
+nonempty UTF-8 lease tokens of at most 256 bytes. Admission normalizes mutable
+availability and attempt-limit metadata, so later retries and manual requeues
+retain the same storage budget for an unchanged payload.
+
+
 ## Generic embedded processor example
 
 ```go

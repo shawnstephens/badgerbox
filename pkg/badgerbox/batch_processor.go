@@ -43,21 +43,41 @@ type BatchProcessResult struct {
 // produced a result are settled from that result. This preserves at-least-once
 // delivery: explicit successes are acknowledged, unresolved work is retried, and
 // late results from a previous attempt are ignored by that attempt's worker.
+// A settlement error does not discard other results. Remaining outcomes are
+// settled before the joined settlement errors are returned; failed settlements
+// retain their database leases for expiry recovery.
+// On a terminal batch error, cancellation, or lease expiry, the callback context
+// is canceled before settlement. The final drain is limited to results already
+// buffered at that point; ongoing duplicate or unknown results cannot extend it.
 // Permanent applies only to BatchProcessResult.Err; a function-level error cannot
 // assign a permanent disposition to individual records that produced no result.
 type BatchProcessFunc[M any, D any] func(ctx context.Context, messages []Message[M, D], results chan<- BatchProcessResult) error
+
+// BatchProcessorOptions adds batch sizing to the shared worker options.
+type BatchProcessorOptions struct {
+	ProcessorOptions
+	ClaimBatchSize int
+}
+
+func normalizeBatchProcessorOptions(opts BatchProcessorOptions) BatchProcessorOptions {
+	opts.ProcessorOptions = normalizeProcessorOptions(opts.ProcessorOptions)
+	if opts.ClaimBatchSize <= 0 {
+		opts.ClaimBatchSize = defaultClaimBatchSize
+	}
+	return opts
+}
 
 // BatchProcessor claims ready messages from a Store in batches and delivers each
 // batch to a BatchProcessFunc.
 //
 // ProcessorOptions.Concurrency controls how many batch workers run concurrently.
-// ProcessorOptions.ClaimBatchSize controls the maximum number of messages claimed
+// BatchProcessorOptions.ClaimBatchSize controls the maximum number of messages claimed
 // for one BatchProcessFunc call. Settlement remains per-message even though
 // processing is scheduled per-batch.
 type BatchProcessor[M any, D any] struct {
 	store     *Store[M, D]
 	fn        BatchProcessFunc[M, D]
-	opts      ProcessorOptions
+	opts      BatchProcessorOptions
 	callbacks sync.WaitGroup
 	runMu     sync.Mutex
 }
@@ -65,7 +85,7 @@ type BatchProcessor[M any, D any] struct {
 // NewBatchProcessor builds a BatchProcessor for store and fn.
 //
 // Zero-value options are replaced with package defaults.
-func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts ProcessorOptions) (*BatchProcessor[M, D], error) {
+func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts BatchProcessorOptions) (*BatchProcessor[M, D], error) {
 	if store == nil {
 		return nil, ErrNilStore
 	}
@@ -76,7 +96,7 @@ func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, 
 	processor := &BatchProcessor[M, D]{
 		store: store,
 		fn:    fn,
-		opts:  normalizeProcessorOptions(opts),
+		opts:  normalizeBatchProcessorOptions(opts),
 	}
 	return processor, nil
 }
@@ -97,6 +117,11 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 		p.store.obs.recordProcessBatch(ctx, len(work), duration)
 	}()
 
+	if ctxErr(ctx) != nil || p.resultWaitDuration(work) <= 0 {
+		return p.releaseClaimedBatch(ctx, work)
+	}
+	ctx, endTraces := p.startMessageTraces(ctx, work, start)
+	defer endTraces()
 	processCtx, cancelProcess := context.WithCancel(contextWithOTelInstrumentation(ctx, p.store.obs))
 	defer cancelProcess()
 	// The result channel is sized to the claimed batch so producer callbacks can
@@ -111,51 +136,67 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 	}
 	resultWaitDuration := p.resultWaitDuration(work)
 	if resultWaitDuration <= 0 {
-		return p.failPendingBatchResults(ctx, pending, start, ErrBatchResultMissing)
+		return p.releaseClaimedBatch(ctx, work)
 	}
 
 	processDone := make(chan error, 1)
+	invoked := make(chan bool, 1)
 	p.callbacks.Add(1)
 	go func() {
 		defer p.callbacks.Done()
+		// Commit to invoking the callback only after the final cancellation
+		// and lease check. After sending true, always call it, even if canceled.
+		if ctxErr(processCtx) != nil || p.resultWaitDuration(work) <= 0 {
+			invoked <- false
+			return
+		}
+		invoked <- true
 		processDone <- p.invokeBatchProcess(processCtx, messages, resultCh)
 	}()
 
-	resultWait := time.NewTimer(resultWaitDuration)
+	if !<-invoked {
+		return p.releaseClaimedBatch(ctx, work)
+	}
+	resultWait := time.NewTimer(p.resultWaitDuration(work))
 	defer resultWait.Stop()
 
 	var processDoneCh <-chan error = processDone
 	var resultInput <-chan BatchProcessResult = resultCh
 	processReturned := false
+	var settlementErrors []error
 	for len(pending) > 0 || !processReturned {
 		select {
 		case processErr := <-processDoneCh:
 			processDoneCh = nil
 			processReturned = true
 			if processErr != nil {
-				if err := p.drainAvailableBatchResults(ctx, resultInput, pending, start); err != nil {
-					return err
-				}
-				return p.failPendingBatchResults(ctx, pending, start, processErr)
+				cancelProcess()
+				drainErr := p.drainAvailableBatchResults(ctx, resultInput, pending, start)
+				pendingErr := p.failPendingBatchResults(ctx, pending, start, processErr)
+				return errors.Join(append(settlementErrors, drainErr, pendingErr)...)
 			}
 		case result, ok := <-resultInput:
 			if !ok {
+				cancelProcess()
 				resultInput = nil
 				if err := p.failPendingBatchResults(ctx, pending, start, ErrBatchResultMissing); err != nil {
-					return err
+					settlementErrors = append(settlementErrors, err)
 				}
 				continue
 			}
 			if err := p.settleBatchResult(ctx, result, pending, start); err != nil {
-				return err
+				settlementErrors = append(settlementErrors, err)
 			}
 		case <-ctx.Done():
-			return p.cancelPendingBatchResults(ctx, resultInput, pending, start)
+			cancelProcess()
+			return errors.Join(append(settlementErrors, p.cancelPendingBatchResults(ctx, resultInput, pending, start))...)
 		case <-resultWait.C:
-			return p.timeoutPendingBatchResults(ctx, resultInput, pending, start)
+			cancelProcess()
+			return errors.Join(append(settlementErrors, p.timeoutPendingBatchResults(ctx, resultInput, pending, start))...)
 		}
 	}
-	return p.drainAvailableBatchResults(ctx, resultInput, pending, start)
+	cancelProcess()
+	return errors.Join(append(settlementErrors, p.drainAvailableBatchResults(ctx, resultInput, pending, start))...)
 }
 
 func (p *BatchProcessor[M, D]) invokeBatchProcess(ctx context.Context, messages []Message[M, D], resultCh chan<- BatchProcessResult) (err error) {
@@ -182,40 +223,35 @@ func (p *BatchProcessor[M, D]) resultWaitDuration(work []claimedRecord[M, D]) ti
 }
 
 func (p *BatchProcessor[M, D]) cancelPendingBatchResults(ctx context.Context, resultCh <-chan BatchProcessResult, pending map[MessageID]claimedRecord[M, D], started time.Time) error {
-	if err := p.drainAvailableBatchResults(ctx, resultCh, pending, started); err != nil {
-		return err
-	}
-	return p.failPendingBatchResults(ctx, pending, started, ctx.Err())
+	drainErr := p.drainAvailableBatchResults(ctx, resultCh, pending, started)
+	return errors.Join(drainErr, p.failPendingBatchResults(ctx, pending, started, ctx.Err()))
 }
 
 func (p *BatchProcessor[M, D]) timeoutPendingBatchResults(ctx context.Context, resultCh <-chan BatchProcessResult, pending map[MessageID]claimedRecord[M, D], started time.Time) error {
-	if err := p.drainAvailableBatchResults(ctx, resultCh, pending, started); err != nil {
-		return err
-	}
-	return p.failPendingBatchResults(ctx, pending, started, ErrBatchResultMissing)
+	drainErr := p.drainAvailableBatchResults(ctx, resultCh, pending, started)
+	return errors.Join(drainErr, p.failPendingBatchResults(ctx, pending, started, ErrBatchResultMissing))
 }
 
 // drainAvailableBatchResults settles expected results and counts invalid results
-// that were emitted before a batch-level error, panic, cancellation, timeout, or
-// successful synchronous function return was observed. Remaining pending records
-// are retried by failPendingBatchResults with the batch-level error.
+// buffered at entry. The worker is the only receiver, so this budget includes all
+// available outcomes without following a producer that keeps refilling the
+// channel. Remaining pending records are retried by failPendingBatchResults.
 func (p *BatchProcessor[M, D]) drainAvailableBatchResults(ctx context.Context, resultCh <-chan BatchProcessResult, pending map[MessageID]claimedRecord[M, D], started time.Time) error {
-	for {
+	var settlementErrors []error
+	for range len(resultCh) {
 		select {
 		case result, ok := <-resultCh:
 			if !ok {
-				if len(pending) > 0 {
-					return p.failPendingBatchResults(ctx, pending, started, ErrBatchResultMissing)
-				}
-				return nil
+				return errors.Join(append(settlementErrors, p.failPendingBatchResults(ctx, pending, started, ErrBatchResultMissing))...)
 			}
 			if err := p.settleBatchResult(ctx, result, pending, started); err != nil {
-				return err
+				settlementErrors = append(settlementErrors, err)
 			}
 		default:
-			return nil
+			return errors.Join(settlementErrors...)
 		}
 	}
+	return errors.Join(settlementErrors...)
 }
 
 // settleBatchResult applies one streamed result to its matching claimed record.
@@ -223,7 +259,9 @@ func (p *BatchProcessor[M, D]) drainAvailableBatchResults(ctx context.Context, r
 // records, so they are counted and ignored. Any expected records left pending
 // are counted once when they are retried. The matching record is settled with a
 // context detached from cancellation so a processor shutdown does not strand
-// already-completed work in processing state.
+// already-completed work in processing state. Remove the result from pending even
+// on settlement failure: its DB lease stays intact for recovery, and a duplicate
+// result or batch-level failure must not assign it another disposition.
 func (p *BatchProcessor[M, D]) settleBatchResult(ctx context.Context, result BatchProcessResult, pending map[MessageID]claimedRecord[M, D], started time.Time) error {
 	work, ok := pending[result.ID]
 	if !ok {
@@ -239,7 +277,9 @@ func (p *BatchProcessor[M, D]) settleBatchResult(ctx context.Context, result Bat
 // failPendingBatchResults retries every claimed record that never produced a
 // result. It records missing-result metrics for observability and uses the
 // supplied error as the retry cause so callers can distinguish batch-function
-// errors, panics, closed result channels, and context cancellation.
+// errors, panics, closed result channels, and context cancellation. Each record
+// gets one settlement attempt; errors are joined after all attempts, and failed
+// records retain their database leases for recovery.
 func (p *BatchProcessor[M, D]) failPendingBatchResults(ctx context.Context, pending map[MessageID]claimedRecord[M, D], started time.Time, processErr error) error {
 	if len(pending) == 0 {
 		return nil
@@ -250,55 +290,59 @@ func (p *BatchProcessor[M, D]) failPendingBatchResults(ctx context.Context, pend
 	defer cancel()
 
 	p.store.obs.recordProcessBatchResultMissing(settlementCtx, len(pending))
+	var settlementErrors []error
 	for id, record := range pending {
-		if err := p.settleOne(settlementCtx, record, started, processErr); err != nil {
-			return err
-		}
 		delete(pending, id)
+		if err := p.settleOne(settlementCtx, record, started, processErr); err != nil {
+			settlementErrors = append(settlementErrors, err)
+		}
 	}
 
-	return nil
+	return errors.Join(settlementErrors...)
 }
 
 // batchSettlementContext strips caller cancellation before Badger settlement and
-// replaces it with ProcessorOptions.BatchSettlementTimeout. Once a result has
+// replaces it with ProcessorOptions.SettlementTimeout. Once a result has
 // arrived, or once pending work must be retried during shutdown, settlement
 // should get a bounded chance to complete instead of immediately failing with
 // context.Canceled and waiting for lease expiry.
 func (p *BatchProcessor[M, D]) batchSettlementContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), p.opts.BatchSettlementTimeout)
+	return context.WithTimeout(context.WithoutCancel(ctx), p.opts.SettlementTimeout)
 }
 
 func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord[M, D], started time.Time, processErr error) error {
-	ctx, span := p.store.obs.startProcessSpan(ctx, work.Message.ID, work.Message.Attempt, work.Message.MaxAttempts, work.Message.CreatedAt, work.Message.AvailableAt, work.TraceCarrier, oteltrace.WithTimestamp(started))
+	ctx = ContextForMessage(ctx, work.Message.ID)
+	delivery := ctx.Value(messageTracesKey{}).(messageTraces)[work.Message.ID]
+	span := delivery.span
 	if processErr != nil {
 		span.RecordError(processErr)
 		result, failErr := p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, processErr, p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
 		if failErr != nil {
 			span.RecordError(failErr)
-			p.store.obs.endSpan(span, "error", oteltrace.WithTimestamp(p.store.runtime.Now().UTC()))
-			return failErr
+			delivery.end("error", p.store.runtime.Now().UTC())
+			return boxErrorf("settle message %s: %w", work.Message.ID, failErr)
 		}
-		p.finishProcessing(ctx, span, started, processErr, result)
+		p.finishProcessing(ctx, delivery, started, processErr, result)
 		return nil
 	}
 
 	acknowledged, err := p.store.acknowledgeOwned(ctx, work.Message.ID, work.LeaseToken)
 	if err != nil {
 		span.RecordError(err)
-		p.store.obs.endSpan(span, "error", oteltrace.WithTimestamp(p.store.runtime.Now().UTC()))
-		return err
+		delivery.end("error", p.store.runtime.Now().UTC())
+		return boxErrorf("settle message %s: %w", work.Message.ID, err)
 	}
 
 	result := failProcessingResult{}
 	if acknowledged {
 		result.outcome = metricOutcomeSuccess
 	}
-	p.finishProcessing(ctx, span, started, nil, result)
+	p.finishProcessing(ctx, delivery, started, nil, result)
 	return nil
 }
 
-func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, span oteltrace.Span, started time.Time, processErr error, result failProcessingResult) {
+func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, delivery *messageTrace, started time.Time, processErr error, result failProcessingResult) {
+	span := delivery.span
 	finished := p.store.runtime.Now().UTC()
 	duration := positiveDuration(finished.Sub(started))
 
@@ -315,7 +359,7 @@ func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, span oteltr
 		span.AddEvent("dead_lettered", oteltrace.WithAttributes(attribute.String("failure_kind", failureKind(processErr))))
 	}
 
-	p.store.obs.endSpan(span, result.outcome, oteltrace.WithTimestamp(finished))
+	delivery.end(result.outcome, finished)
 }
 
 func (p *BatchProcessor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan struct{}, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
@@ -540,6 +584,20 @@ func (p *BatchProcessor[M, D]) reaperLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.Chan():
+		}
+	}
+}
+
+func (p *BatchProcessor[M, D]) startMessageTraces(ctx context.Context, work []claimedRecord[M, D], start time.Time) (context.Context, func()) {
+	traces := make(messageTraces, len(work))
+	for _, record := range work {
+		messageCtx, span := p.store.obs.startProcessSpan(ctx, record.Message.ID, record.Message.Attempt, record.Message.MaxAttempts, record.Message.CreatedAt, record.Message.AvailableAt, record.TraceCarrier, oteltrace.WithTimestamp(start))
+		traces[record.Message.ID] = newMessageTrace(messageCtx, span)
+	}
+	ctx = context.WithValue(ctx, messageTracesKey{}, traces)
+	return ctx, func() {
+		for _, delivery := range traces {
+			delivery.end("", p.store.runtime.Now().UTC())
 		}
 	}
 }

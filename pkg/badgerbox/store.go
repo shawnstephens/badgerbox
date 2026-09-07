@@ -1,7 +1,6 @@
 package badgerbox
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dgraph-io/badger/v4"
 )
@@ -56,7 +56,7 @@ type storedRecord struct {
 	MaxAttempts      int               `json:"max_attempts"`
 	Status           MessageState      `json:"status"`
 	LeaseToken       string            `json:"lease_token,omitempty"`
-	LeaseUntilUnix   int64             `json:"lease_until_unix_nano,omitempty"`
+	LeaseUntilUnix   int64             `json:"lease_until_unix_nano"`
 }
 
 type storedDeadLetter struct {
@@ -161,6 +161,8 @@ func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
 	return s.obs.recordSnapshot(ctx)
 }
 
+// Enqueue returns ErrMessageTooLarge before queue writes when the encoded record
+// cannot fit its later lifecycle transitions under the current Badger options.
 func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -197,12 +199,14 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	return result.id, nil
 }
 
+// EnqueueTx applies the same lifecycle size budget as Enqueue before adding any
+// queue entries to txn. The caller owns the transaction and its final commit.
 func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	if err := ctxErr(ctx); err != nil {
+		return 0, err
 	}
 
 	start := s.runtime.Now().UTC()
@@ -346,8 +350,8 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 					return err
 				}
 
-				var deadLetter storedDeadLetter
-				if err := json.Unmarshal(value, &deadLetter); err != nil {
+				deadLetter, err := decodeStoredDeadLetter(value)
+				if err != nil {
 					return err
 				}
 
@@ -357,15 +361,15 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 				record.LeaseToken = ""
 				record.LeaseUntilUnix = 0
 				record.AvailableAtUnix = at.UnixNano()
-				if record.MaxAttempts <= 0 {
-					record.MaxAttempts = defaultMaxAttempts
-				}
 
 				encodedRecord, err := json.Marshal(record)
 				if err != nil {
 					return err
 				}
 
+				if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
+					return err
+				}
 				if err := txn.Set(s.keys.messageKey(record.ID), encodedRecord); err != nil {
 					return err
 				}
@@ -442,6 +446,9 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 		return result, err
 	}
 
+	if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
+		return result, err
+	}
 	if err := txn.Set(s.keys.messageKey(id), encodedRecord); err != nil {
 		return result, err
 	}
@@ -503,7 +510,7 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 	if processErr == nil {
 		processErr = boxErrorf("process error is nil")
 	}
-	processErrMessage := processErr.Error()
+	processErrMessage := storedFailureText(processErr)
 	processErrPermanent := IsPermanent(processErr)
 	now := s.runtime.Now().UTC()
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
@@ -643,23 +650,12 @@ func (s *Store[M, D]) loadRecord(txn *badger.Txn, id MessageID) (storedRecord, e
 	if err != nil {
 		return record, err
 	}
-	if err = json.Unmarshal(value, &record); err != nil {
-		return record, err
+	record, err = decodeStoredRecord(value)
+	if err != nil {
+		return storedRecord{}, fmt.Errorf("badgerbox: message %s: %w", id, err)
 	}
-	var fields map[string]json.RawMessage
-	if err = json.Unmarshal(value, &fields); err != nil {
-		return record, err
-	}
-	for _, key := range []string{"id", "status", "payload_bytes", "destination_bytes"} {
-		if _, ok := fields[key]; !ok {
-			return record, fmt.Errorf("badgerbox: missing record field %s", key)
-		}
-	}
-	if bytes.Equal(fields["id"], []byte("null")) || record.ID != id {
+	if record.ID != id {
 		return record, fmt.Errorf("badgerbox: record identity differs from key %d", id)
-	}
-	if record.Status != MessageStateReady && record.Status != MessageStateProcessing {
-		return record, fmt.Errorf("badgerbox: invalid record state %q", record.Status)
 	}
 	return record, nil
 }
@@ -697,10 +693,10 @@ func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error
 }
 
 func (s *Store[M, D]) decodeDeadLetter(data []byte) (DeadLetter[M, D], error) {
-	var encoded storedDeadLetter
 	var result DeadLetter[M, D]
 
-	if err := json.Unmarshal(data, &encoded); err != nil {
+	encoded, err := decodeStoredDeadLetter(data)
+	if err != nil {
 		return result, err
 	}
 
@@ -855,6 +851,12 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					token, err := s.runtime.NewLeaseToken()
 					if err != nil {
 						return err
+					}
+					if len(token) == 0 || len(token) > maxLeaseTokenBytes {
+						return boxErrorf("runtime lease token must contain 1 to %d bytes", maxLeaseTokenBytes)
+					}
+					if !utf8.ValidString(token) {
+						return boxErrorf("runtime lease token must be valid UTF-8")
 					}
 					record.LeaseToken = token
 

@@ -62,26 +62,11 @@ func BenchmarkProcessorToKafka10KB(b *testing.B) {
 				return err
 			}
 
-			claimBatchSize := b.N
-			if claimBatchSize < 1 {
-				claimBatchSize = 1
-			}
-			maxBatch := concurrency * 4
-			if maxBatch < 1 {
-				maxBatch = 1
-			}
-			if claimBatchSize > maxBatch {
-				claimBatchSize = maxBatch
-			}
-			if claimBatchSize > 256 {
-				claimBatchSize = 256
-			}
-
 			processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
-				Concurrency:    concurrency,
-				ClaimBatchSize: claimBatchSize,
-				PollInterval:   time.Millisecond,
-				LeaseDuration:  30 * time.Second,
+				Concurrency: concurrency,
+
+				PollInterval:  time.Millisecond,
+				LeaseDuration: 30 * time.Second,
 			})
 			if err != nil {
 				b.Fatalf("new processor: %v", err)

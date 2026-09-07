@@ -3,8 +3,10 @@ package badgerbox
 import (
 	"context"
 	"errors"
-	"github.com/dgraph-io/badger/v4"
+	"fmt"
 	"time"
+
+	"github.com/dgraph-io/badger/v4"
 )
 
 const queueStateVersion = byte(2)
@@ -134,7 +136,7 @@ func oldestIndexAge(ctx context.Context, it *badger.Iterator, prefix []byte, now
 	}
 	it.Seek(prefix)
 	if !it.ValidForPrefix(prefix) {
-		return 0, nil
+		return 0, fmt.Errorf("%w: nonempty queue has no creation key under %q", ErrInconsistentIndex, prefix)
 	}
 	createdAt, _, err := parseTimeAndIDKey(prefix, it.Item().Key())
 	if err != nil {
