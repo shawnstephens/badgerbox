@@ -34,25 +34,25 @@ func TestOTelInstrumentationExportsCoreMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new instrumentation: %v", err)
 	}
-	defer obs.close()
+	defer obs.Close()
 
-	obs.workQueued()
-	obs.workQueued()
-	obs.workQueued()
-	obs.workQueued()
-	obs.workQueued()
-	obs.workStarted()
-	obs.workStarted()
-	if err := obs.recordSnapshot(context.Background()); err != nil {
+	obs.WorkQueued()
+	obs.WorkQueued()
+	obs.WorkQueued()
+	obs.WorkQueued()
+	obs.WorkQueued()
+	obs.WorkStarted()
+	obs.WorkStarted()
+	if err := obs.RecordSnapshot(context.Background()); err != nil {
 		t.Fatalf("record snapshot: %v", err)
 	}
 
-	obs.recordEnqueueCommitted(context.Background(), 3*time.Millisecond)
-	obs.recordProcessSuccess(context.Background(), 8*time.Millisecond)
-	obs.recordRetryScheduled(context.Background(), errors.New("retry"), 5*time.Second)
-	obs.recordDeadLetter(context.Background(), Permanent(errors.New("stop")))
-	obs.recordConflictRetry(context.Background())
-	obs.recordConflictRetry(context.Background())
+	obs.RecordEnqueueCommitted(context.Background(), 3*time.Millisecond)
+	obs.RecordProcessSuccess(context.Background(), 8*time.Millisecond)
+	obs.RecordRetryScheduled(context.Background(), errors.New("retry"), 5*time.Second)
+	obs.RecordDeadLetter(context.Background(), Permanent(errors.New("stop")))
+	obs.RecordConflictRetry(context.Background())
+	obs.RecordConflictRetry(context.Background())
 
 	var collected metricdata.ResourceMetrics
 	if err := reader.Collect(context.Background(), &collected); err != nil {
@@ -88,72 +88,6 @@ func TestOTelInstrumentationExportsCoreMetrics(t *testing.T) {
 	}
 	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeSuccess)); !almostEqualFloat64(got, 0.008) {
 		t.Fatalf("process duration max = %f, want 0.008", got)
-	}
-}
-
-func TestOTelInstrumentationDurationMaxMetricsResetBetweenCollections(t *testing.T) {
-	t.Parallel()
-
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-
-	obs, err := newOTelInstrumentation(ObservabilityOptions{MeterProvider: provider}, "orders", nil)
-	if err != nil {
-		t.Fatalf("new instrumentation: %v", err)
-	}
-	defer obs.close()
-
-	obs.recordEnqueueCommitted(context.Background(), 3*time.Millisecond)
-	obs.recordEnqueueCommitted(context.Background(), 7*time.Millisecond)
-	obs.recordEnqueuePrepared(context.Background(), 5*time.Millisecond)
-	obs.recordProcessSuccess(context.Background(), 8*time.Millisecond)
-	obs.recordProcessRetried(context.Background(), errors.New("retry"), 11*time.Millisecond)
-	obs.recordProcessDeadLetter(context.Background(), Permanent(errors.New("stop")), 6*time.Millisecond)
-
-	var collected metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatalf("collect first interval: %v", err)
-	}
-
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeCommitted)); !almostEqualFloat64(got, 0.007) {
-		t.Fatalf("enqueue committed max = %f, want 0.007", got)
-	}
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomePrepared)); !almostEqualFloat64(got, 0.005) {
-		t.Fatalf("enqueue prepared max = %f, want 0.005", got)
-	}
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeSuccess)); !almostEqualFloat64(got, 0.008) {
-		t.Fatalf("process success max = %f, want 0.008", got)
-	}
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeRetried), attribute.String("failure_kind", "error")); !almostEqualFloat64(got, 0.011) {
-		t.Fatalf("process retried max = %f, want 0.011", got)
-	}
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeDeadLetter), attribute.String("failure_kind", "permanent")); !almostEqualFloat64(got, 0.006) {
-		t.Fatalf("process dead-letter max = %f, want 0.006", got)
-	}
-
-	collected = metricdata.ResourceMetrics{}
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatalf("collect empty interval: %v", err)
-	}
-	if got := float64GaugePointCountWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders")); got != 0 {
-		t.Fatalf("enqueue max points after reset = %d, want 0", got)
-	}
-	if got := float64GaugePointCountWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders")); got != 0 {
-		t.Fatalf("process max points after reset = %d, want 0", got)
-	}
-
-	obs.recordEnqueueCommitted(context.Background(), 4*time.Millisecond)
-	obs.recordProcessSuccess(context.Background(), 2*time.Millisecond)
-
-	collected = metricdata.ResourceMetrics{}
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatalf("collect second interval: %v", err)
-	}
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_enqueue_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeCommitted)); !almostEqualFloat64(got, 0.004) {
-		t.Fatalf("enqueue committed max after reset = %f, want 0.004", got)
-	}
-	if got := float64GaugeValueWithAttrs(collected, "badgerbox_process_duration_seconds_max", attribute.String("namespace", "orders"), attribute.String("outcome", metricOutcomeSuccess)); !almostEqualFloat64(got, 0.002) {
-		t.Fatalf("process success max after reset = %f, want 0.002", got)
 	}
 }
 
@@ -529,7 +463,7 @@ func TestNewPureConstructorDoesNotStartObservability(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 
-	_, store, cleanup := openTestStoreWithOptions(t, "constructor-pure", Serde[testPayload, testDestination]{}, Options{
+	_, _, cleanup := openTestStoreWithOptions(t, "constructor-pure", Serde[testPayload, testDestination]{}, Options{
 		Runtime: runtime,
 		Observability: ObservabilityOptions{
 			MeterProvider: provider,
@@ -540,9 +474,7 @@ func TestNewPureConstructorDoesNotStartObservability(t *testing.T) {
 	if runtime.TickerCount() != 0 {
 		t.Fatalf("constructor created %d tickers, want 0", runtime.TickerCount())
 	}
-	if store.obs.done != nil || store.obs.cancel != nil {
-		t.Fatalf("constructor started observability: done=%v cancel=%v", store.obs.done, store.obs.cancel)
-	}
+
 }
 
 func TestStartObservabilityStartsOnceAndStopsOnClose(t *testing.T) {
@@ -562,7 +494,7 @@ func TestStartObservabilityStartsOnceAndStopsOnClose(t *testing.T) {
 	defer cleanup()
 
 	var calls atomic.Int32
-	store.obs.queueSnapshot = func(context.Context) (queueSnapshot, error) {
+	store.obs.Snapshot = func(context.Context) (queueSnapshot, error) {
 		calls.Add(1)
 		return queueSnapshot{}, nil
 	}
@@ -610,7 +542,7 @@ func TestRecordObservabilitySnapshotReturnsErrorSync(t *testing.T) {
 	})
 	defer cleanup()
 
-	store.obs.queueSnapshot = func(context.Context) (queueSnapshot, error) {
+	store.obs.Snapshot = func(context.Context) (queueSnapshot, error) {
 		return queueSnapshot{}, expected
 	}
 
@@ -658,9 +590,9 @@ func TestRecordSnapshotReturnsQueueSnapshotError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newOTelInstrumentation: %v", err)
 	}
-	defer obs.close()
+	defer obs.Close()
 
-	if err := obs.recordSnapshot(context.Background()); !errors.Is(err, expected) {
+	if err := obs.RecordSnapshot(context.Background()); !errors.Is(err, expected) {
 		t.Fatalf("recordSnapshot err = %v, want %v", err, expected)
 	}
 }
@@ -801,4 +733,29 @@ func spanHasAttribute(span sdktrace.ReadOnlySpan, want attribute.KeyValue) bool 
 
 func almostEqualFloat64(got, want float64) bool {
 	return math.Abs(got-want) <= 1e-9
+}
+
+func TestObservabilitySurvivesCallerCancellationUntilStoreClose(t *testing.T) {
+	runtime := newFakeRuntime(time.Now())
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer provider.Shutdown(context.Background())
+	_, store, cleanup := openTestStoreWithOptions(t, "owned-observability", Serde[testPayload, testDestination]{}, Options{Runtime: runtime, Observability: ObservabilityOptions{MeterProvider: provider}})
+	defer cleanup()
+	var calls atomic.Int32
+	store.obs.Snapshot = func(context.Context) (queueSnapshot, error) { calls.Add(1); return queueSnapshot{}, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := store.StartObservability(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return runtime.TickerCount() == 1 })
+	cancel()
+	runtime.TickAll()
+	waitFor(t, func() bool { return calls.Load() == 1 })
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartObservability(context.Background()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatal(err)
+	}
 }

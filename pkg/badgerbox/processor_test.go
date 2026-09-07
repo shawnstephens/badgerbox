@@ -402,7 +402,7 @@ func TestProcessorRunIgnoresSnapshotFailuresAtStartup(t *testing.T) {
 	})
 	defer cleanup()
 
-	store.obs.queueSnapshot = func(context.Context) (queueSnapshot, error) {
+	store.obs.Snapshot = func(context.Context) (queueSnapshot, error) {
 		return queueSnapshot{}, expected
 	}
 

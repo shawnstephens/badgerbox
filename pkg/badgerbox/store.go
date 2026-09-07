@@ -40,6 +40,7 @@ type Store[M any, D any] struct {
 	closed  atomic.Bool
 
 	closeOnce sync.Once
+	closeErr  error
 
 	listenerMu   sync.Mutex
 	nextListener int
@@ -129,17 +130,16 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 }
 
 func (s *Store[M, D]) Close() error {
-	var err error
 	s.closeOnce.Do(func() {
+		if s.obs != nil {
+			s.closeErr = s.obs.Close()
+		}
 		s.closed.Store(true)
 		if s.seq != nil {
-			err = errors.Join(err, s.seq.Release())
-		}
-		if s.obs != nil {
-			err = errors.Join(err, s.obs.close())
+			s.closeErr = errors.Join(s.closeErr, s.seq.Release())
 		}
 	})
-	return err
+	return s.closeErr
 }
 
 func (s *Store[M, D]) StartObservability(ctx context.Context) error {
@@ -149,7 +149,7 @@ func (s *Store[M, D]) StartObservability(ctx context.Context) error {
 	if err := ctxErr(ctx); err != nil {
 		return err
 	}
-	return s.obs.start(ctx, s.runtime, s.opts.Observability.PollInterval)
+	return s.obs.Start(ctx, func(d time.Duration) (<-chan time.Time, func()) { t := s.runtime.NewTicker(d); return t.Chan(), t.Stop }, s.opts.Observability.PollInterval)
 }
 
 func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
@@ -159,7 +159,7 @@ func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
 	if err := ctxErr(ctx); err != nil {
 		return err
 	}
-	return s.obs.recordSnapshot(ctx)
+	return s.obs.RecordSnapshot(ctx)
 }
 
 // Enqueue returns ErrMessageTooLarge before queue writes when the encoded record
@@ -174,11 +174,11 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 
 	start := s.runtime.Now().UTC()
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
-	traceCtx, traceSpan, traceCarrier := s.obs.startEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
+	traceCtx, traceSpan, traceCarrier := s.obs.StartEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
 	var result enqueueResult
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(traceCtx)
+		s.obs.RecordConflictRetry(traceCtx)
 		traceSpan.AddEvent("conflict_retry")
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -189,13 +189,13 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	})
 	if err != nil {
 		traceSpan.RecordError(err)
-		s.obs.endSpan(traceSpan, "error")
+		s.obs.EndSpan(traceSpan, "error")
 		return 0, err
 	}
 
-	s.obs.setMessageSpanAttributes(traceSpan, result.record.ID, result.record.Attempt, result.record.MaxAttempts, time.Unix(0, result.record.CreatedAtUnix).UTC(), time.Unix(0, result.record.AvailableAtUnix).UTC())
-	s.obs.endSpan(traceSpan, metricOutcomeCommitted)
-	s.obs.recordEnqueueCommitted(traceCtx, positiveDuration(s.runtime.Now().UTC().Sub(start)))
+	s.obs.SetMessageSpanAttributes(traceSpan, result.record.ID, result.record.Attempt, result.record.MaxAttempts, time.Unix(0, result.record.CreatedAtUnix).UTC(), time.Unix(0, result.record.AvailableAtUnix).UTC())
+	s.obs.EndSpan(traceSpan, metricOutcomeCommitted)
+	s.obs.RecordEnqueueCommitted(traceCtx, positiveDuration(s.runtime.Now().UTC().Sub(start)))
 	s.notifyListeners()
 	return result.id, nil
 }
@@ -212,18 +212,18 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 
 	start := s.runtime.Now().UTC()
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
-	traceCtx, traceSpan, traceCarrier := s.obs.startEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
+	traceCtx, traceSpan, traceCarrier := s.obs.StartEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
 	result, err := s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
 	if err != nil {
 		traceSpan.RecordError(err)
-		s.obs.endSpan(traceSpan, "error")
+		s.obs.EndSpan(traceSpan, "error")
 		return 0, err
 	}
 
-	s.obs.setMessageSpanAttributes(traceSpan, result.record.ID, result.record.Attempt, result.record.MaxAttempts, time.Unix(0, result.record.CreatedAtUnix).UTC(), time.Unix(0, result.record.AvailableAtUnix).UTC())
-	s.obs.endSpan(traceSpan, metricOutcomePrepared)
-	s.obs.recordEnqueuePrepared(traceCtx, positiveDuration(s.runtime.Now().UTC().Sub(start)))
+	s.obs.SetMessageSpanAttributes(traceSpan, result.record.ID, result.record.Attempt, result.record.MaxAttempts, time.Unix(0, result.record.CreatedAtUnix).UTC(), time.Unix(0, result.record.AvailableAtUnix).UTC())
+	s.obs.EndSpan(traceSpan, metricOutcomePrepared)
+	s.obs.RecordEnqueuePrepared(traceCtx, positiveDuration(s.runtime.Now().UTC().Sub(start)))
 	return result.id, nil
 }
 
@@ -376,7 +376,7 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 
 	var requeued bool
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
+		s.obs.RecordConflictRetry(ctx)
 	}, func() error {
 		requeued = false
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -451,7 +451,7 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 		return err
 	}
 	if requeued {
-		s.obs.recordManualRequeue(ctx)
+		s.obs.RecordManualRequeue(ctx)
 		s.notifyListeners()
 	}
 	return nil
@@ -529,7 +529,7 @@ func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchS
 
 func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken string) error {
 	return withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
+		s.obs.RecordConflictRetry(ctx)
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
@@ -569,7 +569,7 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 	processErrPermanent := IsPermanent(processErr)
 	now := s.runtime.Now().UTC()
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
+		s.obs.RecordConflictRetry(ctx)
 	}, func() error {
 		attemptResult := failProcessingResult{}
 		err := s.db.Update(func(txn *badger.Txn) error {
@@ -671,7 +671,7 @@ func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time, pageSiz
 	}
 	defer func() {
 		if requeued > 0 {
-			s.obs.recordExpiredLeaseRequeue(ctx, requeued)
+			s.obs.RecordExpiredLeaseRequeue(ctx, requeued)
 			s.notifyListeners()
 		}
 	}()
@@ -843,7 +843,7 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 
 	for {
 		err := withConflictRetryObserved(ctx, s.runtime, func() {
-			s.obs.recordConflictRetry(ctx)
+			s.obs.RecordConflictRetry(ctx)
 		}, func() error {
 			claimed = claimed[:0]
 			return s.db.Update(func(txn *badger.Txn) error {
@@ -961,18 +961,18 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		}
 
 		if effectiveBatchSize <= 1 {
-			s.obs.recordClaimTransactionTooBig(ctx, 0)
+			s.obs.RecordClaimTransactionTooBig(ctx, 0)
 			return nil, effectiveBatchSize, err
 		}
 		retryBatchSize := max(1, effectiveBatchSize/2)
-		s.obs.recordClaimTransactionTooBig(ctx, retryBatchSize)
+		s.obs.RecordClaimTransactionTooBig(ctx, retryBatchSize)
 		effectiveBatchSize = retryBatchSize
 	}
 
 	if len(claimed) > 0 {
-		s.obs.recordClaimBatch(ctx, len(claimed))
+		s.obs.RecordClaimBatch(ctx, len(claimed))
 		for _, record := range claimed {
-			s.obs.recordClaimTiming(ctx, positiveDuration(now.Sub(record.Message.AvailableAt)), positiveDuration(now.Sub(record.Message.CreatedAt)))
+			s.obs.RecordClaimTiming(ctx, positiveDuration(now.Sub(record.Message.AvailableAt)), positiveDuration(now.Sub(record.Message.CreatedAt)))
 		}
 	}
 
@@ -1014,7 +1014,7 @@ func (s *Store[M, D]) collectExpiredProcessingCandidates(ctx context.Context, no
 func (s *Store[M, D]) requeueExpiredCandidate(ctx context.Context, now time.Time, candidate expiredProcessingCandidate) (bool, error) {
 	var requeued bool
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
+		s.obs.RecordConflictRetry(ctx)
 	}, func() error {
 		requeued = false
 		return s.db.Update(func(txn *badger.Txn) error {
@@ -1080,7 +1080,7 @@ func (s *Store[M, D]) acknowledgeOwned(ctx context.Context, id MessageID, leaseT
 func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, leaseToken string, update func(func(*badger.Txn) error) error) (bool, error) {
 	var acknowledged bool
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
+		s.obs.RecordConflictRetry(ctx)
 	}, func() error {
 		acknowledged = false
 		err := update(func(txn *badger.Txn) error {
@@ -1124,7 +1124,7 @@ func (s *Store[M, D]) releaseClaimed(ctx context.Context, work []claimedRecord[M
 
 	var released int
 	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
+		s.obs.RecordConflictRetry(ctx)
 	}, func() error {
 		released = 0
 		return s.db.Update(func(txn *badger.Txn) error {
