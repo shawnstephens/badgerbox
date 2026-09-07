@@ -7,7 +7,6 @@ import (
 	"github.com/shawnstephens/badgerbox/pkg/maintenance"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"math"
 	"testing"
 )
 
@@ -98,18 +97,6 @@ func TestMaintenanceMetricsClassifyNoRewrite(t *testing.T) {
 				t.Fatal("no-rewrite counted as rewrite")
 			}
 		}
-	}
-}
-func TestDiskConversionBounds(t *testing.T) {
-	total, available, err := diskUsageFromBlocks(4096, 10, -1)
-	if err != nil || total != 40960 || available != 0 {
-		t.Fatalf("%d %d %v", total, available, err)
-	}
-	if _, _, err = diskUsageFromBlocks(uint64(4096), uint64(math.MaxUint64), uint64(0)); err == nil {
-		t.Fatal("overflow accepted")
-	}
-	if _, _, err = statfs(t.TempDir()); err != nil {
-		t.Fatal(err)
 	}
 }
 

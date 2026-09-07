@@ -27,6 +27,12 @@ type Options struct {
 	IDLeaseSize   uint64
 	Observability ObservabilityOptions
 	Runtime       Runtime
+	// EnqueueGuard runs before allocation, serialization, or transaction writes
+	// for every enqueue attempt, including EnqueueTx. It must be concurrency-safe
+	// and respect context cancellation. Returning an error rejects new intake;
+	// settlement and dead-letter recovery do not invoke it. This advisory hook
+	// does not reserve external resources or roll back caller-owned writes.
+	EnqueueGuard func(context.Context) error
 }
 
 type Store[M any, D any] struct {
@@ -469,6 +475,14 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	}
 	if err := ctxErr(ctx); err != nil {
 		return result, err
+	}
+	if s.opts.EnqueueGuard != nil {
+		if err := s.opts.EnqueueGuard(ctx); err != nil {
+			return result, fmt.Errorf("enqueue guard: %w", err)
+		}
+		if err := ctxErr(ctx); err != nil {
+			return result, err
+		}
 	}
 
 	nextID, err := s.seq.Next()

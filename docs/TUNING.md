@@ -144,12 +144,14 @@ codec bytes; JSON encoding a `[]byte` inside the payload can add a second base64
 layer. Measure allocated disk on representative incompressible data as well as
 the compressible data your service normally emits.
 
-The library currently has no hard queue-depth, backlog-byte or free-disk admission
-limit. Applications must limit intake before storage is exhausted and handle
-enqueue errors without reporting success. A snapshot followed by an enqueue is
-not an atomic quota check with concurrent producers. Monitor both the filesystem
-and queue trend, stop or reject intake at an operational threshold, and retain
-space to settle existing work. Do not delete an undrained DB to reclaim space.
+Use `pkg/admission.DiskGuard` through `Options.EnqueueGuard` to reject intake
+below a free-space margin, including when filesystem measurement fails. The
+guard checks both configured Badger directories and allows settlement to
+continue. It is advisory: sampling cannot reserve physical bytes against other
+writers. See [admission](ADMISSION.md) for setup, error handling, and caching.
+Applications must handle enqueue errors without reporting success. A snapshot
+followed by an enqueue is not an atomic quota check with concurrent producers.
+Retain workspace for settlement and reclamation. Do not delete an undrained DB.
 
 Acknowledgement deletes logical records; it does not immediately release disk.
 Enable periodic `maintenance.Service`/runner value-log GC. Defaults allow eight
