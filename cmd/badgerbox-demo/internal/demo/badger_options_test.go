@@ -85,6 +85,19 @@ func TestBuildBadgerOptionsAppliesEachOverride(t *testing.T) {
 			},
 		},
 		{
+			name: "compaction disabled",
+			overrides: BadgerOptionsOverrides{
+				NumCompactorsSet: true,
+				NumCompactors:    0,
+			},
+			check: func(t *testing.T, got badger.Options) {
+				t.Helper()
+				if got.NumCompactors != 0 {
+					t.Fatalf("NumCompactors = %d, want 0", got.NumCompactors)
+				}
+			},
+		},
+		{
 			name: "num compactors",
 			overrides: BadgerOptionsOverrides{
 				NumCompactorsSet: true,
@@ -306,6 +319,14 @@ func TestBuildBadgerOptionsRejectsInvalidOverrides(t *testing.T) {
 				MemTableSize:    "bogus",
 			},
 			wantErr: "badger-memtable-size",
+		},
+		{
+			name: "negative compactors",
+			overrides: BadgerOptionsOverrides{
+				NumCompactorsSet: true,
+				NumCompactors:    -1,
+			},
+			wantErr: "badger-num-compactors",
 		},
 		{
 			name: "one compactor",
