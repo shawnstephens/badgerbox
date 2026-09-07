@@ -475,15 +475,14 @@ func (h handler) withDeadline(next http.HandlerFunc) http.HandlerFunc {
 				_ = controller.SetWriteDeadline(time.Time{})
 			}
 		}()
-		if request.Method == http.MethodPost {
-			if err := controller.SetReadDeadline(deadline); err != nil {
-				w.Header().Set("Connection", "close")
-				h.writeError(w, http.StatusInternalServerError, "queue request deadlines unavailable")
-				return
-			}
-			// Leave the read deadline in place while net/http drains any unread
-			// request body. The server resets it when reading the next request.
+		if err := controller.SetReadDeadline(deadline); err != nil {
+			w.Header().Set("Connection", "close")
+			h.writeError(w, http.StatusInternalServerError, "queue request deadlines unavailable")
+			return
 		}
+		// net/http may drain an unread body while flushing any response,
+		// including GET and HEAD. Keep its read deadline until that drain ends;
+		// the server resets it when reading the next request.
 		next(tracked, request.WithContext(ctx))
 	}
 }
