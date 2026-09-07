@@ -7,6 +7,13 @@ import (
 
 type ProcessFunc[M any, D any] func(context.Context, Message[M, D]) error
 type ProcessorOptions struct {
+	// ClaimMaxBytes limits the sum of stored source values read by one claim.
+	// Zero disables this limit; negative values are invalid. Badger metadata is
+	// checked before copying or decoding. Values larger than the entire limit
+	// enter referenced quarantine without being loaded; healthy records continue.
+	// This is a source-byte budget, not a Go heap or RSS limit: account for JSON,
+	// codec expansion, callback copies, and Concurrency when sizing memory.
+	ClaimMaxBytes     int64
 	Concurrency       int
 	PollInterval      time.Duration
 	LeaseDuration     time.Duration
@@ -25,6 +32,10 @@ type claimedRecord[M any, D any] struct {
 }
 
 func validateProcessorOptions(opts ProcessorOptions) error {
+	if opts.ClaimMaxBytes < 0 {
+		return boxErrorf("ClaimMaxBytes must be nonnegative; zero disables the limit")
+	}
+
 	for _, option := range []struct {
 		name     string
 		negative bool

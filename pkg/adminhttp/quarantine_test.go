@@ -75,7 +75,7 @@ func TestQuarantineHTTPInspectionPreservesSourceAndQuota(t *testing.T) {
 			results <- badgerbox.BatchProcessResult{ID: message.ID}
 		}
 		return nil
-	}, badgerbox.BatchProcessorOptions{ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: 1}, ClaimMaxBytes: 4096})
+	}, badgerbox.BatchProcessorOptions{ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: 1, ClaimMaxBytes: 4096}})
 	if err != nil {
 		t.Fatal(err)
 	}

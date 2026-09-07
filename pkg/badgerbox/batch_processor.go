@@ -60,13 +60,6 @@ type BatchProcessFunc[M any, D any] func(ctx context.Context, messages []Message
 type BatchProcessorOptions struct {
 	ProcessorOptions
 	ClaimBatchSize int
-	// ClaimMaxBytes limits the sum of stored source values read by one claim.
-	// Zero disables this limit; negative values are invalid. Badger metadata is
-	// checked before copying or decoding. Values larger than the entire limit
-	// enter referenced quarantine without being loaded; healthy records continue.
-	// This is a source-byte budget, not a Go heap or RSS limit: account for JSON,
-	// codec expansion, callback copies, and Concurrency when sizing memory.
-	ClaimMaxBytes int64
 }
 
 func normalizeBatchProcessorOptions(opts BatchProcessorOptions) BatchProcessorOptions {
@@ -94,8 +87,9 @@ type BatchProcessor[M any, D any] struct {
 
 // NewBatchProcessor builds a BatchProcessor for store and fn.
 //
-// Zero-value options are replaced with package defaults. Negative values and an
-// explicit retry maximum below the retry base are rejected.
+// Zero sizing and duration options select package defaults; ClaimMaxBytes zero
+// disables the byte limit. Negative values and an explicit retry maximum below
+// the retry base are rejected.
 func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts BatchProcessorOptions) (*BatchProcessor[M, D], error) {
 	if store == nil {
 		return nil, ErrNilStore
@@ -108,10 +102,6 @@ func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, 
 	}
 	if opts.ClaimBatchSize < 0 {
 		return nil, boxErrorf("ClaimBatchSize must be nonnegative; zero selects the default")
-	}
-
-	if opts.ClaimMaxBytes < 0 {
-		return nil, boxErrorf("ClaimMaxBytes must be nonnegative; zero disables the limit")
 	}
 
 	processor := &BatchProcessor[M, D]{

@@ -237,7 +237,7 @@ func TestByteLimitedDispatchDoesNotWaitForPoll(t *testing.T) {
 			results <- BatchProcessResult{ID: m.ID}
 		}
 		return nil
-	}, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{Concurrency: 2, PollInterval: time.Hour}, ClaimBatchSize: 100, ClaimMaxBytes: 1024})
+	}, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{Concurrency: 2, PollInterval: time.Hour, ClaimMaxBytes: 1024}, ClaimBatchSize: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,9 +257,13 @@ func TestByteLimitedDispatchDoesNotWaitForPoll(t *testing.T) {
 func TestClaimByteLimitRejectsNegativeConfiguration(t *testing.T) {
 	_, s, cleanup := openTestStore[string, string](t, "negative-claim-bytes", Serde[string, string]{})
 	defer cleanup()
-	_, err := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error { return nil }, BatchProcessorOptions{ClaimMaxBytes: -1})
+	_, err := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error { return nil }, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{ClaimMaxBytes: -1}})
 	if err == nil || !strings.Contains(err.Error(), "ClaimMaxBytes") {
 		t.Fatalf("err=%v", err)
+	}
+	_, err = NewProcessor(s, func(context.Context, Message[string, string]) error { return nil }, ProcessorOptions{ClaimMaxBytes: -1})
+	if err == nil || !strings.Contains(err.Error(), "ClaimMaxBytes") {
+		t.Fatalf("single processor err=%v", err)
 	}
 }
 
@@ -374,4 +378,65 @@ func TestClaimByteBudgetRepairsDuplicateIndexWithoutReadingPendingWrite(t *testi
 	if n := countKeysWithPrefix(t, db, s.keys.readyPrefix); n != 0 {
 		t.Fatalf("duplicate index remains: %d", n)
 	}
+}
+
+func TestSingleProcessorQuarantinesOversizedHeadAndReplaysWithLargerBudget(t *testing.T) {
+	db, s, cleanup := openTestStore[string, string](t, "single-byte-control", Serde[string, string]{})
+	defer cleanup()
+	payload := strings.Repeat("large", 1000)
+	id, err := s.Enqueue(t.Context(), EnqueueRequest[string, string]{Payload: payload, Destination: "route"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, _ := storedItemBytes(t, db, s.keys.messageKey(id))
+	healthy, err := s.Enqueue(t.Context(), EnqueueRequest[string, string]{Payload: "healthy", Destination: "route"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed := make(chan Message[string, string], 2)
+	callback := func(ctx context.Context, message Message[string, string]) error { processed <- message; return nil }
+	processor, err := NewProcessor(s, callback, ProcessorOptions{Concurrency: 1, PollInterval: time.Hour, ClaimMaxBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runUntilSettled := func(processor *Processor[string, string], wantID MessageID, wantPayload string, retained uint64) {
+		t.Helper()
+		cancel, done := runProcessor(processor)
+		defer stopProcessor(t, cancel, done)
+		select {
+		case message := <-processed:
+			if message.ID != wantID || message.Payload != wantPayload || message.Destination != "route" {
+				t.Fatalf("unexpected callback=%+v", message)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("single processor did not deliver the expected message")
+		}
+		// Callback entry precedes durable acknowledgement. Wait for that commit
+		// before canceling so this test does not race shutdown's retry semantics.
+		waitFor(t, func() bool {
+			usage, err := s.Usage(t.Context())
+			return err == nil && usage.RetainedMessages == retained
+		})
+	}
+	runUntilSettled(processor, healthy, "healthy", 1)
+	if value, _ := storedItemBytes(t, db, s.keys.messageKey(id)); !bytes.Equal(value, original) {
+		t.Fatal("single processor changed quarantined source")
+	}
+	rows, _, err := s.ListDeadLetterMetadata(t.Context(), DeadLetterListOptions{Limit: 2, MaxBytes: 1024})
+	if err != nil || len(rows) != 1 || rows[0].ID != id || rows[0].QuarantinedSource == nil {
+		t.Fatalf("quarantine=%+v err=%v", rows, err)
+	}
+	usage, err := s.Usage(t.Context())
+	if err != nil || usage.RetainedMessages != 1 {
+		t.Fatalf("usage=%+v err=%v", usage, err)
+	}
+	if err := s.RequeueDeadLetterWithOptions(t.Context(), id, rows[0].FailedAt, DeadLetterRequeueOptions{MaxBytes: 32 << 10}); err != nil {
+		t.Fatal(err)
+	}
+	processor, err = NewProcessor(s, callback, ProcessorOptions{Concurrency: 1, PollInterval: time.Hour, ClaimMaxBytes: 32 << 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runUntilSettled(processor, id, payload, 0)
+	assertUsage(t, s, 0, 0)
 }
