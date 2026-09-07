@@ -1,0 +1,50 @@
+[
+  {
+    "profile": "small-memory",
+    "payload_bytes": 1024,
+    "successful_repeats": 2,
+    "median_messages_per_second": 1880.6762735310954,
+    "median_p99_seconds_upper_bound": 45.2251915,
+    "max_sampled_peak_rss_bytes": 541769728
+  },
+  {
+    "profile": "small-memory",
+    "payload_bytes": 65536,
+    "successful_repeats": 2,
+    "median_messages_per_second": 839.5866306454334,
+    "median_p99_seconds_upper_bound": 9.432894439843778,
+    "max_sampled_peak_rss_bytes": 1355317248
+  },
+  {
+    "profile": "small-memory",
+    "payload_bytes": 524288,
+    "successful_repeats": 2,
+    "median_messages_per_second": 110.33362020814297,
+    "median_p99_seconds_upper_bound": 15.844876447356757,
+    "max_sampled_peak_rss_bytes": 2750562304
+  },
+  {
+    "profile": "throughput",
+    "payload_bytes": 1024,
+    "successful_repeats": 2,
+    "median_messages_per_second": 7224.029493513435,
+    "median_p99_seconds_upper_bound": 2.0403619699643327,
+    "max_sampled_peak_rss_bytes": 561135616
+  },
+  {
+    "profile": "throughput",
+    "payload_bytes": 65536,
+    "successful_repeats": 2,
+    "median_messages_per_second": 887.6172842018689,
+    "median_p99_seconds_upper_bound": 9.842898975729739,
+    "max_sampled_peak_rss_bytes": 1534672896
+  },
+  {
+    "profile": "throughput",
+    "payload_bytes": 524288,
+    "successful_repeats": 2,
+    "median_messages_per_second": 110.75251469622097,
+    "median_p99_seconds_upper_bound": 16.4456415,
+    "max_sampled_peak_rss_bytes": 3043672064
+  }
+]

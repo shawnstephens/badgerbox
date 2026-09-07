@@ -194,6 +194,11 @@ measurement definitions, see the [demo benchmark guide](../cmd/badgerbox-demo/BE
 The matrix is intentionally an experiment in two configurations; it does not
 claim its higher-concurrency profile will win on every payload or host.
 
+The [recorded local measurements](benchmarks/2026-09-06/README.md) include the
+12-run matrix, a real Kafka run, and a rate-limited outage/retry experiment. Their
+large-payload RSS and retained disk demonstrate why short-run throughput and
+small caches are insufficient evidence of a fixed resource ceiling.
+
 Benchmarks complement the race, process-crash, retry, broker-outage and storage
 tests; they do not establish deployment-specific availability or power-loss
 guarantees.

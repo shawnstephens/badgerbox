@@ -66,7 +66,7 @@ def main():
                 passed = report["passed"] and result.returncode == 0
                 failures += not passed
                 resource = report["resources"]
-                rows.append({"profile": profile, "payload_bytes": payload, "repeat": repeat, "passed": passed, "accepted": report["accepted"], "unique_delivered": report["unique_delivered"], "duplicates": report["duplicate_deliveries"], "delivery_seconds": report["delivery_seconds"], "messages_per_second": report["delivery_messages_per_second"], "payload_mib_per_second": report["delivery_payload_mib_per_second"], "p99_seconds_upper_bound": report["delivery_latency_seconds"]["p99_upper_bound"], "peak_rss_bytes": resource["sampled_peak_rss_bytes"], "peak_heap_bytes": resource["sampled_peak_heap_bytes"], "peak_apparent_disk_bytes": resource["sampled_peak_apparent_disk_bytes"], "final_apparent_disk_bytes": resource["final_apparent_disk_bytes"], "cpu_seconds": resource["cpu_seconds"], "average_cpu_cores": resource["average_cpu_cores"], "report": report_path.name})
+                rows.append({"profile": profile, "payload_bytes": payload, "repeat": repeat, "passed": passed, "measurements_complete": resource["measurements_complete"], "accepted": report["accepted"], "unique_delivered": report["unique_delivered"], "duplicates": report["duplicate_deliveries"], "delivery_seconds": report["delivery_seconds"], "messages_per_second": report["delivery_messages_per_second"], "payload_mib_per_second": report["delivery_payload_mib_per_second"], "p99_seconds_upper_bound": report["delivery_latency_seconds"]["p99_upper_bound"], "peak_rss_bytes": resource["sampled_peak_rss_bytes"], "peak_heap_bytes": resource["sampled_peak_heap_bytes"], "peak_apparent_disk_bytes": resource["sampled_peak_apparent_disk_bytes"], "final_apparent_disk_bytes": resource["final_apparent_disk_bytes"], "cpu_seconds": resource["cpu_seconds"], "average_cpu_cores": resource["average_cpu_cores"], "report": report_path.name})
                 if not args.keep_data and passed:
                     database = Path(report["db_path"]).resolve()
                     # Only remove the fresh run directory below our own data parent.
@@ -82,7 +82,7 @@ def main():
             for payload, _ in counts:
                 group = [r for r in rows if r["profile"] == profile and r["payload_bytes"] == payload and r["passed"]]
                 if group:
-                    medians.append({"profile": profile, "payload_bytes": payload, "successful_repeats": len(group), "median_messages_per_second": statistics.median(r["messages_per_second"] for r in group), "median_p99_seconds_upper_bound": statistics.median(r["p99_seconds_upper_bound"] for r in group), "max_sampled_peak_rss_bytes": max(r["peak_rss_bytes"] for r in group)})
+                    medians.append({"profile": profile, "payload_bytes": payload, "successful_repeats": len(group), "median_messages_per_second": statistics.median(r["messages_per_second"] for r in group), "median_p99_seconds_upper_bound": statistics.median(r["p99_seconds_upper_bound"] for r in group), "resource_complete_repeats": sum(r["measurements_complete"] for r in group), "max_sampled_peak_rss_bytes": max((r["peak_rss_bytes"] for r in group if r["measurements_complete"]), default=None)})
         (output / "medians.json").write_text(json.dumps(medians, indent=2) + "\n")
     manifest["finished_at_unix"] = time.time()
     manifest["failures"] = failures

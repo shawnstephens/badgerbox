@@ -518,13 +518,13 @@ func benchmarkEndOffsets(ctx context.Context, client *kgo.Client, topic string, 
 	for _, t := range response.Topics {
 		for _, p := range t.Partitions {
 			if p.ErrorCode != 0 {
-				return nil, fmt.Errorf("Kafka list offsets partition %d: error code %d", p.Partition, p.ErrorCode)
+				return nil, fmt.Errorf("kafka list offsets partition %d: error code %d", p.Partition, p.ErrorCode)
 			}
 			offsets[p.Partition] = p.Offset
 		}
 	}
 	if len(offsets) != partitions {
-		return nil, errors.New("Kafka did not return every partition end offset")
+		return nil, errors.New("kafka did not return every partition end offset")
 	}
 	return offsets, nil
 }
