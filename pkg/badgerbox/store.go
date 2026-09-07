@@ -652,7 +652,7 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
+			if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 				return nil
 			}
 			if err != nil {
@@ -697,7 +697,7 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 		attemptResult := failProcessingResult{}
 		err := s.db.Update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
+			if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 				return nil
 			}
 			if err != nil {
@@ -1280,7 +1280,9 @@ func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, 
 		acknowledged = false
 		err := update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
+			// Expired work may have entered referenced quarantine while its old
+			// callback was still running. Quarantine has no active lease owner.
+			if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 				return nil
 			}
 			if err != nil {
@@ -1333,7 +1335,7 @@ func (s *Store[M, D]) releaseClaimed(ctx context.Context, work []claimedRecord[M
 				}
 
 				record, err := s.loadRecord(txn, claimed.Message.ID)
-				if errors.Is(err, badger.ErrKeyNotFound) {
+				if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 					continue
 				}
 				if err != nil {
