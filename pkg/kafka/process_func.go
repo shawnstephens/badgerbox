@@ -3,7 +3,6 @@ package kafka
 import (
 	"context"
 	"errors"
-	"sort"
 
 	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -14,49 +13,35 @@ var (
 	ErrTopicRequired = errors.New("kafka: topic is required")
 )
 
-type Producer interface {
+type syncProducer interface {
 	ProduceSync(context.Context, ...*kgo.Record) kgo.ProduceResults
 }
 
 type Options struct{}
 
-func NewProcessFunc(client *kgo.Client, opts Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
-	if client == nil {
-		return func(context.Context, badgerbox.Message[KafkaMessage, KafkaDestination]) error {
-			return ErrNilClient
-		}
+// NewProcessFunc validates the client before returning a single-message delivery function.
+func NewProcessFunc(client *kgo.Client, opts Options) (badgerbox.ProcessFunc[KafkaMessage, KafkaDestination], error) {
+	if err := validateClient(client); err != nil {
+		return nil, err
 	}
-	return NewProcessFuncWithProducer(client, opts)
+	return newProcessFunc(client, opts), nil
 }
 
-func NewProcessFuncWithProducer(producer Producer, _ Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
+func newProcessFunc(producer syncProducer, _ Options) badgerbox.ProcessFunc[KafkaMessage, KafkaDestination] {
 	return func(ctx context.Context, msg badgerbox.Message[KafkaMessage, KafkaDestination]) error {
+		if ctx == nil {
+			return badgerbox.ErrNilContext
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		ctx = badgerbox.ContextForMessage(ctx, msg.ID)
 		if producer == nil {
 			return ErrNilClient
 		}
-		if msg.Destination.Topic == "" {
-			return badgerbox.Permanent(ErrTopicRequired)
-		}
-
-		record := &kgo.Record{
-			Topic: msg.Destination.Topic,
-			Key:   cloneBytes(msg.Payload.Key),
-			Value: cloneBytes(msg.Payload.Value),
-		}
-		if msg.Destination.Partition != nil {
-			record.Partition = *msg.Destination.Partition
-		}
-
-		headerKeys := make([]string, 0, len(msg.Payload.Headers))
-		for key := range msg.Payload.Headers {
-			headerKeys = append(headerKeys, key)
-		}
-		sort.Strings(headerKeys)
-		for _, key := range headerKeys {
-			record.Headers = append(record.Headers, kgo.RecordHeader{
-				Key:   key,
-				Value: cloneBytes(msg.Payload.Headers[key]),
-			})
+		record, err := newKafkaRecord(msg)
+		if err != nil {
+			return badgerbox.Permanent(err)
 		}
 
 		return producer.ProduceSync(ctx, record).FirstErr()

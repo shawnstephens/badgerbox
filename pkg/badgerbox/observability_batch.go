@@ -2,6 +2,7 @@ package badgerbox
 
 import (
 	"context"
+	"github.com/shawnstephens/badgerbox/internal/instrumentation"
 	"go.opentelemetry.io/otel/metric"
 	"time"
 )
@@ -50,7 +51,22 @@ func (o *otelInstrumentation) recordProcessBatchResultMissing(ctx context.Contex
 type instrumentationContextKey struct{}
 
 func contextWithOTelInstrumentation(ctx context.Context, o *otelInstrumentation) context.Context {
-	return context.WithValue(ctx, instrumentationContextKey{}, o)
+	return instrumentation.WithDeliveryObserver(ctx, o)
+}
+
+func (o *otelInstrumentation) workQueuedBatch(n int)   { o.workDepth.Add(int64(n)) }
+func (o *otelInstrumentation) workDequeuedBatch(n int) { o.workDepth.Add(-int64(n)) }
+func (o *otelInstrumentation) workStartedBatch(n int)  { o.workDequeuedBatch(n); o.activeWorkers.Add(1) }
+
+func (o *otelInstrumentation) RecordKafkaProduce(ctx context.Context, n, errors int) {
+	o.count(ctx, "kafka_produce_total", n)
+	o.count(ctx, "kafka_produce_error_total", errors)
+}
+func (o *otelInstrumentation) RecordKafkaPromise(ctx context.Context, d time.Duration, err error) {
+	o.observe(ctx, "kafka_promise_duration_seconds", d.Seconds())
+	if err != nil {
+		o.count(ctx, "kafka_produce_error_total", 1)
+	}
 }
 
 func (o *otelInstrumentation) workQueuedBatch(n int)   { o.workDepth.Add(int64(n)) }

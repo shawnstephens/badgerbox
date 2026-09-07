@@ -52,7 +52,10 @@ func BenchmarkProcessorToKafka10KB(b *testing.B) {
 				}
 			}
 
-			baseFn := kafka.NewProcessFunc(producer, kafka.Options{})
+			baseFn, err := kafka.NewProcessFunc(producer, kafka.Options{})
+			if err != nil {
+				b.Fatal(err)
+			}
 			var processed atomic.Int64
 			processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 				err := baseFn(ctx, msg)

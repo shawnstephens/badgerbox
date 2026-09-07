@@ -41,7 +41,10 @@ func TestKafkaProcessFuncProducesRecord(t *testing.T) {
 	_, store, cleanup := openKafkaStore(t, "produce")
 	defer cleanup()
 
-	processFn := kafka.NewProcessFunc(producer, kafka.Options{})
+	processFn, err := kafka.NewProcessFunc(producer, kafka.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{
 		PollInterval:   10 * time.Millisecond,
 		LeaseDuration:  2 * time.Second,
@@ -99,7 +102,10 @@ func TestKafkaProcessFuncRetriesThenProducesRecord(t *testing.T) {
 	_, store, cleanup := openKafkaStore(t, "retry")
 	defer cleanup()
 
-	baseFn := kafka.NewProcessFunc(producer, kafka.Options{})
+	baseFn, err := kafka.NewProcessFunc(producer, kafka.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var attempts atomic.Int32
 	processFn := func(ctx context.Context, msg badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]) error {
 		if attempts.Add(1) == 1 {
@@ -162,7 +168,10 @@ func TestKafkaDemoConcurrentFlow(t *testing.T) {
 	_, store, cleanup := openKafkaStore(t, "demo")
 	defer cleanup()
 
-	baseFn := kafka.NewProcessFunc(producer, kafka.Options{})
+	baseFn, err := kafka.NewProcessFunc(producer, kafka.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var (
 		activeWorkers atomic.Int32
 		maxActive     atomic.Int32
@@ -257,7 +266,7 @@ func startKafka(tb testing.TB, ctx context.Context) []string {
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			tb.Skipf("skipping Kafka integration test: %v", recovered)
+			tb.Fatalf("Kafka integration setup failed: %v", recovered)
 		}
 	}()
 
@@ -266,7 +275,7 @@ func startKafka(tb testing.TB, ctx context.Context) []string {
 		testcontainerskafka.WithClusterID("test-cluster"),
 	)
 	if err != nil {
-		tb.Skipf("skipping Kafka integration test: %v", err)
+		tb.Fatalf("Kafka integration setup failed: %v", err)
 	}
 	tb.Cleanup(func() {
 		if err := testcontainers.TerminateContainer(container); err != nil {
@@ -285,7 +294,7 @@ func mustKafkaClient(tb testing.TB, brokers []string, opts ...kgo.Opt) *kgo.Clie
 	tb.Helper()
 
 	allOpts := append([]kgo.Opt{kgo.SeedBrokers(brokers...)}, opts...)
-	client, err := kgo.NewClient(allOpts...)
+	client, err := kafka.NewClient(allOpts...)
 	if err != nil {
 		tb.Fatalf("new kafka client: %v", err)
 	}
@@ -321,7 +330,7 @@ func openKafkaStore(tb testing.TB, namespace string) (*badger.DB, *badgerbox.Sto
 	return db, store, cleanup
 }
 
-func runProcessor(processor *badgerbox.Processor[kafka.KafkaMessage, kafka.KafkaDestination]) (context.CancelFunc, <-chan error) {
+func runProcessor(processor interface{ Run(context.Context) error }) (context.CancelFunc, <-chan error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
@@ -403,7 +412,7 @@ func createTopic(tb testing.TB, client *kgo.Client, topic string) {
 	req := kmsg.NewPtrCreateTopicsRequest()
 	reqTopic := kmsg.NewCreateTopicsRequestTopic()
 	reqTopic.Topic = topic
-	reqTopic.NumPartitions = 1
+	reqTopic.NumPartitions = 3
 	reqTopic.ReplicationFactor = 1
 	req.Topics = append(req.Topics, reqTopic)
 
@@ -453,5 +462,81 @@ func updateMaxActive(maxActive *atomic.Int32, current int32) {
 		if maxActive.CompareAndSwap(existing, current) {
 			return
 		}
+	}
+}
+
+func TestKafkaBatchProducesExplicitPartition(t *testing.T) {
+	ctx := context.Background()
+	brokers := startKafka(t, ctx)
+	plain, err := kgo.NewClient(kgo.SeedBrokers(brokers...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plain.Close()
+	if _, err := kafka.NewBatchProducerFunc(plain); !errors.Is(err, kafka.ErrPartitionerRequired) {
+		t.Fatalf("unchecked batch client accepted: %v", err)
+	}
+	if _, err := kafka.NewProcessFunc(plain, kafka.Options{}); !errors.Is(err, kafka.ErrPartitionerRequired) {
+		t.Fatalf("unchecked single client accepted: %v", err)
+	}
+
+	topic := fmt.Sprintf("topic-%d", time.Now().UnixNano())
+
+	producer := mustKafkaClient(t, brokers)
+	defer producer.Close()
+
+	createTopic(t, producer, topic)
+
+	consumer := mustKafkaClient(t, brokers,
+		kgo.ConsumeTopics(topic),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+	)
+	defer consumer.Close()
+
+	_, store, cleanup := openKafkaStore(t, "produce")
+	defer cleanup()
+
+	processFn, err := kafka.NewBatchProducerFunc(producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := badgerbox.NewBatchProcessor(store, processFn, badgerbox.BatchProcessorOptions{ProcessorOptions: badgerbox.ProcessorOptions{
+		PollInterval:   10 * time.Millisecond,
+		LeaseDuration:  2 * time.Second,
+		RetryBaseDelay: 20 * time.Millisecond,
+		RetryMaxDelay:  20 * time.Millisecond,
+	}})
+	if err != nil {
+		t.Fatalf("new processor: %v", err)
+	}
+
+	cancel, done := runProcessor(processor)
+	defer stopProcessor(t, cancel, done)
+
+	if _, err := store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
+		Payload: kafka.KafkaMessage{
+			Key:   []byte("order-1"),
+			Value: []byte("created"),
+			Headers: map[string][]byte{
+				"type": []byte("order.created"),
+			},
+		},
+		Destination: kafka.KafkaDestination{Topic: topic, Partition: new(int32(2))},
+	}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	record := waitForKafkaRecord(t, consumer)
+	if record.Partition != 2 {
+		t.Fatalf("partition=%d", record.Partition)
+	}
+	if string(record.Key) != "order-1" {
+		t.Fatalf("unexpected record key: %q", record.Key)
+	}
+	if string(record.Value) != "created" {
+		t.Fatalf("unexpected record value: %q", record.Value)
+	}
+	if got := headerMap(record.Headers)["type"]; string(got) != "order.created" {
+		t.Fatalf("unexpected record headers: %#v", record.Headers)
 	}
 }

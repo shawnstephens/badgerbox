@@ -390,13 +390,16 @@ func main() {
 	}
 	defer store.Close()
 
-	client, err := kgo.NewClient(kgo.SeedBrokers("localhost:9092"))
+	client, err := kafka.NewClient(kgo.SeedBrokers("localhost:9092"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer client.Close()
 
-	processFn := kafka.NewProcessFunc(client, kafka.Options{})
+	processFn, err := kafka.NewProcessFunc(client, kafka.Options{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{})
 	if err != nil {
 		log.Fatal(err)
