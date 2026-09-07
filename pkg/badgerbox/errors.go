@@ -60,6 +60,20 @@ var (
 
 func boxErrorf(format string, args ...any) error { return fmt.Errorf("badgerbox: "+format, args...) }
 
+// settlementError identifies failures from storage work whose context is
+// independent of processor cancellation. Shutdown must still report them.
+type settlementError struct{ err error }
+
+func (e settlementError) Error() string { return e.err.Error() }
+func (e settlementError) Unwrap() error { return e.err }
+
+func markSettlementError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return settlementError{err: err}
+}
+
 var ErrBatchResultMissing = errors.New("badgerbox: batch process result missing")
 
 type retryableBatchError struct{ err error }
