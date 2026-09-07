@@ -115,6 +115,8 @@ func positiveDuration(value time.Duration) time.Duration {
 }
 
 type otelInstrumentation struct {
+	extraCounters  map[string]metric.Int64Counter
+	extraDurations map[string]metric.Float64Histogram
 	claimTooBig    metric.Int64Counter
 	claimRetrySize metric.Int64Histogram
 	namespace      string
@@ -253,6 +255,9 @@ func newOTelInstrumentation(opts ObservabilityOptions, namespace string, queueSn
 		meterName = defaultInstrumentationName
 	}
 	meter := opts.MeterProvider.Meter(meterName)
+	if err := inst.initExtras(meter); err != nil {
+		return nil, err
+	}
 	var extraErr error
 	inst.claimTooBig, extraErr = meter.Int64Counter("badgerbox_claim_transaction_too_big_total")
 	if extraErr != nil {
@@ -599,11 +604,11 @@ func (o *otelInstrumentation) startEnqueueSpan(ctx context.Context, availableAt 
 	return ctx, span, cloneStringMap(o.injectCarrier(ctx))
 }
 
-func (o *otelInstrumentation) startProcessSpan(ctx context.Context, id MessageID, attempt, maxAttempts int, createdAt, availableAt time.Time, carrier map[string]string) (context.Context, oteltrace.Span) {
+func (o *otelInstrumentation) startProcessSpan(ctx context.Context, id MessageID, attempt, maxAttempts int, createdAt, availableAt time.Time, carrier map[string]string, options ...oteltrace.SpanStartOption) (context.Context, oteltrace.Span) {
 	if len(carrier) > 0 {
 		ctx = o.propagator.Extract(ctx, propagation.MapCarrier(carrier))
 	}
-	ctx, span := o.tracer.Start(ctx, "badgerbox.process", oteltrace.WithSpanKind(oteltrace.SpanKindConsumer))
+	ctx, span := o.tracer.Start(ctx, "badgerbox.process", append(options, oteltrace.WithSpanKind(oteltrace.SpanKindConsumer))...)
 	o.setMessageSpanAttributes(span, id, attempt, maxAttempts, createdAt, availableAt)
 	return ctx, span
 }
@@ -626,11 +631,11 @@ func (o *otelInstrumentation) setMessageSpanAttributes(span oteltrace.Span, id M
 	span.SetAttributes(attrs...)
 }
 
-func (o *otelInstrumentation) endSpan(span oteltrace.Span, outcome string) {
+func (o *otelInstrumentation) endSpan(span oteltrace.Span, outcome string, options ...oteltrace.SpanEndOption) {
 	if outcome != "" {
 		span.SetAttributes(attribute.String("badgerbox.outcome", outcome))
 	}
-	span.End()
+	span.End(options...)
 }
 
 func (o *otelInstrumentation) injectCarrier(ctx context.Context) map[string]string {
