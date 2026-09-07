@@ -7,6 +7,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/shirou/gopsutil/v4 v4.26.3
 	github.com/shawnstephens/badgerbox v0.0.0
 	github.com/testcontainers/testcontainers-go/modules/kafka v0.42.0
 	github.com/twmb/franz-go v1.21.5
@@ -71,7 +72,6 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.42.0 // indirect

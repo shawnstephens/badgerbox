@@ -40,4 +40,14 @@ benchmark:
     go test -run='^$' -bench=. -benchmem ./...
     cd {{demo}} && go test -run='^$' -bench=. -benchmem ./...
 
+# Finite disk-backed demo verification; pass additional flags after the recipe.
+benchmark-demo *args:
+    cd {{demo}} && go run . benchmark {{args}}
+
+# Repeated sequential runs; output must name a new directory.
+benchmark-matrix output:
+    mkdir -p bin
+    cd {{demo}} && go build -o ../../bin/badgerbox-demo .
+    python3 scripts/benchmark/matrix.py --binary bin/badgerbox-demo --output-dir {{output}}
+
 check: format-check build lint test

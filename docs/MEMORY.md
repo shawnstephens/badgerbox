@@ -1,5 +1,9 @@
 # Badger Memory Tuning
 
+For end-to-end profiles, worker/client memory, CPU tradeoffs, outage disk sizing,
+and benchmark commands, start with [Tuning and capacity planning](TUNING.md).
+The settings below cover Badger components, not a total process-memory cap.
+
 `badgerbox` accepts a caller-owned `*badger.DB`, so Badger memory tuning still happens at the Badger layer. This repo currently pins `github.com/dgraph-io/badger/v4 v4.9.6`, and the guidance below is written for that version.
 
 The demo producer now exposes the main Badger memory knobs as CLI flags and `BADGERBOX_DEMO_...` environment variables, but the same settings can be applied directly in Go with `badger.DefaultOptions(...).WithX(...)`.
