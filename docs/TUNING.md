@@ -151,7 +151,14 @@ continue. It is advisory: sampling cannot reserve physical bytes against other
 writers. See [admission](ADMISSION.md) for setup, error handling, and caching.
 Applications must handle enqueue errors without reporting success. A snapshot
 followed by an enqueue is not an atomic quota check with concurrent producers.
-Retain workspace for settlement and reclamation. Do not delete an undrained DB.
+Set `Options.AdmissionLimits.MaxRetainedMessages` and `MaxRetainedBytes` to
+enforce transactional backlog quotas across all stores in a namespace. Limits
+include processing messages and dead letters; only acknowledgement releases
+capacity. Zero means unlimited. Use `Usage` to inspect current capacity and
+`CompareAndSwapAdmissionLimits` to tune limits live. All stores must specify
+the current persisted limits when reopening. The byte quota measures canonical
+record bytes, excluding physical amplification. Retain workspace for settlement
+and reclamation. Do not delete an undrained DB.
 
 Acknowledgement deletes logical records; it does not immediately release disk.
 Enable periodic `maintenance.Service`/runner value-log GC. Defaults allow eight

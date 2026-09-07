@@ -108,6 +108,9 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 	if g.last != nil && g.refresh > 0 && time.Since(g.last.started) < g.refresh {
 		err := g.last.err
 		g.mu.Unlock()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return err
 	}
 	sample := g.inflight

@@ -200,6 +200,11 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 		s.obs.RecordConflictRetry(traceCtx)
 		traceSpan.AddEvent("conflict_retry")
 	}, func() error {
+		// Wait for external capacity before opening a snapshot that could hold
+		// back Badger's version reclamation during a slow filesystem probe.
+		if err := s.checkEnqueueGuard(ctx); err != nil {
+			return err
+		}
 		return s.db.Update(func(txn *badger.Txn) error {
 			var updateErr error
 			result, updateErr = s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
@@ -225,6 +230,8 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 // transaction; conflicts require retrying the whole application transaction.
 // As with Badger writes, a storage error can leave partial pending writes: the
 // caller must abort the entire transaction whenever EnqueueTx returns an error.
+// EnqueueGuard runs while this caller-owned transaction is open; a bounded or
+// cached guard avoids holding its read snapshot during a slow external check.
 func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -237,7 +244,16 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
 	traceCtx, traceSpan, traceCarrier := s.obs.StartEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
-	result, err := s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
+	var result enqueueResult
+	var err error
+	if txn == nil {
+		err = ErrNilTxn
+	} else {
+		err = s.checkEnqueueGuard(ctx)
+	}
+	if err == nil {
+		result, err = s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
+	}
 	if err != nil {
 		traceSpan.RecordError(err)
 		s.obs.EndSpan(traceSpan, "error")
@@ -480,6 +496,15 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 	return nil
 }
 
+func (s *Store[M, D]) checkEnqueueGuard(ctx context.Context) error {
+	if s.opts.EnqueueGuard != nil {
+		if err := s.opts.EnqueueGuard(ctx); err != nil {
+			return fmt.Errorf("enqueue guard: %w", err)
+		}
+	}
+	return ctxErr(ctx)
+}
+
 func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D], maxAttempts int, traceCarrier map[string]string) (enqueueResult, error) {
 	var result enqueueResult
 	if txn == nil {
@@ -487,14 +512,6 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	}
 	if err := ctxErr(ctx); err != nil {
 		return result, err
-	}
-	if s.opts.EnqueueGuard != nil {
-		if err := s.opts.EnqueueGuard(ctx); err != nil {
-			return result, fmt.Errorf("enqueue guard: %w", err)
-		}
-		if err := ctxErr(ctx); err != nil {
-			return result, err
-		}
 	}
 
 	nextID, err := s.seq.Next()

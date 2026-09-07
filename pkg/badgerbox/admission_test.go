@@ -458,7 +458,7 @@ func TestAdmissionConcurrentConstructorsCannotOverwriteConfiguration(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	start := make(chan struct{})
 	type result struct {
 		store *Store[string, string]
@@ -490,7 +490,7 @@ func TestAdmissionConcurrentConstructorsCannotOverwriteConfiguration(t *testing.
 			}
 			continue
 		}
-		defer result.store.Close()
+		t.Cleanup(func() { _ = result.store.Close() })
 		accepted++
 		usage := assertUsage(t, result.store, 0, 0)
 		if actual == (AdmissionLimits{}) {

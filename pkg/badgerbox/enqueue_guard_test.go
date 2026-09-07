@@ -86,3 +86,25 @@ func TestEnqueueGuardCancellationBeforeWrites(t *testing.T) {
 		t.Fatal("canceled request persisted")
 	}
 }
+
+func TestEnqueueGuardRunsBeforeOpeningOwnedTransaction(t *testing.T) {
+	_, store, cleanup := openTestStore[string, string](t, "guard-before-snapshot", Serde[string, string]{})
+	defer cleanup()
+	if _, err := store.Enqueue(t.Context(), EnqueueRequest[string, string]{Payload: "retained"}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	store.opts.EnqueueGuard = func(ctx context.Context) error {
+		calls++
+		if calls == 1 {
+			return store.CompareAndSwapAdmissionLimits(ctx, AdmissionLimits{}, AdmissionLimits{MaxRetainedMessages: 1})
+		}
+		return nil
+	}
+	if _, err := store.Enqueue(t.Context(), EnqueueRequest[string, string]{Payload: "blocked"}); !errors.Is(err, ErrAdmissionLimit) {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("enqueue opened a stale snapshot before its guard: %d guard calls", calls)
+	}
+}
