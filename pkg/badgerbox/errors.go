@@ -89,3 +89,13 @@ func (e retryableBatchError) Unwrap() error { return e.err }
 
 var ErrDeadLetterTooLarge = errors.New("badgerbox: dead letter exceeds page byte limit")
 var ErrLiveMessageExists = errors.New("badgerbox: message already exists in live queue")
+
+// ErrCodecDecode identifies an application codec error or recovered panic.
+var ErrCodecDecode = errors.New("badgerbox: codec decode failed")
+
+// ErrMessageQuarantined means an oversized record was isolated before its storage
+// envelope could be validated. Use ListDeadLetterMetadata and exact bounded requeue.
+var ErrMessageQuarantined = errors.New("badgerbox: message is quarantined")
+
+// ErrClaimTooLarge identifies the reason stored when a record exceeds ClaimMaxBytes.
+var ErrClaimTooLarge = errors.New("badgerbox: message exceeds claim byte limit")

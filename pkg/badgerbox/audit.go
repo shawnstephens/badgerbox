@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"time"
 
@@ -37,7 +38,7 @@ func (b *auditBudget) charge(item *badger.Item) error {
 	if b.report.ScannedKeys >= b.maxKeys {
 		return &AuditLimitError{Budget: "keys", Limit: b.maxKeys}
 	}
-	size := int64(len(item.Key())) + item.ValueSize()
+	size := int64(len(item.Key())) + storedValueUpperBound(item)
 	if size > b.maxBytes-b.report.ScannedBytes {
 		return &AuditLimitError{Budget: "bytes", Limit: b.maxBytes}
 	}
@@ -126,14 +127,26 @@ type AuditReport struct {
 	GeneratedAt time.Time `json:"generated_at"`
 	// Namespace is the Badger namespace audited by the store.
 	Namespace string `json:"namespace"`
-	// LiveRows is the number of primary message rows.
+	// LiveRows is the number of primary message rows outside referenced quarantine.
 	LiveRows int64 `json:"live_rows"`
 	// States contains per-state primary-row and index diagnostics.
 	States AuditStateReports `json:"states"`
 	// DeadLetters contains dead-letter row diagnostics.
 	DeadLetters AuditDeadLetterReport `json:"dead_letters"`
+	// Usage compares retained rows with persisted admission accounting.
+	Usage AuditUsageReport `json:"usage"`
 	// Samples contains bounded row and anomaly examples.
 	Samples AuditSamples `json:"samples"`
+}
+
+// AuditUsageReport reconstructs logical retained usage independently of the
+// metadata. Matches is meaningful only for a Complete audit: incomplete scans
+// provide partial row totals and must not be interpreted as a healthy result.
+type AuditUsageReport struct {
+	Persisted        UsageSnapshot `json:"persisted"`
+	RetainedMessages uint64        `json:"retained_messages"`
+	RetainedBytes    uint64        `json:"retained_bytes"`
+	Matches          bool          `json:"matches"`
 }
 
 // AuditStateReports contains diagnostics for every live lifecycle state.
@@ -174,6 +187,8 @@ type AuditIndexReport struct {
 
 // AuditDeadLetterReport summarizes dead-letter record consistency.
 type AuditDeadLetterReport struct {
+	// ReferencedRows counts oversized sources retained without copying into the DLQ.
+	ReferencedRows int64 `json:"referenced_rows"`
 	// Rows is the number of dead-letter rows.
 	Rows int64 `json:"rows"`
 	// DuplicateIDs is the number of extra dead-letter rows that repeat a key ID
@@ -218,11 +233,15 @@ type AuditAnomalySample struct {
 }
 
 type auditRecordView struct {
-	status      MessageState
-	createdAt   time.Time
-	availableAt time.Time
-	leaseUntil  time.Time
-	leaseToken  string
+	quarantineKey []byte
+	storedBytes   int64
+	version       uint64
+	status        MessageState
+	createdAt     time.Time
+	availableAt   time.Time
+	leaseUntil    time.Time
+	leaseToken    string
+	retainedBytes uint64
 }
 
 type auditIndexSpec struct {
@@ -278,7 +297,29 @@ func (s *Store[M, D]) Audit(ctx context.Context, opts AuditOptions) (AuditReport
 				return err
 			}
 		}
-		return s.auditDeadLetters(ctx, txn, records, &report, &sampler, &budget)
+		if err := s.auditQuarantineMarkers(ctx, txn, records, &budget); err != nil {
+			return err
+		}
+		if err := s.auditDeadLetters(ctx, txn, records, &report, &sampler, &budget); err != nil {
+			return err
+		}
+		if err := ctxErr(ctx); err != nil {
+			return err
+		}
+		item, err := txn.Get(s.keys.admissionKey)
+		if err != nil {
+			return err
+		}
+		if err := budget.charge(item); err != nil {
+			return err
+		}
+		usage, err := s.loadAdmissionState(txn)
+		if err != nil {
+			return err
+		}
+		report.Usage.Persisted = usage.UsageSnapshot
+		report.Usage.Matches = report.Usage.RetainedMessages == usage.RetainedMessages && report.Usage.RetainedBytes == usage.RetainedBytes
+		return nil
 	})
 	report.Complete = err == nil
 	return report, err
@@ -299,7 +340,7 @@ func (s *Store[M, D]) collectAuditRows(ctx context.Context, txn *badger.Txn, rep
 		if err != nil {
 			return nil, err
 		}
-		value, err := it.Item().ValueCopy(nil)
+		value, err := copyStoredValue(it.Item())
 		if err != nil {
 			return nil, err
 		}
@@ -307,7 +348,26 @@ func (s *Store[M, D]) collectAuditRows(ctx context.Context, txn *badger.Txn, rep
 		if err != nil {
 			return nil, err
 		}
+		if err := addAuditUsage(&report.Usage, record.retainedBytes); err != nil {
+			return nil, err
+		}
+		if item, err := txn.Get(s.keys.quarantineKey(id)); err == nil {
+			if err := budget.charge(item); err != nil {
+				return nil, err
+			}
+		} else if !errors.Is(err, badger.ErrKeyNotFound) {
+			return nil, err
+		}
+		record.quarantineKey, err = s.quarantineDLQKey(txn, id)
+		if err != nil {
+			return nil, err
+		}
+		record.storedBytes = storedValueUpperBound(it.Item())
+		record.version = it.Item().Version()
 		records[id] = record
+		if record.quarantineKey != nil {
+			continue
+		}
 		report.LiveRows++
 		stateReport := auditStateReport(report, record.status)
 		stateReport.Rows++
@@ -341,9 +401,16 @@ func (s *Store[M, D]) auditIndex(ctx context.Context, txn *badger.Txn, records m
 		if err != nil {
 			return err
 		}
-		value, err := it.Item().ValueCopy(nil)
+		value, err := copyStoredValue(it.Item())
 		if err != nil {
 			return err
+		}
+		if record, ok := records[id]; ok && record.quarantineKey != nil {
+			if spec.state != AuditQueueStateReady || spec.kind != AuditIndexKindCreated || record.status != recordStatusPending || !indexAt.Equal(record.createdAt) || len(value) != 0 {
+				return boxErrorf("%w: unexpected index for quarantined source %s", ErrInconsistentIndex, id)
+			}
+			seen[id]++
+			continue
 		}
 		spec.report.Keys++
 		firstAt, hasFirst := firstSeenAt[id]
@@ -387,6 +454,12 @@ func (s *Store[M, D]) auditIndex(ctx context.Context, txn *badger.Txn, records m
 		if err := ctxErr(ctx); err != nil {
 			return err
 		}
+		if record.quarantineKey != nil {
+			if spec.state == AuditQueueStateReady && spec.kind == AuditIndexKindCreated && seen[id] == 0 {
+				return boxErrorf("%w: quarantined source %s has no creation metadata", ErrInconsistentIndex, id)
+			}
+			continue
+		}
 		if AuditQueueState(record.status) == spec.state && seen[id] == 0 {
 			spec.report.Missing++
 			insertSmallestMessageID(&ids, sampler.limit, id)
@@ -420,7 +493,7 @@ func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, rec
 		if err != nil {
 			return err
 		}
-		value, err := it.Item().ValueCopy(nil)
+		value, err := copyStoredValue(it.Item())
 		if err != nil {
 			return err
 		}
@@ -428,8 +501,34 @@ func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, rec
 		if err != nil {
 			return err
 		}
+		if deadLetter.QuarantinedSource != nil {
+			if _, err := s.referencedSourceItem(txn, it.Item().Key(), deadLetter); err != nil {
+				return err
+			}
+			ref := deadLetter.QuarantinedSource
+			record, ok := records[id]
+			if !ok || !bytes.Equal(record.quarantineKey, it.Item().Key()) || record.status != recordStatusPending || record.availableAt.UnixNano() != ref.AvailableAtUnix || record.version != ref.Version {
+				return boxErrorf("%w: invalid quarantine source %s", ErrInconsistentIndex, id)
+			}
+			report.DeadLetters.Rows++
+			report.DeadLetters.ReferencedRows++
+			seenKeyIDs[id]++
+			seenRecordIDs[id]++
+			if seenKeyIDs[id] > 1 || seenRecordIDs[id] > 1 {
+				report.DeadLetters.DuplicateIDs++
+				sampler.add(spec, AuditAnomalyDuplicate, id, auditRecordView{}, nil, &failedAt, nil)
+			}
+			continue
+		}
 		if !isValidRecordState(deadLetter.Record.Status) {
 			return boxErrorf("invalid dead-letter record status %q", deadLetter.Record.Status)
+		}
+		retainedBytes, err := retainedRecordBytes(deadLetter.Record)
+		if err != nil {
+			return err
+		}
+		if err := addAuditUsage(&report.Usage, retainedBytes); err != nil {
+			return err
 		}
 		report.DeadLetters.Rows++
 		seenKeyIDs[id]++
@@ -445,8 +544,10 @@ func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, rec
 			}
 			sampler.add(spec, AuditAnomalyDuplicate, id, auditRecordView{}, nil, &failedAt, actualID)
 		}
-		_, keyIDCollision := records[id]
-		_, recordIDCollision := records[deadLetter.Record.ID]
+		keyRecord, keyIDCollision := records[id]
+		keyIDCollision = keyIDCollision && keyRecord.quarantineKey == nil
+		embeddedRecord, recordIDCollision := records[deadLetter.Record.ID]
+		recordIDCollision = recordIDCollision && embeddedRecord.quarantineKey == nil
 		if keyIDCollision || recordIDCollision {
 			report.DeadLetters.LiveRowCollisions++
 			var actualID *MessageID
@@ -486,8 +587,13 @@ func decodeAuditRecord(id MessageID, value []byte) (auditRecordView, error) {
 	if record.ID != id {
 		return auditRecordView{}, boxErrorf("record ID %s does not match message key %s", record.ID, id)
 	}
+	retainedBytes, err := retainedRecordBytes(record)
+	if err != nil {
+		return auditRecordView{}, err
+	}
 	return auditRecordView{
-		status: record.Status, createdAt: time.Unix(0, record.CreatedAtUnix).UTC(),
+		retainedBytes: retainedBytes,
+		status:        record.Status, createdAt: time.Unix(0, record.CreatedAtUnix).UTC(),
 		availableAt: time.Unix(0, record.AvailableAtUnix).UTC(),
 		leaseUntil:  time.Unix(0, record.LeaseUntilUnix).UTC(), leaseToken: record.LeaseToken,
 	}, nil
@@ -558,4 +664,60 @@ func insertSmallestMessageID(ids *[]MessageID, limit int, id MessageID) {
 
 func isValidRecordState(state MessageState) bool {
 	return state == recordStatusPending || state == recordStatusProcessing
+}
+
+func addAuditUsage(report *AuditUsageReport, bytes uint64) error {
+	if report.RetainedMessages == math.MaxUint64 || bytes > math.MaxUint64-report.RetainedBytes {
+		return ErrAdmissionOverflow
+	}
+	report.RetainedMessages++
+	report.RetainedBytes += bytes
+	return nil
+}
+
+// Scan marker keys independently to catch orphaned or redirected markers. The
+// source scan has already decoded each record within its byte budget; this pass
+// never reloads the source payload.
+func (s *Store[M, D]) auditQuarantineMarkers(ctx context.Context, txn *badger.Txn, records map[MessageID]auditRecordView, budget *auditBudget) error {
+	it := auditIterator(txn)
+	defer it.Close()
+	for it.Seek(s.keys.quarantinePrefix); it.ValidForPrefix(s.keys.quarantinePrefix); it.Next() {
+		if err := ctxErr(ctx); err != nil {
+			return err
+		}
+		if err := budget.charge(it.Item()); err != nil {
+			return err
+		}
+		id, err := parseMessageKey(s.keys.quarantinePrefix, it.Item().Key())
+		if err != nil {
+			return err
+		}
+		key, err := s.quarantineDLQKey(txn, id)
+		if err != nil {
+			return err
+		}
+		record, ok := records[id]
+		if !ok || key == nil || !bytes.Equal(record.quarantineKey, key) {
+			return boxErrorf("%w: orphaned quarantine marker %s", ErrInconsistentIndex, id)
+		}
+		item, err := txn.Get(key)
+		if err != nil {
+			return boxErrorf("%w: quarantine marker target missing: %v", ErrInconsistentIndex, err)
+		}
+		if err := budget.charge(item); err != nil {
+			return err
+		}
+		value, err := copyStoredValue(item)
+		if err != nil {
+			return err
+		}
+		letter, err := decodeStoredDeadLetter(value)
+		if err != nil {
+			return err
+		}
+		if letter.QuarantinedSource == nil || letter.QuarantinedSource.ID != id {
+			return boxErrorf("%w: quarantine marker target has no matching reference", ErrInconsistentIndex)
+		}
+	}
+	return nil
 }

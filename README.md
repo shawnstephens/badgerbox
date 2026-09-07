@@ -10,6 +10,9 @@ This is a prerelease API and storage-format break. Existing unversioned or incom
 
 Start with the [tuning and capacity guide](docs/TUNING.md) for memory, disk, CPU, payload size, outage budgets, and reproducible demo benchmarks.
 
+Use an [enqueue admission guard](docs/ADMISSION.md) to reject intake under disk pressure while allowing existing messages to settle.
+Set [claim byte budgets](docs/QUARANTINE.md) to limit source reads and recover oversized or undecodable messages through quarantine.
+
 ## Packages
 
 The layout follows the relevant library, executable, and deployment conventions in [project-layout](https://github.com/golang-standards/project-layout).

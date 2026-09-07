@@ -1,0 +1,22 @@
+{
+  "source_revision": "49dd267ec89f51d0cc805b6d66786d1fc1dc5e22",
+  "verified_at_utc": "2026-09-07T05:25:43.823771+00:00",
+  "go_version": "go version go1.26.2 darwin/arm64",
+  "macos_version": "27.0",
+  "architecture": "arm64",
+  "filesystem": "APFS on dedicated512MiB sparse image",
+  "test_command": "BADGERBOX_TEST_VOLUME=<marked dedicated mount> GOWORK=off go test -race -v -tags=resourcefault ./tests/integration -run ^TestFullFilesystemRejectsIntakeAndRecoversRetainedMessages$ -count=1 -timeout=2m",
+  "log_sha256": "92999fb291602b54a49cb412452f4fd563c3a85d848b419f0364bfc49abd1797",
+  "result": {
+    "passed": true,
+    "filesystem_capacity_bytes": 536829952,
+    "filler_bytes_at_enospc": 523239424,
+    "reported_available_bytes_at_enospc": 11567104,
+    "guard_min_free_bytes": 16777216,
+    "retained_payloads_verified_after_reopen": 32,
+    "rejected_enqueue_paths": 2,
+    "final_retained_messages": 0,
+    "final_audit_complete_and_usage_matching_and_empty_indexes": true
+  },
+  "scope": "Guarded rejection and rollback at actual filler ENOSPC, clean close/reopen and verified drain; no device sync-failure or crash injection."
+}

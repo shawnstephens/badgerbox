@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/shawnstephens/badgerbox/internal/diskspace"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -144,7 +145,7 @@ func NewBadgerMetrics(db *badger.DB, opts BadgerMetricsOptions) (*BadgerMetrics,
 	if db == nil {
 		return nil, ErrNilDB
 	}
-	return newBadgerMetricsWithSources(db.Opts(), opts, expvar.Get, statfs)
+	return newBadgerMetricsWithSources(db.Opts(), opts, expvar.Get, diskspace.Read)
 }
 
 // newBadgerMetricsWithSources constructs the collector with injectable sources

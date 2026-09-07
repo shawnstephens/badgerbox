@@ -22,6 +22,20 @@ type DeadLetterMetadata struct {
 	Oversized   bool
 	Cursor      []byte
 	Details     *DeadLetterDetails
+	// QuarantinedSource describes a referenced value without reading it. Details
+	// is nil because its storage envelope has not been validated.
+	QuarantinedSource *QuarantinedSourceMetadata
+}
+
+// QuarantinedSourceMetadata is bounded reference metadata. Identity comes from
+// the old scheduling index and remains provisional until a source read validates
+// the envelope. StoredBytes is additional to DeadLetterMetadata.StoredBytes and
+// conservatively accounts for Badger's approximate value-log size metadata.
+type QuarantinedSourceMetadata struct {
+	StoredBytes          int64
+	FailureText          string
+	FailureTextTruncated bool
+	Permanent            bool
 }
 
 // DeadLetterDetails contains only validated storage-envelope metadata.
@@ -90,7 +104,7 @@ func (s *Store[M, D]) ListDeadLetterMetadata(ctx context.Context, options DeadLe
 			if err != nil {
 				return err
 			}
-			size := item.ValueSize()
+			size := storedValueUpperBound(item)
 			oversized := size > options.MaxBytes
 			if !oversized && size > remaining {
 				next = rows[len(rows)-1].Cursor
@@ -99,7 +113,7 @@ func (s *Store[M, D]) ListDeadLetterMetadata(ctx context.Context, options DeadLe
 			row := DeadLetterMetadata{ID: id, FailedAt: failedAt, StoredBytes: size, Oversized: oversized, Cursor: item.KeyCopy(nil)}
 			if !oversized {
 				remaining -= size
-				value, err := item.ValueCopy(nil)
+				value, err := copyStoredValue(item)
 				if err != nil {
 					return err
 				}
@@ -107,11 +121,19 @@ func (s *Store[M, D]) ListDeadLetterMetadata(ctx context.Context, options DeadLe
 				if err != nil {
 					return err
 				}
-				if stored.Record.ID != id || stored.FailedAt != failedAt.UnixNano() {
-					return boxErrorf("dead-letter key disagrees with record")
-				}
 				text, truncated := deadLetterFailureSummary(stored.Error)
-				row.Details = &DeadLetterDetails{State: stored.Record.Status, CreatedAt: time.Unix(0, stored.Record.CreatedAtUnix).UTC(), AvailableAt: time.Unix(0, stored.Record.AvailableAtUnix).UTC(), Attempt: stored.Record.Attempt, MaxAttempts: stored.Record.MaxAttempts, FailureText: text, FailureTextTruncated: truncated, Permanent: stored.Permanent}
+				if stored.QuarantinedSource != nil {
+					source, err := s.referencedSourceItem(txn, row.Cursor, stored)
+					if err != nil {
+						return err
+					}
+					row.QuarantinedSource = &QuarantinedSourceMetadata{StoredBytes: storedValueUpperBound(source), FailureText: text, FailureTextTruncated: truncated, Permanent: stored.Permanent}
+				} else {
+					if stored.Record.ID != id || stored.FailedAt != failedAt.UnixNano() {
+						return boxErrorf("dead-letter key disagrees with record")
+					}
+					row.Details = &DeadLetterDetails{State: stored.Record.Status, CreatedAt: time.Unix(0, stored.Record.CreatedAtUnix).UTC(), AvailableAt: time.Unix(0, stored.Record.AvailableAtUnix).UTC(), Attempt: stored.Record.Attempt, MaxAttempts: stored.Record.MaxAttempts, FailureText: text, FailureTextTruncated: truncated, Permanent: stored.Permanent}
+				}
 			}
 			rows = append(rows, row)
 		}
@@ -136,7 +158,8 @@ func deadLetterFailureSummary(text string) (string, bool) {
 }
 
 // DeadLetterRequeueOptions controls exact requeue. MaxBytes zero disables the
-// stored-value limit for trusted callers; negative values are invalid.
+// stored-value limit for trusted callers; negative values are invalid. Referenced
+// quarantine charges both the DLQ metadata and the retained source value.
 type DeadLetterRequeueOptions struct {
 	AvailableAt time.Time
 	MaxBytes    int64

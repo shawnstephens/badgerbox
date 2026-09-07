@@ -59,6 +59,8 @@ func (s *Store[M, D]) validateRecordSize(record storedRecord, encodedSize int) e
 	}
 	// Claim/retry/recovery each write at most five entries. A claim additionally
 	// stores the token as the processing index value; other indexes are empty.
+	// Enqueue and acknowledgement write at most four entries, including the
+	// fixed admission metadata value (smaller than the reserved token).
 	maxTxnSize := valueCost + 5*maxKeySize + maxLeaseTokenBytes + lifecycleTxnOverhead
 	if maxTxnSize >= s.db.MaxBatchSize() || 6 >= s.db.MaxBatchCount() {
 		return fmt.Errorf("%w: lifecycle transition exceeds transaction limit: %w", ErrMessageTooLarge, badger.ErrTxnTooBig)

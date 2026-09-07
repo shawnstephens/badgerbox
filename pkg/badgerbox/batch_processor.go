@@ -87,8 +87,9 @@ type BatchProcessor[M any, D any] struct {
 
 // NewBatchProcessor builds a BatchProcessor for store and fn.
 //
-// Zero-value options are replaced with package defaults. Negative values and an
-// explicit retry maximum below the retry base are rejected.
+// Zero sizing and duration options select package defaults; ClaimMaxBytes zero
+// disables the byte limit. Negative values and an explicit retry maximum below
+// the retry base are rejected.
 func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts BatchProcessorOptions) (*BatchProcessor[M, D], error) {
 	if store == nil {
 		return nil, ErrNilStore
@@ -407,7 +408,7 @@ func (p *BatchProcessor[M, D]) dispatchAvailable(ctx context.Context, workCh cha
 		}
 
 		claimedAt := p.store.runtime.Now().UTC()
-		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithEffectiveLimit(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithLimits(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.ClaimMaxBytes, p.opts.LeaseDuration, p.opts.MaxAttempts)
 		if err != nil {
 			workerSlots <- struct{}{}
 			return err

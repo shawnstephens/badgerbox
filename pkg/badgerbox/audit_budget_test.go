@@ -46,7 +46,7 @@ func TestAuditDeadLetterOnlyBudgets(t *testing.T) {
 		}
 	}
 	report, err := s.Audit(t.Context(), AuditOptions{})
-	if err != nil || !report.Complete || report.DeadLetters.Rows != 1000 || report.ScannedKeys != 1000 {
+	if err != nil || !report.Complete || report.DeadLetters.Rows != 1000 || report.ScannedKeys != 1001 {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
 }

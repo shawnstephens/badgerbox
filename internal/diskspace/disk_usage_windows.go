@@ -1,6 +1,6 @@
 //go:build windows
 
-package telemetry
+package diskspace
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func statfs(path string) (int64, int64, error) {
+func Read(path string) (int64, int64, error) {
 	directory, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return 0, 0, err

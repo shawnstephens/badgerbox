@@ -58,10 +58,20 @@ func (h handler) encodeDeadLetters(ctx context.Context, rows []badgerbox.DeadLet
 			if count > 0 {
 				break
 			}
-			// A long failure summary must not make the first ordinary row inaccessible.
+			// A long summary must not make the first ordinary or referenced row
+			// inaccessible. Preserve identity and disclose every text truncation.
+			trimmed := false
 			if result.Metadata != nil && result.Metadata.FailureText != "" {
 				result.Metadata.FailureText = ""
 				result.Metadata.FailureTextTruncated = true
+				trimmed = true
+			}
+			if result.QuarantinedSource != nil && result.QuarantinedSource.FailureText != "" {
+				result.QuarantinedSource.FailureText = ""
+				result.QuarantinedSource.FailureTextTruncated = true
+				trimmed = true
+			}
+			if trimmed {
 				encoded, err = json.Marshal(result)
 				if err != nil {
 					return nil, err
@@ -97,13 +107,14 @@ type auditSummary struct {
 	LiveRows     int64                           `json:"live_rows"`
 	States       badgerbox.AuditStateReports     `json:"states"`
 	DeadLetters  badgerbox.AuditDeadLetterReport `json:"dead_letters"`
+	Usage        badgerbox.AuditUsageReport      `json:"usage"`
 }
 
 func (h handler) encodeAudit(ctx context.Context, report badgerbox.AuditReport, code string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	summary := auditSummary{Complete: report.Complete, Code: code, GeneratedAt: report.GeneratedAt, Namespace: h.namespace, ScannedKeys: report.ScannedKeys, ScannedBytes: report.ScannedBytes, LiveRows: report.LiveRows, States: report.States, DeadLetters: report.DeadLetters}
+	summary := auditSummary{Complete: report.Complete, Code: code, GeneratedAt: report.GeneratedAt, Namespace: h.namespace, ScannedKeys: report.ScannedKeys, ScannedBytes: report.ScannedBytes, LiveRows: report.LiveRows, States: report.States, DeadLetters: report.DeadLetters, Usage: report.Usage}
 	data, err := json.Marshal(summary)
 	if err != nil {
 		return nil, err

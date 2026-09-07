@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "measurements_complete": true,
+  "schema_version": 2,
+  "started_at": "2026-09-07T05:02:52.410267Z",
+  "accepted": 90000,
+  "unique_delivered": 90000,
+  "duplicates": 0,
+  "delivery_seconds": 180.01278675,
+  "observed_resource_seconds": 210.034703458,
+  "messages_per_second": 499.96448377298395,
+  "gc_outcomes": {
+    "success": 601,
+    "no_rewrite": 140,
+    "error": 0
+  },
+  "peak_observed_value_log_bytes": 537813746,
+  "final_observed_value_log_bytes_before_close": 268891594,
+  "largest_observed_value_log_drop_bytes": 109250135,
+  "sampled_peak_rss_bytes": 88031232,
+  "descriptive_trends": {
+    "late_delivery_points": 84,
+    "late_delivery_rss_slope_bytes_per_second": -58222.04151612525,
+    "late_delivery_value_log_slope_bytes_per_second": 490684.14310151787,
+    "late_delivery_rss_min_bytes": 66682880,
+    "late_delivery_rss_max_bytes": 87195648
+  },
+  "limits": [
+    "One local verified-sink experiment includes producer, verifier, sampling and database CPU/RSS; it does not measure Kafka broker behavior.",
+    "Normal periodic GC and compaction run without forced Flatten, DB reopen, runtime.GC or manual reclamation.",
+    "Sampled apparent file sizes include preallocation and omit deleted-but-open files; changes are not physical I/O or exact bytes reclaimed.",
+    "A GC success proves a successful value-log rewrite, not a fixed amount of reclaimed space.",
+    "Slopes describe this finite interval; they do not establish a long-term memory or disk bound."
+  ]
+}

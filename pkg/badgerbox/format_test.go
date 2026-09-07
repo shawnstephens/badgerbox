@@ -35,7 +35,7 @@ func TestBinaryCodecAndIndependentDefaults(t *testing.T) {
 	}
 }
 func TestRejectIncompatibleFormatWithoutMutation(t *testing.T) {
-	for _, version := range [][]byte{nil, {1}, {255}} {
+	for _, version := range [][]byte{nil, {1}, {2}, {255}} {
 		t.Run(string(version), func(t *testing.T) {
 			db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true).WithLogger(nil))
 			if err != nil {

@@ -27,6 +27,14 @@ type Options struct {
 	IDLeaseSize   uint64
 	Observability ObservabilityOptions
 	Runtime       Runtime
+	// EnqueueGuard runs before allocation, serialization, or transaction writes
+	// for every enqueue attempt, including EnqueueTx. It must be concurrency-safe
+	// and respect context cancellation. Returning an error rejects new intake;
+	// settlement and dead-letter recovery do not invoke it. This advisory hook
+	// does not reserve external resources or roll back caller-owned writes.
+	EnqueueGuard func(context.Context) error
+	// AdmissionLimits must match persisted namespace limits when reopening.
+	AdmissionLimits AdmissionLimits
 }
 
 type Store[M any, D any] struct {
@@ -38,6 +46,8 @@ type Store[M any, D any] struct {
 	obs     *otelInstrumentation
 	runtime Runtime
 	closed  atomic.Bool
+
+	admissionIdentity [16]byte
 
 	closeOnce sync.Once
 	closeErr  error
@@ -62,10 +72,11 @@ type storedRecord struct {
 }
 
 type storedDeadLetter struct {
-	Record    storedRecord `json:"record"`
-	FailedAt  int64        `json:"failed_at_unix_nano"`
-	Error     string       `json:"error"`
-	Permanent bool         `json:"permanent"`
+	Record            storedRecord             `json:"record"`
+	QuarantinedSource *storedQuarantinedSource `json:"quarantined_source,omitempty"`
+	FailedAt          int64                    `json:"failed_at_unix_nano"`
+	Error             string                   `json:"error"`
+	Permanent         bool                     `json:"permanent"`
 }
 
 type enqueueResult struct {
@@ -104,6 +115,10 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 		return nil, ErrNilDB
 	}
 
+	if !db.Opts().DetectConflicts {
+		return nil, ErrConflictDetectionRequired
+	}
+
 	opts = normalizeOptions(opts)
 	serde = normalizeSerde(serde)
 
@@ -130,6 +145,8 @@ func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M
 		_ = seq.Release()
 		return nil, err
 	}
+
+	store.obs.AdmissionSnapshot = store.admissionSnapshot
 
 	return store, nil
 }
@@ -186,6 +203,11 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 		s.obs.RecordConflictRetry(traceCtx)
 		traceSpan.AddEvent("conflict_retry")
 	}, func() error {
+		// Wait for external capacity before opening a snapshot that could hold
+		// back Badger's version reclamation during a slow filesystem probe.
+		if err := s.checkEnqueueGuard(ctx); err != nil {
+			return err
+		}
 		return s.db.Update(func(txn *badger.Txn) error {
 			var updateErr error
 			result, updateErr = s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
@@ -205,8 +227,14 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	return result.id, nil
 }
 
-// EnqueueTx applies the same lifecycle size budget as Enqueue before adding any
-// queue entries to txn. The caller owns the transaction and its final commit.
+// EnqueueTx checks lifecycle and namespace admission budgets before adding queue
+// entries to txn. The transaction must belong to this Store's database. Prepared
+// messages consume capacity only if the caller successfully commits the entire
+// transaction; conflicts require retrying the whole application transaction.
+// As with Badger writes, a storage error can leave partial pending writes: the
+// caller must abort the entire transaction whenever EnqueueTx returns an error.
+// EnqueueGuard runs while this caller-owned transaction is open; a bounded or
+// cached guard avoids holding its read snapshot during a slow external check.
 func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -219,7 +247,16 @@ func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	availableAt := normalizedAvailableAt(start, req.AvailableAt)
 	traceCtx, traceSpan, traceCarrier := s.obs.StartEnqueueSpan(ctx, availableAt, defaultMaxAttempts)
 
-	result, err := s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
+	var result enqueueResult
+	var err error
+	if txn == nil {
+		err = ErrNilTxn
+	} else {
+		err = s.checkEnqueueGuard(ctx)
+	}
+	if err == nil {
+		result, err = s.enqueueTx(ctx, txn, req, defaultMaxAttempts, traceCarrier)
+	}
 	if err != nil {
 		traceSpan.RecordError(err)
 		s.obs.EndSpan(traceSpan, "error")
@@ -313,7 +350,7 @@ func (s *Store[M, D]) ListDeadLettersWithOptions(ctx context.Context, options De
 			// ValueSize reads metadata, not the value. In particular, reject an
 			// oversized first record without allocating or decoding its payload.
 			if options.MaxBytes > 0 {
-				size := it.Item().ValueSize()
+				size := storedValueUpperBound(it.Item())
 				if size > remaining {
 					if len(deadLetters) == 0 {
 						return ErrDeadLetterTooLarge
@@ -323,12 +360,45 @@ func (s *Store[M, D]) ListDeadLettersWithOptions(ctx context.Context, options De
 				}
 				remaining -= size
 			}
-			value, err := it.Item().ValueCopy(nil)
+			value, err := copyStoredValue(it.Item())
 			if err != nil {
 				return err
 			}
 
-			deadLetter, err := s.decodeDeadLetter(value)
+			stored, err := decodeStoredDeadLetter(value)
+			if err != nil {
+				return err
+			}
+			failedAt, id, err := parseTimeAndIDKey(s.keys.deadLetterPrefix, key)
+			if err != nil {
+				return err
+			}
+			if stored.QuarantinedSource != nil {
+				source, err := s.referencedSourceItem(txn, key, stored)
+				if err != nil {
+					return err
+				}
+				if options.MaxBytes > 0 {
+					if storedValueUpperBound(source) > remaining {
+						if len(deadLetters) == 0 {
+							return ErrDeadLetterTooLarge
+						}
+						nextCursor = lastKey
+						break
+					}
+					remaining -= storedValueUpperBound(source)
+				}
+				stored.Record, err = decodeRecordItem(source, id)
+				if err != nil {
+					return err
+				}
+				if err := validateQuarantineSource(stored.Record, stored.QuarantinedSource); err != nil {
+					return err
+				}
+			} else if stored.Record.ID != id || stored.FailedAt != failedAt.UnixNano() {
+				return boxErrorf("dead-letter key disagrees with record")
+			}
+			deadLetter, err := s.deadLetterToMessage(stored)
 			if err != nil {
 				return err
 			}
@@ -398,11 +468,11 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 				return err
 			}
 
-			if options.MaxBytes > 0 && item.ValueSize() > options.MaxBytes {
+			if options.MaxBytes > 0 && storedValueUpperBound(item) > options.MaxBytes {
 				return ErrDeadLetterTooLarge
 			}
 
-			value, err := item.ValueCopy(nil)
+			value, err := copyStoredValue(item)
 			if err != nil {
 				return err
 			}
@@ -413,13 +483,35 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 			}
 
 			record := deadLetter.Record
-			if record.ID != id || deadLetter.FailedAt != failedAt.UnixNano() {
-				return boxErrorf("dead-letter key disagrees with record")
-			}
-			if _, err := txn.Get(s.keys.messageKey(id)); err == nil {
-				return ErrLiveMessageExists
-			} else if !errors.Is(err, badger.ErrKeyNotFound) {
-				return err
+			if deadLetter.QuarantinedSource != nil {
+				source, err := s.referencedSourceItem(txn, key, deadLetter)
+				if err != nil {
+					return err
+				}
+				if options.MaxBytes > 0 && storedValueUpperBound(source) > options.MaxBytes-storedValueUpperBound(item) {
+					return ErrDeadLetterTooLarge
+				}
+				record, err = decodeRecordItem(source, id)
+				if err != nil {
+					return err
+				}
+				if err := validateQuarantineSource(record, deadLetter.QuarantinedSource); err != nil {
+					return err
+				}
+				if _, err := txn.Get(s.keys.readyKey(time.Unix(0, record.AvailableAtUnix), id)); err == nil {
+					return fmt.Errorf("%w: quarantined source still scheduled", ErrInconsistentIndex)
+				} else if !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
+			} else {
+				if record.ID != id || deadLetter.FailedAt != failedAt.UnixNano() {
+					return boxErrorf("dead-letter key disagrees with record")
+				}
+				if _, err := txn.Get(s.keys.messageKey(id)); err == nil {
+					return ErrLiveMessageExists
+				} else if !errors.Is(err, badger.ErrKeyNotFound) {
+					return err
+				}
 			}
 			record.Attempt = 0
 			record.Status = recordStatusPending
@@ -447,6 +539,11 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 			if err := txn.Delete(key); err != nil {
 				return err
 			}
+			if deadLetter.QuarantinedSource != nil {
+				if err := txn.Delete(s.keys.quarantineKey(id)); err != nil {
+					return err
+				}
+			}
 
 			requeued = true
 			return nil
@@ -460,6 +557,15 @@ func (s *Store[M, D]) RequeueDeadLetterWithOptions(ctx context.Context, id Messa
 		s.notifyListeners()
 	}
 	return nil
+}
+
+func (s *Store[M, D]) checkEnqueueGuard(ctx context.Context) error {
+	if s.opts.EnqueueGuard != nil {
+		if err := s.opts.EnqueueGuard(ctx); err != nil {
+			return fmt.Errorf("enqueue guard: %w", err)
+		}
+	}
+	return ctxErr(ctx)
 }
 
 func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D], maxAttempts int, traceCarrier map[string]string) (enqueueResult, error) {
@@ -509,6 +615,10 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
 		return result, err
 	}
+	usage, err := s.prepareAdmission(txn, record)
+	if err != nil {
+		return result, err
+	}
 	if err := txn.Set(s.keys.messageKey(id), encodedRecord); err != nil {
 		return result, err
 	}
@@ -517,6 +627,10 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	}
 
 	if err := txn.Set(s.keys.readyCreatedKey(now, id), emptyValue); err != nil {
+		return result, err
+	}
+
+	if err := s.storeAdmissionState(txn, usage); err != nil {
 		return result, err
 	}
 
@@ -538,7 +652,7 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 	}, func() error {
 		return s.db.Update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
+			if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 				return nil
 			}
 			if err != nil {
@@ -546,6 +660,10 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 			}
 			if record.Status != recordStatusProcessing || record.LeaseToken != leaseToken {
 				return nil
+			}
+
+			if err := s.releaseAdmission(txn, record); err != nil {
+				return err
 			}
 
 			if err := txn.Delete(s.keys.messageKey(id)); err != nil {
@@ -579,7 +697,7 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 		attemptResult := failProcessingResult{}
 		err := s.db.Update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
+			if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 				return nil
 			}
 			if err != nil {
@@ -701,12 +819,21 @@ func (s *Store[M, D]) ensureOpen() error {
 }
 
 func (s *Store[M, D]) loadRecord(txn *badger.Txn, id MessageID) (storedRecord, error) {
-	var record storedRecord
+	if key, err := s.quarantineDLQKey(txn, id); err != nil {
+		return storedRecord{}, err
+	} else if key != nil {
+		return storedRecord{}, ErrMessageQuarantined
+	}
 	item, err := txn.Get(s.keys.messageKey(id))
 	if err != nil {
-		return record, err
+		return storedRecord{}, err
 	}
-	value, err := item.ValueCopy(nil)
+	return decodeRecordItem(item, id)
+}
+
+func decodeRecordItem(item *badger.Item, id MessageID) (storedRecord, error) {
+	var record storedRecord
+	value, err := copyStoredValue(item)
 	if err != nil {
 		return record, err
 	}
@@ -731,11 +858,11 @@ func (s *Store[M, D]) storeRecord(txn *badger.Txn, record storedRecord) error {
 func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error) {
 	var zero Message[M, D]
 
-	payload, err := s.serde.Message.Unmarshal(record.PayloadBytes)
+	payload, err := decodeWithCodec(s.serde.Message, record.PayloadBytes, "payload")
 	if err != nil {
 		return zero, err
 	}
-	destination, err := s.serde.Destination.Unmarshal(record.DestinationBytes)
+	destination, err := decodeWithCodec(s.serde.Destination, record.DestinationBytes, "destination")
 	if err != nil {
 		return zero, err
 	}
@@ -752,14 +879,8 @@ func (s *Store[M, D]) recordToMessage(record storedRecord) (Message[M, D], error
 	}, nil
 }
 
-func (s *Store[M, D]) decodeDeadLetter(data []byte) (DeadLetter[M, D], error) {
+func (s *Store[M, D]) deadLetterToMessage(encoded storedDeadLetter) (DeadLetter[M, D], error) {
 	var result DeadLetter[M, D]
-
-	encoded, err := decodeStoredDeadLetter(data)
-	if err != nil {
-		return result, err
-	}
-
 	message, err := s.recordToMessage(encoded.Record)
 	if err != nil {
 		return result, err
@@ -832,6 +953,13 @@ func ctxErr(ctx context.Context) error {
 }
 
 func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now time.Time, batchSize int, leaseDuration time.Duration, maxAttempts int) ([]claimedRecord[M, D], int, error) {
+	return s.claimReadyBatchWithLimits(ctx, now, batchSize, 0, leaseDuration, maxAttempts)
+}
+
+func (s *Store[M, D]) claimReadyBatchWithLimits(ctx context.Context, now time.Time, batchSize int, maxBytes int64, leaseDuration time.Duration, maxAttempts int) ([]claimedRecord[M, D], int, error) {
+	if maxBytes < 0 {
+		return nil, 0, boxErrorf("claim max bytes must be nonnegative")
+	}
 	if batchSize < 0 {
 		return nil, 0, boxErrorf("claim batch size must be non-negative: %d", batchSize)
 	}
@@ -842,15 +970,22 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		maxAttempts = defaultMaxAttempts
 	}
 
-	claimed := make([]claimedRecord[M, D], 0, batchSize)
+	claimed := make([]claimedRecord[M, D], 0, min(batchSize, defaultClaimBatchSize))
 	effectiveBatchSize := batchSize
+	var quarantined []error
+	var byteLimited bool
 	now = now.UTC()
 
 	for {
 		err := withConflictRetryObserved(ctx, s.runtime, func() {
 			s.obs.RecordConflictRetry(ctx)
 		}, func() error {
+			clear(claimed)
 			claimed = claimed[:0]
+			quarantined = quarantined[:0]
+			byteLimited = false
+			var readBytes int64
+			disposedIDs := make(map[MessageID]bool)
 			return s.db.Update(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
 				opts.PrefetchValues = false
@@ -872,7 +1007,22 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					}
 					examined++
 
-					record, err := s.loadRecord(txn, id)
+					if disposedIDs[id] {
+						if err := txn.Delete(key); err != nil {
+							return err
+						}
+						continue
+					}
+					if marker, err := s.quarantineDLQKey(txn, id); err != nil {
+						return err
+					} else if marker != nil {
+						// A stale scheduling index cannot reactivate quarantine.
+						if err := txn.Delete(key); err != nil {
+							return err
+						}
+						continue
+					}
+					item, err := txn.Get(s.keys.messageKey(id))
 					if errors.Is(err, badger.ErrKeyNotFound) {
 						deleteErr := txn.Delete(key)
 						if deleteErr != nil {
@@ -880,6 +1030,27 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 						}
 						continue
 					}
+					if err != nil {
+						return err
+					}
+
+					size := storedValueUpperBound(item)
+					if maxBytes > 0 {
+						if size > maxBytes {
+							if err := s.quarantineOversizedRecord(txn, id, availableAt, now, size, maxBytes, item.Version()); err != nil {
+								return err
+							}
+							disposedIDs[id] = true
+							quarantined = append(quarantined, claimSizeError(size, maxBytes))
+							continue
+						}
+						if size > maxBytes-readBytes {
+							byteLimited = true
+							break
+						}
+						readBytes += size
+					}
+					record, err := decodeRecordItem(item, id)
 					if err != nil {
 						return err
 					}
@@ -920,6 +1091,16 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					}
 					record.LeaseToken = token
 
+					message, err := s.recordToMessage(record)
+					if err != nil {
+						if err := s.quarantineReadyRecord(txn, record, now, err); err != nil {
+							return err
+						}
+						disposedIDs[id] = true
+						quarantined = append(quarantined, err)
+						continue
+					}
+
 					storeErr := s.storeRecord(txn, record)
 					if storeErr != nil {
 						return storeErr
@@ -941,11 +1122,7 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 					if setErr != nil {
 						return setErr
 					}
-					message, err := s.recordToMessage(record)
-					if err != nil {
-						return err
-					}
-
+					disposedIDs[id] = true
 					claimed = append(claimed, claimedRecord[M, D]{
 						Message:      message,
 						LeaseToken:   token,
@@ -974,6 +1151,14 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		effectiveBatchSize = retryBatchSize
 	}
 
+	for _, err := range quarantined {
+		s.obs.RecordDeadLetter(ctx, err)
+	}
+	if len(quarantined) > 0 {
+		// Quarantine may consume the scan page before a healthy record is found.
+		// Wake the dispatcher immediately instead of waiting for the poll interval.
+		s.notifyListeners()
+	}
 	if len(claimed) > 0 {
 		s.obs.RecordClaimBatch(ctx, len(claimed))
 		for _, record := range claimed {
@@ -981,6 +1166,11 @@ func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now
 		}
 	}
 
+	if byteLimited && len(claimed) > 0 {
+		// A smaller batch caused by bytes is full for dispatch purposes; continue
+		// immediately when another worker slot is available, without a poll delay.
+		effectiveBatchSize = len(claimed)
+	}
 	return claimed, effectiveBatchSize, nil
 }
 func (s *Store[M, D]) collectExpiredProcessingCandidates(ctx context.Context, now time.Time, pageSize int) ([]expiredProcessingCandidate, error) {
@@ -1030,7 +1220,7 @@ func (s *Store[M, D]) requeueExpiredCandidate(ctx context.Context, now time.Time
 			if err != nil {
 				return err
 			}
-			tokenBytes, err := item.ValueCopy(nil)
+			tokenBytes, err := copyStoredValue(item)
 			if err != nil {
 				return err
 			}
@@ -1090,7 +1280,9 @@ func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, 
 		acknowledged = false
 		err := update(func(txn *badger.Txn) error {
 			record, err := s.loadRecord(txn, id)
-			if errors.Is(err, badger.ErrKeyNotFound) {
+			// Expired work may have entered referenced quarantine while its old
+			// callback was still running. Quarantine has no active lease owner.
+			if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 				return nil
 			}
 			if err != nil {
@@ -1098,6 +1290,10 @@ func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, 
 			}
 			if record.Status != recordStatusProcessing || record.LeaseToken != leaseToken {
 				return nil
+			}
+
+			if err := s.releaseAdmission(txn, record); err != nil {
+				return err
 			}
 
 			if err := txn.Delete(s.keys.messageKey(id)); err != nil {
@@ -1139,7 +1335,7 @@ func (s *Store[M, D]) releaseClaimed(ctx context.Context, work []claimedRecord[M
 				}
 
 				record, err := s.loadRecord(txn, claimed.Message.ID)
-				if errors.Is(err, badger.ErrKeyNotFound) {
+				if errors.Is(err, badger.ErrKeyNotFound) || errors.Is(err, ErrMessageQuarantined) {
 					continue
 				}
 				if err != nil {

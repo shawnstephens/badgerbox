@@ -1,13 +1,14 @@
 # Storage and codecs
 
-Badgerbox format version 2 uses ready and processing records with opaque
+Badgerbox format version 3 uses ready and processing records with opaque
 `payload_bytes` and `destination_bytes` fields in a JSON metadata envelope.
 The envelope base64-encodes arbitrary codec output; it does not require JSON
 payloads. Each omitted codec independently defaults to JSON. Codecs must support
 concurrent calls and remain compatible when reopening a namespace. No codec
 autodetection or conversion is performed.
 
-Existing namespaces without the current format marker are rejected before
+Existing namespaces without the current format marker, including version 2,
+are rejected before
 message-ID allocation or record changes. This pre-release version provides no
 automatic migration: drain older databases using their original application
 before switching to a new directory. Never delete an undrained database.
@@ -25,6 +26,10 @@ SIGKILL tests do not simulate host failure or power loss. See the
 Successful processing removes live records and indexes logically. Badger retains
 obsolete versions until compaction and value-log GC reclaim them. Use the runner's
 maintenance service or own a joined GC loop, reserve temporary rewrite space, and
-monitor every volume used by `Dir` and `ValueDir`. There is no automatic backlog
-quota or dead-letter retention limit. Enqueue errors must propagate to callers;
-operators should stop intake before disk exhaustion.
+monitor every volume used by `Dir` and `ValueDir`. Format 3 adds fixed-size
+namespace identity, retained usage, and admission limits. These are updated
+transactionally with enqueue and acknowledgement. Set logical backlog quotas
+and a filesystem free-space guard as described in [admission](ADMISSION.md).
+Dead letters retain their quota until successfully replayed and acknowledged;
+there is no automatic deletion of undelivered data. Enqueue errors must
+propagate to callers, and operators should stop intake before disk exhaustion.

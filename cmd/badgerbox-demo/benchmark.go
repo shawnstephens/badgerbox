@@ -37,6 +37,12 @@ func newBenchmarkCommand() *cli.Command {
 		&cli.Float64Flag{Name: "rate", Usage: "Aggregate offered messages/second; 0 saturates enqueue workers"},
 		&cli.DurationFlag{Name: "timeout", Value: 2 * time.Minute, Usage: "Deadline for startup, intake, delivery and drain"},
 		&cli.DurationFlag{Name: "sample-interval", Value: 100 * time.Millisecond, Usage: "CPU, RSS, heap and apparent disk sampling interval"},
+		&cli.DurationFlag{Name: "timeline-interval", Value: time.Second, Usage: "Resource and maintenance timeline interval; must be at least sample-interval"},
+		&cli.IntFlag{Name: "timeline-max-points", Value: 600, Usage: "Maximum retained timeline points (4 to 3600); longer runs are evenly downsampled"},
+		&cli.DurationFlag{Name: "observe-after-drain", Usage: "Continue sampling normal maintenance for this long after delivery; excluded from throughput, included in timeout and resource totals"},
+		&cli.Float64Flag{Name: "badger-gc-discard-ratio", Value: demo.DefaultBadgerGCDiscardRatio, Usage: "Value-log GC discard ratio, strictly between 0 and 1"},
+		&cli.IntFlag{Name: "badger-gc-max-runs", Value: 8, Usage: "Maximum value-log GC calls per maintenance tick"},
+		&cli.DurationFlag{Name: "badger-gc-max-duration", Value: time.Second, Usage: "Budget for starting more GC calls per tick; in-flight calls cannot be interrupted"},
 		&cli.DurationFlag{Name: "delivery-delay", Usage: "Local sink delay per batch (ignored for Kafka)"},
 		&cli.DurationFlag{Name: "outage", Usage: "Local sink returns retryable errors for this long after intake starts"},
 		&cli.IntFlag{Name: "fail-every", Usage: "Local sink fails every Nth message on its first attempt; 0 disables"},
@@ -54,21 +60,24 @@ func newBenchmarkCommand() *cli.Command {
 }
 
 type benchmarkConfig struct {
-	Processor        badgerbox.BatchProcessorOptions `json:"processor"`
-	Maintenance      maintenance.Options             `json:"maintenance"`
-	Messages         int                             `json:"messages"`
-	PayloadBytes     int                             `json:"payload_bytes"`
-	Rate             float64                         `json:"offered_messages_per_second"`
-	EnqueueWorkers   int                             `json:"enqueue_workers"`
-	ProcessorWorkers int                             `json:"processor_workers"`
-	ClaimBatchSize   int                             `json:"claim_batch_size"`
-	Transport        string                          `json:"transport"`
-	Timeout          string                          `json:"timeout"`
-	SampleInterval   string                          `json:"sample_interval"`
-	DeliveryDelay    string                          `json:"delivery_delay"`
-	Outage           string                          `json:"outage"`
-	FailEvery        int                             `json:"fail_every"`
-	Badger           any                             `json:"badger"`
+	Processor         badgerbox.BatchProcessorOptions `json:"processor"`
+	Maintenance       maintenance.Options             `json:"maintenance"`
+	Messages          int                             `json:"messages"`
+	PayloadBytes      int                             `json:"payload_bytes"`
+	Rate              float64                         `json:"offered_messages_per_second"`
+	EnqueueWorkers    int                             `json:"enqueue_workers"`
+	ProcessorWorkers  int                             `json:"processor_workers"`
+	ClaimBatchSize    int                             `json:"claim_batch_size"`
+	Transport         string                          `json:"transport"`
+	Timeout           string                          `json:"timeout"`
+	SampleInterval    string                          `json:"sample_interval"`
+	TimelineInterval  string                          `json:"timeline_interval"`
+	TimelineMaxPoints int                             `json:"timeline_max_points"`
+	ObserveAfterDrain string                          `json:"observe_after_drain"`
+	DeliveryDelay     string                          `json:"delivery_delay"`
+	Outage            string                          `json:"outage"`
+	FailEvery         int                             `json:"fail_every"`
+	Badger            any                             `json:"badger"`
 }
 type benchmarkReport struct {
 	SchemaVersion       int                     `json:"schema_version"`
@@ -92,9 +101,11 @@ type benchmarkReport struct {
 	EnqueueLatency      latencySummary          `json:"enqueue_latency_seconds"`
 	DeliveryLatency     latencySummary          `json:"delivery_latency_seconds"`
 	Resources           benchmarkResources      `json:"resources"`
+	Timeline            benchmarkTimelineReport `json:"resource_timeline"`
 	Queue               badgerbox.QueueSnapshot `json:"final_queue"`
 	Audit               *badgerbox.AuditReport  `json:"final_audit,omitempty"`
 	Metrics             map[string]float64      `json:"metric_totals"`
+	MetricSeries        []benchmarkMetricSeries `json:"metric_series"`
 }
 
 func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
@@ -107,10 +118,20 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	if rate < 0 || math.IsNaN(rate) || math.IsInf(rate, 0) || cmd.Int("fail-every") < 0 || cmd.Duration("delivery-delay") < 0 || cmd.Duration("outage") < 0 {
 		return errors.New("rate, fail-every, delivery-delay and outage must be finite and nonnegative")
 	}
-	for _, name := range []string{"timeout", "sample-interval", "poll-interval", "lease-duration", "publish-timeout", "retry-base-delay", "retry-max-delay", "badger-gc-interval"} {
+	for _, name := range []string{"timeout", "sample-interval", "timeline-interval", "poll-interval", "lease-duration", "publish-timeout", "retry-base-delay", "retry-max-delay", "badger-gc-max-duration"} {
 		if cmd.Duration(name) <= 0 {
 			return fmt.Errorf("%s must be positive", name)
 		}
+	}
+	if cmd.Duration("timeline-interval") < cmd.Duration("sample-interval") || cmd.Int("timeline-max-points") < 4 || cmd.Int("timeline-max-points") > 3600 {
+		return errors.New("timeline-interval must be at least sample-interval; timeline-max-points must be between 4 and 3600")
+	}
+	if cmd.Duration("observe-after-drain") < 0 || cmd.Duration("badger-gc-interval") < 0 || cmd.Int("badger-gc-max-runs") < 1 {
+		return errors.New("observe-after-drain and badger-gc-interval must be nonnegative; badger-gc-max-runs must be positive")
+	}
+	ratio := cmd.Float64("badger-gc-discard-ratio")
+	if !(ratio > 0 && ratio < 1) {
+		return errors.New("badger-gc-discard-ratio must be strictly between zero and one")
 	}
 	if rate > 0 && float64(count-1)/rate >= float64(math.MaxInt64)/float64(time.Second) {
 		return errors.New("offered schedule exceeds maximum supported duration; increase rate or reduce messages")
@@ -142,12 +163,16 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		return err
 	}
 	opts = opts.WithDir(path).WithValueDir(path)
-	report := benchmarkReport{SchemaVersion: 1, StartedAt: time.Now().UTC(), DBPath: path, Environment: map[string]any{"go_version": runtime.Version(), "goos": runtime.GOOS, "goarch": runtime.GOARCH, "logical_cpus": runtime.NumCPU(), "gomaxprocs": runtime.GOMAXPROCS(0), "gomemlimit_env": os.Getenv("GOMEMLIMIT"), "gogc_env": os.Getenv("GOGC")}}
+	report := benchmarkReport{SchemaVersion: 2, StartedAt: time.Now().UTC(), DBPath: path, Environment: map[string]any{"go_version": runtime.Version(), "goos": runtime.GOOS, "goarch": runtime.GOARCH, "logical_cpus": runtime.NumCPU(), "gomaxprocs": runtime.GOMAXPROCS(0), "gomemlimit_env": os.Getenv("GOMEMLIMIT"), "gogc_env": os.Getenv("GOGC")}}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		report.Environment["build_settings"] = info.Settings
 		report.Environment["dependencies"] = info.Deps
 	}
 	report.Config = benchmarkConfig{Messages: count, PayloadBytes: size, Rate: rate, EnqueueWorkers: workers, ProcessorWorkers: concurrency, ClaimBatchSize: batch, Transport: "local-verified-sink", Timeout: cmd.Duration("timeout").String(), SampleInterval: cmd.Duration("sample-interval").String(), DeliveryDelay: cmd.Duration("delivery-delay").String(), Outage: cmd.Duration("outage").String(), FailEvery: cmd.Int("fail-every"), Badger: opts}
+	report.Config.TimelineInterval = cmd.Duration("timeline-interval").String()
+	report.Config.TimelineMaxPoints = cmd.Int("timeline-max-points")
+	report.Config.ObserveAfterDrain = cmd.Duration("observe-after-drain").String()
+	report.Config.Maintenance = maintenance.Options{FlattenOnStartup: cmd.Bool("badger-compact-on-startup"), ValueLogGCInterval: cmd.Duration("badger-gc-interval"), ValueLogGCDiscardRatio: ratio, ValueLogGCMaxRuns: cmd.Int("badger-gc-max-runs"), ValueLogGCMaxDuration: cmd.Duration("badger-gc-max-duration")}
 	verificationComplete := false
 	defer finalizeBenchmarkReport(cmd, &report, &verificationComplete, &resultErr)
 	signalCtx, stopSignals := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
@@ -157,7 +182,7 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	defer func() { resultErr = errors.Join(resultErr, provider.Shutdown(context.Background())) }()
-	service, err := runner.Open(runCtx, runner.Options{Badger: opts, Telemetry: telemetry.Options{MeterProvider: provider, PollInterval: time.Second}, Maintenance: maintenance.Options{FlattenOnStartup: cmd.Bool("badger-compact-on-startup"), ValueLogGCInterval: cmd.Duration("badger-gc-interval"), ValueLogGCDiscardRatio: demo.DefaultBadgerGCDiscardRatio}})
+	service, err := runner.Open(runCtx, runner.Options{Badger: opts, Telemetry: telemetry.Options{MeterProvider: provider, PollInterval: time.Second}, Maintenance: report.Config.Maintenance})
 	if err != nil {
 		return err
 	}
@@ -236,7 +261,6 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	}
 	delivery = demo.NewBatchProcessFunc(benchmarkBatchPublisher{fn: delivery}, cmd.Duration("publish-timeout"), nil)
 	report.Config.Processor = badgerbox.BatchProcessorOptions{ClaimBatchSize: batch, ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: concurrency, PollInterval: cmd.Duration("poll-interval"), LeaseDuration: cmd.Duration("lease-duration"), RetryBaseDelay: cmd.Duration("retry-base-delay"), RetryMaxDelay: cmd.Duration("retry-max-delay"), MaxAttempts: 36, RequeuePageSize: 64, SettlementTimeout: 10 * time.Second}}
-	report.Config.Maintenance = maintenance.Options{FlattenOnStartup: cmd.Bool("badger-compact-on-startup"), ValueLogGCInterval: cmd.Duration("badger-gc-interval"), ValueLogGCDiscardRatio: demo.DefaultBadgerGCDiscardRatio}
 	store, err := runner.Register(service, badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{}, runner.QueueOptions{Store: badgerbox.Options{Namespace: "benchmark"}, Processor: report.Config.Processor}, delivery)
 	if err != nil {
 		return err
@@ -253,6 +277,7 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		var metrics metricdata.ResourceMetrics
 		if err := reader.Collect(finalCtx, &metrics); err == nil {
 			report.Metrics = benchmarkMetricTotals(metrics)
+			report.MetricSeries = benchmarkMetricSeriesValues(metrics)
 		} else {
 			resultErr = errors.Join(resultErr, err)
 		}
@@ -260,22 +285,62 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	// Include verifier and consumer overhead in the measured process. Database open
 	// and close are excluded from throughput; sampled RSS includes their allocations.
 	sampler := newBenchmarkSampler(path)
+	timeline := newBenchmarkTimeline(cmd.Duration("timeline-interval"), cmd.Int("timeline-max-points"))
+	var observing atomic.Bool
+	captureTimeline := func(final bool) {
+		point := sampler.current
+		point.Phase = "delivery"
+		if observing.Load() {
+			point.Phase = "observe_after_drain"
+		}
+		if final {
+			point.Phase = "stopped"
+		}
+		point.Accepted = accepted.Load()
+		verifier.mu.Lock()
+		point.UniqueDelivered = verifier.unique
+		verifier.mu.Unlock()
+		metricCtx, cancelMetrics := context.WithTimeout(context.Background(), time.Second)
+		defer cancelMetrics()
+		var metrics metricdata.ResourceMetrics
+		if err := reader.Collect(metricCtx, &metrics); err != nil {
+			sampler.recordError(err)
+			point.MeasurementsComplete = false
+		} else {
+			addBenchmarkMaintenance(&point, benchmarkMetricSeriesValues(metrics))
+		}
+		timeline.add(point, final)
+	}
+	captureTimeline(false)
 	sampleDone := make(chan struct{})
 	sampleStop := make(chan struct{})
 	go func() {
 		defer close(sampleDone)
 		ticker := time.NewTicker(cmd.Duration("sample-interval"))
 		defer ticker.Stop()
+		lastTimeline := time.Now()
 		for {
 			select {
 			case <-ticker.C:
 				sampler.sample()
+				if time.Since(lastTimeline) >= cmd.Duration("timeline-interval") {
+					captureTimeline(false)
+					lastTimeline = time.Now()
+				}
 			case <-sampleStop:
 				return
 			}
 		}
 	}()
-	defer func() { close(sampleStop); <-sampleDone; report.Resources = sampler.finish() }()
+	defer func() {
+		close(sampleStop)
+		<-sampleDone
+		report.Resources = sampler.finish()
+		captureTimeline(true)
+		report.Resources.MeasurementsComplete = len(sampler.report.MeasurementErrors) == 0
+		report.Resources.MeasurementErrors = sampler.report.MeasurementErrors
+		report.Timeline = timeline.report
+	}()
 	started = time.Now()
 	if err = service.Start(runCtx); err != nil {
 		return err
@@ -448,6 +513,25 @@ func runBenchmark(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		report.DeliverySeconds = time.Since(started).Seconds()
 		report.DeliveryPerSecond = float64(unique) / report.DeliverySeconds
 		report.PayloadMiBPerSecond = float64(unique) * float64(size) / (1 << 20) / report.DeliverySeconds
+		if duration := cmd.Duration("observe-after-drain"); duration > 0 {
+			observing.Store(true)
+			timer := time.NewTimer(duration)
+			select {
+			case <-timer.C:
+			case err := <-errs:
+				timer.Stop()
+				return err
+			case err := <-service.Errors():
+				timer.Stop()
+				if err == nil {
+					err = errors.New("runner stopped during maintenance observation")
+				}
+				return err
+			case <-runCtx.Done():
+				timer.Stop()
+				return runCtx.Err()
+			}
+		}
 		audit, err := store.Audit(runCtx, badgerbox.AuditOptions{})
 		report.Audit = &audit
 		if err != nil {

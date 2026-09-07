@@ -70,6 +70,10 @@ func failureKind(err error) string {
 	switch {
 	case err == nil:
 		return ""
+	case errors.Is(err, ErrClaimTooLarge):
+		return "claim_bytes"
+	case errors.Is(err, ErrCodecDecode):
+		return "codec"
 	case IsPermanent(err):
 		return "permanent"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
@@ -99,4 +103,15 @@ func positiveDuration(value time.Duration) time.Duration {
 
 func contextWithOTelInstrumentation(ctx context.Context, o *otelInstrumentation) context.Context {
 	return instrumentation.WithDeliveryObserver(ctx, o)
+}
+
+func (s *Store[M, D]) admissionSnapshot(ctx context.Context) (instrumentation.AdmissionSnapshot, error) {
+	usage, err := s.Usage(ctx)
+	if err != nil {
+		return instrumentation.AdmissionSnapshot{}, err
+	}
+	return instrumentation.AdmissionSnapshot{
+		RetainedMessages: usage.RetainedMessages, RetainedBytes: usage.RetainedBytes,
+		MaxRetainedMessages: usage.Limits.MaxRetainedMessages, MaxRetainedBytes: usage.Limits.MaxRetainedBytes,
+	}, nil
 }
