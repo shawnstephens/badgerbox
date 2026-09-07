@@ -137,6 +137,9 @@ func (c *monotonicCounters) observe(level string, raw int64) int64 {
 // exported by level. Only one BadgerMetrics collector may be active in a
 // process because Badger's compaction values are process-global. Close the
 // collector before creating another one or closing the database.
+// The database must be disk-backed and opened with MetricsEnabled=true;
+// unsupported modes return ErrBadgerMetricsInMemory or ErrBadgerMetricsDisabled
+// instead of exporting missing or stale process-global expvar values.
 func NewBadgerMetrics(db *badger.DB, opts BadgerMetricsOptions) (*BadgerMetrics, error) {
 	if db == nil {
 		return nil, ErrNilDB
@@ -154,6 +157,12 @@ func newBadgerMetricsWithSources(
 ) (*BadgerMetrics, error) {
 	if opts.MeterProvider == nil {
 		return nil, telemetryErrorf("Badger metrics meter provider is nil")
+	}
+	if badgerOpts.InMemory {
+		return nil, ErrBadgerMetricsInMemory
+	}
+	if !badgerOpts.MetricsEnabled {
+		return nil, ErrBadgerMetricsDisabled
 	}
 	releaseCollector, err := processBadgerMetricsCollectors.acquire()
 	if err != nil {

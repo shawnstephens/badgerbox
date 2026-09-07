@@ -3,6 +3,7 @@ package instrumentation
 import (
 	"context"
 
+	"github.com/shawnstephens/badgerbox/internal/metricconfig"
 	"go.opentelemetry.io/otel/metric"
 	"time"
 )
@@ -17,13 +18,18 @@ func (o *Queue) InitExtras(m metric.Meter) error {
 		}
 		o.extraCounters[name] = v
 	}
-	for _, name := range []string{"process_batch_duration_seconds", "process_batch_size", "kafka_promise_duration_seconds", "snapshot_duration_seconds"} {
-		v, err := m.Float64Histogram("badgerbox_" + name)
+	for _, name := range []string{"process_batch_duration_seconds", "kafka_promise_duration_seconds", "snapshot_duration_seconds"} {
+		v, err := metricconfig.DurationHistogram(m, "badgerbox_"+name)
 		if err != nil {
 			return err
 		}
 		o.extraDurations[name] = v
 	}
+	batchSize, err := m.Float64Histogram("badgerbox_process_batch_size")
+	if err != nil {
+		return err
+	}
+	o.extraDurations["process_batch_size"] = batchSize
 	return nil
 }
 func (o *Queue) Count(ctx context.Context, name string, n int) {
