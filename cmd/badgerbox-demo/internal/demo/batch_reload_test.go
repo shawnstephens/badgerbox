@@ -35,7 +35,7 @@ func (c *reloadBatchClient) Close() error {
 func TestBatchReloadOnEveryFailureExit(t *testing.T) {
 	failure := errors.New("publish failed")
 	reloadFailure := errors.New("state unreadable")
-	for _, mode := range []string{"timeout", "immediate", "callback", "partial timeout", "shutdown", "unchanged", "reload failure", "success"} {
+	for _, mode := range []string{"timeout", "immediate", "partial immediate", "callback", "partial timeout", "shutdown", "unchanged", "reload failure", "success"} {
 		t.Run(mode, func(t *testing.T) {
 			parent, stop := context.WithCancel(t.Context())
 			defer stop()
@@ -47,6 +47,10 @@ func TestBatchReloadOnEveryFailureExit(t *testing.T) {
 			old := &reloadBatchClient{}
 			old.deliver = func(ctx context.Context, m []badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination], out chan<- badgerbox.BatchProcessResult) error {
 				publishCtx = ctx
+				if mode == "partial immediate" {
+					out <- badgerbox.BatchProcessResult{ID: m[0].ID}
+					return failure
+				}
 				if mode == "immediate" {
 					return failure
 				}
@@ -139,7 +143,7 @@ func TestBatchReloadOnEveryFailureExit(t *testing.T) {
 			if mode == "shutdown" {
 				wantErr = context.Canceled
 			}
-			if mode == "immediate" {
+			if mode == "immediate" || mode == "partial immediate" {
 				wantErr = failure
 			}
 			if !errors.Is(err, wantErr) {
@@ -158,6 +162,15 @@ func TestBatchReloadOnEveryFailureExit(t *testing.T) {
 			}
 			if mode == "reload failure" && !strings.Contains(logs.String(), reloadFailure.Error()) {
 				t.Fatal("reload failure not logged")
+			}
+			if mode == "partial immediate" {
+				if len(results) != 1 {
+					t.Fatal("buffered success lost after delivery returned an error")
+				}
+				result := <-results
+				if result.ID != 1 || result.Err != nil {
+					t.Fatal(result)
+				}
 			}
 			if mode == "callback" {
 				if len(results) != 2 {

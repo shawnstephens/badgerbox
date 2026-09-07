@@ -32,9 +32,44 @@ func NewBatchProcessFunc(p BatchPublisher, timeout time.Duration, logger *Logger
 				}
 			}
 		}()
+		forward := func(result badgerbox.BatchProcessResult) error {
+			if result.Err != nil {
+				failed = true
+				if logger != nil {
+					logger.Printf("warning", "event=publish_failed msg_id=%s err=%q", result.ID, result.Err)
+				}
+			} else if logger != nil {
+				logger.Printf("publish", "event=success msg_id=%s", result.ID)
+			}
+			// Preserve known results when the worker's buffer has room, even when
+			// publishing just canceled. Otherwise forwarding must honor cancellation.
+			select {
+			case results <- result:
+				return nil
+			default:
+			}
+			select {
+			case results <- result:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 		// One slot per callback allows every late result to complete after timeout.
 		incoming := make(chan badgerbox.BatchProcessResult, len(messages))
 		if err := deliver(ctx, messages, incoming); err != nil {
+			cancel()
+			// The publisher may have produced outcomes before returning an error.
+			// Drain only the initially buffered results, retaining the original error.
+			for range len(incoming) {
+				result, ok := <-incoming
+				if !ok {
+					break
+				}
+				if forward(result) != nil {
+					break
+				}
+			}
 			return err
 		}
 		for range messages {
@@ -46,18 +81,8 @@ func NewBatchProcessFunc(p BatchPublisher, timeout time.Duration, logger *Logger
 				if !ok {
 					return badgerbox.ErrBatchResultMissing
 				}
-				if result.Err != nil {
-					failed = true
-					if logger != nil {
-						logger.Printf("warning", "event=publish_failed msg_id=%s err=%q", result.ID, result.Err)
-					}
-				} else if logger != nil {
-					logger.Printf("publish", "event=success msg_id=%s", result.ID)
-				}
-				select {
-				case results <- result:
-				case <-ctx.Done():
-					return ctx.Err()
+				if err := forward(result); err != nil {
+					return err
 				}
 			case <-ctx.Done():
 				return ctx.Err()
