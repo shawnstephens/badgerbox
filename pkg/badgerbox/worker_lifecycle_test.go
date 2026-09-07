@@ -19,7 +19,7 @@ func TestBatchClaimsBoundedByWorkers(t *testing.T) {
 		started <- struct{}{}
 		<-ctx.Done()
 		return ctx.Err()
-	}, ProcessorOptions{Concurrency: 2, ClaimBatchSize: 2, LeaseDuration: time.Minute})
+	}, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{Concurrency: 2, LeaseDuration: time.Minute}, ClaimBatchSize: 2})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
@@ -65,7 +65,7 @@ func TestReleaseUndispatchedClaimPreservesAttemptBudget(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	p, _ := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error { return nil }, ProcessorOptions{})
+	p, _ := NewBatchProcessor(s, func(context.Context, []Message[string, string], chan<- BatchProcessResult) error { return nil }, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{}})
 	if err := p.releaseClaimedBatch(ctx, claimed); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestRunJoinsCallbackBeforeReturning(t *testing.T) {
 		close(started)
 		<-release
 		return ctx.Err()
-	}, ProcessorOptions{ClaimBatchSize: 1})
+	}, BatchProcessorOptions{ProcessorOptions: ProcessorOptions{}, ClaimBatchSize: 1})
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- p.Run(ctx) }()

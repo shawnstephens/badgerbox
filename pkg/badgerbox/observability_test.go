@@ -263,8 +263,8 @@ func TestObservabilityLifecycleEmitsMetricsAndTraces(t *testing.T) {
 			return nil
 		}
 	}, ProcessorOptions{
-		Concurrency:    1,
-		ClaimBatchSize: 1,
+		Concurrency: 1,
+
 		PollInterval:   5 * time.Millisecond,
 		LeaseDuration:  50 * time.Millisecond,
 		RetryBaseDelay: 5 * time.Millisecond,

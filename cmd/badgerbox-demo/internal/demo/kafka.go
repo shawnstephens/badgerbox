@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	badgerkafka "github.com/shawnstephens/badgerbox/pkg/kafka"
 	"github.com/testcontainers/testcontainers-go/modules/kafka"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -29,7 +30,7 @@ func StartKafka(ctx context.Context, image, clusterID string) (*kafka.KafkaConta
 
 func NewKafkaClient(brokers []string, opts ...kgo.Opt) (*kgo.Client, error) {
 	allOpts := append([]kgo.Opt{kgo.SeedBrokers(brokers...)}, opts...)
-	return kgo.NewClient(allOpts...)
+	return badgerkafka.NewClient(allOpts...)
 }
 
 func CreateTopic(ctx context.Context, client *kgo.Client, topic string, partitions int32) error {

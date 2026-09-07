@@ -27,13 +27,7 @@ func (s *stubProducer) ProduceSync(_ context.Context, records ...*kgo.Record) kg
 func TestNewProcessFuncReturnsErrorForNilClient(t *testing.T) {
 	t.Parallel()
 
-	fn := NewProcessFunc(nil, Options{})
-	err := fn(context.Background(), badgerbox.Message[KafkaMessage, KafkaDestination]{
-		Payload: KafkaMessage{Value: []byte("value")},
-		Destination: KafkaDestination{
-			Topic: "topic",
-		},
-	})
+	_, err := NewProcessFunc(nil, Options{})
 	if !errors.Is(err, ErrNilClient) {
 		t.Fatalf("expected ErrNilClient, got %v", err)
 	}
@@ -42,13 +36,16 @@ func TestNewProcessFuncReturnsErrorForNilClient(t *testing.T) {
 func TestNewProcessFuncRejectsMissingTopic(t *testing.T) {
 	t.Parallel()
 
-	client, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
+	client, err := NewClient(kgo.SeedBrokers("127.0.0.1:1"))
 	if err != nil {
 		t.Fatalf("new kafka client: %v", err)
 	}
 	defer client.Close()
 
-	fn := NewProcessFunc(client, Options{})
+	fn, err := NewProcessFunc(client, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = fn(context.Background(), badgerbox.Message[KafkaMessage, KafkaDestination]{
 		Payload: KafkaMessage{Value: []byte("value")},
 	})
@@ -70,7 +67,7 @@ func TestNewProcessFuncWithProducerProducesRecord(t *testing.T) {
 	sourceHeaderB := []byte("b-value")
 	producer := &stubProducer{}
 
-	fn := NewProcessFuncWithProducer(producer, Options{})
+	fn := newProcessFunc(producer, Options{})
 	err := fn(context.Background(), badgerbox.Message[KafkaMessage, KafkaDestination]{
 		Payload: KafkaMessage{
 			Key:   sourceKey,
@@ -138,7 +135,7 @@ func TestNewProcessFuncWithProducerPropagatesProduceError(t *testing.T) {
 	produceErr := errors.New("produce failed")
 	producer := &stubProducer{err: produceErr}
 
-	fn := NewProcessFuncWithProducer(producer, Options{})
+	fn := newProcessFunc(producer, Options{})
 	err := fn(context.Background(), badgerbox.Message[KafkaMessage, KafkaDestination]{
 		Payload: KafkaMessage{Value: []byte("value")},
 		Destination: KafkaDestination{
@@ -154,7 +151,7 @@ func TestNewProcessFuncWithProducerRejectsMissingTopic(t *testing.T) {
 	t.Parallel()
 
 	producer := &stubProducer{}
-	fn := NewProcessFuncWithProducer(producer, Options{})
+	fn := newProcessFunc(producer, Options{})
 
 	err := fn(context.Background(), badgerbox.Message[KafkaMessage, KafkaDestination]{
 		Payload: KafkaMessage{Value: []byte("value")},
