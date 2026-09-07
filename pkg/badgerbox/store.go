@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dgraph-io/badger/v4"
 )
@@ -160,6 +161,8 @@ func (s *Store[M, D]) RecordObservabilitySnapshot(ctx context.Context) error {
 	return s.obs.recordSnapshot(ctx)
 }
 
+// Enqueue returns ErrMessageTooLarge before queue writes when the encoded record
+// cannot fit its later lifecycle transitions under the current Badger options.
 func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -196,6 +199,8 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	return result.id, nil
 }
 
+// EnqueueTx applies the same lifecycle size budget as Enqueue before adding any
+// queue entries to txn. The caller owns the transaction and its final commit.
 func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -362,6 +367,9 @@ func (s *Store[M, D]) RequeueDeadLetter(ctx context.Context, id MessageID, at ti
 					return err
 				}
 
+				if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
+					return err
+				}
 				if err := txn.Set(s.keys.messageKey(record.ID), encodedRecord); err != nil {
 					return err
 				}
@@ -438,6 +446,9 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 		return result, err
 	}
 
+	if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
+		return result, err
+	}
 	if err := txn.Set(s.keys.messageKey(id), encodedRecord); err != nil {
 		return result, err
 	}
@@ -457,117 +468,8 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 }
 
 func (s *Store[M, D]) claimReadyBatch(ctx context.Context, now time.Time, batchSize int, leaseDuration time.Duration, maxAttempts int) ([]claimedRecord[M, D], error) {
-	claimed := make([]claimedRecord[M, D], 0, batchSize)
-	now = now.UTC()
-
-	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
-	}, func() error {
-		claimed = claimed[:0]
-		return s.db.Update(func(txn *badger.Txn) error {
-			opts := badger.DefaultIteratorOptions
-			opts.PrefetchValues = false
-			it := txn.NewIterator(opts)
-			defer it.Close()
-
-			for it.Seek(s.keys.readyPrefix); it.ValidForPrefix(s.keys.readyPrefix) && len(claimed) < batchSize; it.Next() {
-				if err := ctxErr(ctx); err != nil {
-					return err
-				}
-
-				key := it.Item().KeyCopy(nil)
-				availableAt, id, err := parseTimeAndIDKey(s.keys.readyPrefix, key)
-				if err != nil {
-					return err
-				}
-				if availableAt.After(now) {
-					break
-				}
-
-				record, err := s.loadRecord(txn, id)
-				if errors.Is(err, badger.ErrKeyNotFound) {
-					if err := txn.Delete(key); err != nil {
-						return err
-					}
-					continue
-				}
-				if err != nil {
-					return err
-				}
-
-				if record.Status != recordStatusPending {
-					if err := txn.Delete(key); err != nil {
-						return err
-					}
-					continue
-				}
-				if record.AvailableAtUnix != availableAt.UnixNano() {
-					if err := txn.Delete(key); err != nil {
-						return err
-					}
-					if err := txn.Set(s.keys.readyKey(time.Unix(0, record.AvailableAtUnix).UTC(), id), emptyValue); err != nil {
-						return err
-					}
-					continue
-				}
-
-				record.Attempt++
-				record.MaxAttempts = maxAttempts
-				record.Status = recordStatusProcessing
-				record.LeaseUntilUnix = now.Add(leaseDuration).UnixNano()
-
-				token, err := s.runtime.NewLeaseToken()
-				if err != nil {
-					return err
-				}
-				record.LeaseToken = token
-
-				if err := s.storeRecord(txn, record); err != nil {
-					return err
-				}
-				if err := txn.Delete(key); err != nil {
-					return err
-				}
-				if err := txn.Set(s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), record.ID), []byte(token)); err != nil {
-					return err
-				}
-
-				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-				if err := txn.Delete(s.keys.readyCreatedKey(createdAt, record.ID)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return err
-				}
-				if err := txn.Set(s.keys.processingCreatedKey(createdAt, record.ID), emptyValue); err != nil {
-					return err
-				}
-
-				message, err := s.recordToMessage(record)
-				if err != nil {
-					return err
-				}
-
-				claimed = append(claimed, claimedRecord[M, D]{
-					Message:      message,
-					LeaseToken:   token,
-					TraceCarrier: cloneStringMap(record.TraceCarrier),
-				})
-			}
-
-			return nil
-		})
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	if len(claimed) > 0 {
-		s.obs.recordClaimBatch(ctx, len(claimed))
-		for _, record := range claimed {
-			s.obs.recordClaimTiming(ctx, positiveDuration(now.Sub(record.Message.AvailableAt)), positiveDuration(now.Sub(record.Message.CreatedAt)))
-		}
-	}
-
-	return claimed, nil
+	claimed, _, err := s.claimReadyBatchWithEffectiveLimit(ctx, now, batchSize, leaseDuration, maxAttempts)
+	return claimed, err
 }
 
 func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken string) error {
@@ -627,7 +529,7 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 				dlq := storedDeadLetter{
 					Record:    record,
 					FailedAt:  now.UnixNano(),
-					Error:     processErr.Error(),
+					Error:     storedFailureText(processErr),
 					Permanent: IsPermanent(processErr),
 				}
 				encodedDeadLetter, err := json.Marshal(dlq)
@@ -689,93 +591,32 @@ func (s *Store[M, D]) failProcessing(ctx context.Context, id MessageID, leaseTok
 	return result, nil
 }
 
-func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time) (int, error) {
+func (s *Store[M, D]) requeueExpired(ctx context.Context, now time.Time, pageSizes ...int) (int, error) {
+	pageSize := defaultRequeuePageSize
+	if len(pageSizes) > 0 {
+		pageSize = pageSizes[0]
+	}
 	var requeued int
 	now = now.UTC()
-
-	err := withConflictRetryObserved(ctx, s.runtime, func() {
-		s.obs.recordConflictRetry(ctx)
-	}, func() error {
-		requeued = 0
-		return s.db.Update(func(txn *badger.Txn) error {
-			opts := badger.DefaultIteratorOptions
-			opts.PrefetchValues = false
-			it := txn.NewIterator(opts)
-			defer it.Close()
-
-			for it.Seek(s.keys.processingPrefix); it.ValidForPrefix(s.keys.processingPrefix); it.Next() {
-				if err := ctxErr(ctx); err != nil {
-					return err
-				}
-
-				key := it.Item().KeyCopy(nil)
-				leaseUntil, id, err := parseTimeAndIDKey(s.keys.processingPrefix, key)
-				if err != nil {
-					return err
-				}
-				if leaseUntil.After(now) {
-					break
-				}
-
-				tokenBytes, err := it.Item().ValueCopy(nil)
-				if err != nil {
-					return err
-				}
-
-				record, err := s.loadRecord(txn, id)
-				if errors.Is(err, badger.ErrKeyNotFound) {
-					if err := txn.Delete(key); err != nil {
-						return err
-					}
-					continue
-				}
-				if err != nil {
-					return err
-				}
-
-				if record.Status != recordStatusProcessing || record.LeaseToken != string(tokenBytes) || record.LeaseUntilUnix != leaseUntil.UnixNano() {
-					if err := txn.Delete(key); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-						return err
-					}
-					continue
-				}
-
-				record.Status = recordStatusPending
-				record.LeaseToken = ""
-				record.LeaseUntilUnix = 0
-				record.AvailableAtUnix = now.UnixNano()
-
-				if err := s.storeRecord(txn, record); err != nil {
-					return err
-				}
-				if err := txn.Delete(key); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return err
-				}
-				if err := txn.Set(s.keys.readyKey(now, id), emptyValue); err != nil {
-					return err
-				}
-
-				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
-				if err := txn.Delete(s.keys.processingCreatedKey(createdAt, id)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return err
-				}
-				if err := txn.Set(s.keys.readyCreatedKey(createdAt, id), emptyValue); err != nil {
-					return err
-				}
-
-				requeued++
-			}
-
-			return nil
-		})
-	})
+	candidates, err := s.collectExpiredProcessingCandidates(ctx, now, pageSize)
 	if err != nil {
 		return 0, err
 	}
+	defer func() {
+		if requeued > 0 {
+			s.obs.recordExpiredLeaseRequeue(ctx, requeued)
+			s.notifyListeners()
+		}
+	}()
 
-	if requeued > 0 {
-		s.obs.recordExpiredLeaseRequeue(ctx, requeued)
-		s.notifyListeners()
+	for _, candidate := range candidates {
+		candidateRequeued, err := s.requeueExpiredCandidate(ctx, now, candidate)
+		if err != nil {
+			return requeued, err
+		}
+		if candidateRequeued {
+			requeued++
+		}
 	}
 	return requeued, nil
 }
@@ -916,4 +757,252 @@ func ctxErr(ctx context.Context) error {
 		return ErrNilContext
 	}
 	return ctx.Err()
+}
+
+func (s *Store[M, D]) claimReadyBatchWithEffectiveLimit(ctx context.Context, now time.Time, batchSize int, leaseDuration time.Duration, maxAttempts int) ([]claimedRecord[M, D], int, error) {
+	if batchSize < 0 {
+		return nil, 0, boxErrorf("claim batch size must be non-negative: %d", batchSize)
+	}
+	if leaseDuration <= 0 {
+		leaseDuration = defaultLeaseDuration
+	}
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxAttempts
+	}
+
+	claimed := make([]claimedRecord[M, D], 0, batchSize)
+	effectiveBatchSize := batchSize
+	now = now.UTC()
+
+	for {
+		err := withConflictRetryObserved(ctx, s.runtime, func() {
+			s.obs.recordConflictRetry(ctx)
+		}, func() error {
+			claimed = claimed[:0]
+			return s.db.Update(func(txn *badger.Txn) error {
+				opts := badger.DefaultIteratorOptions
+				opts.PrefetchValues = false
+				it := txn.NewIterator(opts)
+				defer it.Close()
+				examined := 0
+				for it.Seek(s.keys.readyPrefix); it.ValidForPrefix(s.keys.readyPrefix) && examined < effectiveBatchSize; it.Next() {
+					if err := ctxErr(ctx); err != nil {
+						return err
+					}
+
+					key := it.Item().KeyCopy(nil)
+					availableAt, id, err := parseTimeAndIDKey(s.keys.readyPrefix, key)
+					if err != nil {
+						return err
+					}
+					if availableAt.After(now) {
+						break
+					}
+					examined++
+
+					record, err := s.loadRecord(txn, id)
+					if errors.Is(err, badger.ErrKeyNotFound) {
+						deleteErr := txn.Delete(key)
+						if deleteErr != nil {
+							return deleteErr
+						}
+						continue
+					}
+					if err != nil {
+						return err
+					}
+
+					if record.Status != recordStatusPending {
+						deleteErr := txn.Delete(key)
+						if deleteErr != nil {
+							return deleteErr
+						}
+						continue
+					}
+					if record.AvailableAtUnix != availableAt.UnixNano() {
+						deleteErr := txn.Delete(key)
+						if deleteErr != nil {
+							return deleteErr
+						}
+						setErr := txn.Set(s.keys.readyKey(time.Unix(0, record.AvailableAtUnix).UTC(), id), emptyValue)
+						if setErr != nil {
+							return setErr
+						}
+						continue
+					}
+
+					record.Attempt++
+					record.MaxAttempts = maxAttempts
+					record.Status = recordStatusProcessing
+					record.LeaseUntilUnix = now.Add(leaseDuration).UnixNano()
+
+					token, err := s.runtime.NewLeaseToken()
+					if err != nil {
+						return err
+					}
+					if len(token) == 0 || len(token) > maxLeaseTokenBytes {
+						return boxErrorf("runtime lease token must contain 1 to %d bytes", maxLeaseTokenBytes)
+					}
+					if !utf8.ValidString(token) {
+						return boxErrorf("runtime lease token must be valid UTF-8")
+					}
+					record.LeaseToken = token
+
+					storeErr := s.storeRecord(txn, record)
+					if storeErr != nil {
+						return storeErr
+					}
+					deleteErr := txn.Delete(key)
+					if deleteErr != nil {
+						return deleteErr
+					}
+					setErr := txn.Set(s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), record.ID), []byte(token))
+					if setErr != nil {
+						return setErr
+					}
+					createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+					deleteErr = txn.Delete(s.keys.readyCreatedKey(createdAt, record.ID))
+					if deleteErr != nil && !errors.Is(deleteErr, badger.ErrKeyNotFound) {
+						return deleteErr
+					}
+					setErr = txn.Set(s.keys.processingCreatedKey(createdAt, record.ID), emptyValue)
+					if setErr != nil {
+						return setErr
+					}
+					message, err := s.recordToMessage(record)
+					if err != nil {
+						return err
+					}
+
+					claimed = append(claimed, claimedRecord[M, D]{
+						Message:      message,
+						LeaseToken:   token,
+						LeaseUntil:   time.Unix(0, record.LeaseUntilUnix).UTC(),
+						TraceCarrier: cloneStringMap(record.TraceCarrier),
+					})
+				}
+
+				return nil
+			})
+		})
+
+		if !errors.Is(err, badger.ErrTxnTooBig) {
+			if err != nil {
+				return nil, effectiveBatchSize, err
+			}
+			break
+		}
+
+		if effectiveBatchSize <= 1 {
+			s.obs.recordClaimTransactionTooBig(ctx, 0)
+			return nil, effectiveBatchSize, err
+		}
+		retryBatchSize := max(1, effectiveBatchSize/2)
+		s.obs.recordClaimTransactionTooBig(ctx, retryBatchSize)
+		effectiveBatchSize = retryBatchSize
+	}
+
+	if len(claimed) > 0 {
+		s.obs.recordClaimBatch(ctx, len(claimed))
+		for _, record := range claimed {
+			s.obs.recordClaimTiming(ctx, positiveDuration(now.Sub(record.Message.AvailableAt)), positiveDuration(now.Sub(record.Message.CreatedAt)))
+		}
+	}
+
+	return claimed, effectiveBatchSize, nil
+}
+func (s *Store[M, D]) collectExpiredProcessingCandidates(ctx context.Context, now time.Time, pageSize int) ([]expiredProcessingCandidate, error) {
+	if pageSize <= 0 {
+		pageSize = defaultRequeuePageSize
+	}
+	candidates := make([]expiredProcessingCandidate, 0, pageSize)
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(s.keys.processingPrefix); it.ValidForPrefix(s.keys.processingPrefix) && len(candidates) < pageSize; it.Next() {
+			if err := ctxErr(ctx); err != nil {
+				return err
+			}
+			key := it.Item().KeyCopy(nil)
+			leaseUntil, id, err := parseTimeAndIDKey(s.keys.processingPrefix, key)
+			if err != nil {
+				return err
+			}
+			if leaseUntil.After(now) {
+				break
+			}
+			candidates = append(candidates, expiredProcessingCandidate{
+				key:        key,
+				leaseUntil: leaseUntil,
+				id:         id,
+			})
+		}
+		return nil
+	})
+	return candidates, err
+}
+func (s *Store[M, D]) requeueExpiredCandidate(ctx context.Context, now time.Time, candidate expiredProcessingCandidate) (bool, error) {
+	var requeued bool
+	err := withConflictRetryObserved(ctx, s.runtime, func() {
+		s.obs.recordConflictRetry(ctx)
+	}, func() error {
+		requeued = false
+		return s.db.Update(func(txn *badger.Txn) error {
+			item, err := txn.Get(candidate.key)
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			tokenBytes, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+
+			record, err := s.loadRecord(txn, candidate.id)
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return txn.Delete(candidate.key)
+			}
+			if err != nil {
+				return err
+			}
+			if record.Status != recordStatusProcessing || record.LeaseToken != string(tokenBytes) || record.LeaseUntilUnix != candidate.leaseUntil.UnixNano() {
+				return txn.Delete(candidate.key)
+			}
+
+			record.Status = recordStatusPending
+			record.LeaseToken = ""
+			record.LeaseUntilUnix = 0
+			record.AvailableAtUnix = now.UnixNano()
+			if err := s.storeRecord(txn, record); err != nil {
+				return err
+			}
+			if err := txn.Delete(candidate.key); err != nil {
+				return err
+			}
+			if err := txn.Set(s.keys.readyKey(now, candidate.id), emptyValue); err != nil {
+				return err
+			}
+			createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
+			if err := txn.Delete(s.keys.processingCreatedKey(createdAt, candidate.id)); err != nil {
+				return err
+			}
+			if err := txn.Set(s.keys.readyCreatedKey(createdAt, candidate.id), emptyValue); err != nil {
+				return err
+			}
+			requeued = true
+			return nil
+		})
+	})
+	return requeued, err
+}
+
+type expiredProcessingCandidate struct {
+	key        []byte
+	leaseUntil time.Time
+	id         MessageID
 }

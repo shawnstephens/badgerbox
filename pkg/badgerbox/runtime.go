@@ -12,6 +12,7 @@ type Runtime interface {
 	Now() time.Time
 	Sleep(context.Context, time.Duration) error
 	NewTicker(time.Duration) Ticker
+	// NewLeaseToken returns a unique, nonempty UTF-8 token of at most 256 bytes.
 	NewLeaseToken() (string, error)
 }
 
