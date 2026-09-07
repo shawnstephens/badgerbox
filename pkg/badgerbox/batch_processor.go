@@ -114,7 +114,7 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 	start := p.store.runtime.Now().UTC()
 	defer func() {
 		duration := positiveDuration(p.store.runtime.Now().UTC().Sub(start))
-		p.store.obs.recordProcessBatch(ctx, len(work), duration)
+		p.store.obs.RecordProcessBatch(ctx, len(work), duration)
 	}()
 
 	if ctxErr(ctx) != nil || p.resultWaitDuration(work) <= 0 {
@@ -265,7 +265,7 @@ func (p *BatchProcessor[M, D]) drainAvailableBatchResults(ctx context.Context, r
 func (p *BatchProcessor[M, D]) settleBatchResult(ctx context.Context, result BatchProcessResult, pending map[MessageID]claimedRecord[M, D], started time.Time) error {
 	work, ok := pending[result.ID]
 	if !ok {
-		p.store.obs.recordProcessBatchResultInvalid(ctx, 1)
+		p.store.obs.RecordProcessBatchResultInvalid(ctx, 1)
 		return nil
 	}
 	delete(pending, result.ID)
@@ -289,7 +289,7 @@ func (p *BatchProcessor[M, D]) failPendingBatchResults(ctx context.Context, pend
 	settlementCtx, cancel := p.batchSettlementContext(ctx)
 	defer cancel()
 
-	p.store.obs.recordProcessBatchResultMissing(settlementCtx, len(pending))
+	p.store.obs.RecordProcessBatchResultMissing(settlementCtx, len(pending))
 	var settlementErrors []error
 	for id, record := range pending {
 		delete(pending, id)
@@ -348,14 +348,14 @@ func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, delivery *m
 
 	switch result.outcome {
 	case metricOutcomeSuccess:
-		p.store.obs.recordProcessSuccess(ctx, duration)
+		p.store.obs.RecordProcessSuccess(ctx, duration)
 	case metricOutcomeRetried:
-		p.store.obs.recordProcessRetried(ctx, processErr, duration)
-		p.store.obs.recordRetryScheduled(ctx, processErr, result.retryDelay)
+		p.store.obs.RecordProcessRetried(ctx, processErr, duration)
+		p.store.obs.RecordRetryScheduled(ctx, processErr, result.retryDelay)
 		span.AddEvent("retry_scheduled", oteltrace.WithAttributes(attribute.String("retry_delay", result.retryDelay.String())))
 	case metricOutcomeDeadLetter:
-		p.store.obs.recordProcessDeadLetter(ctx, processErr, duration)
-		p.store.obs.recordDeadLetter(ctx, processErr)
+		p.store.obs.RecordProcessDeadLetter(ctx, processErr, duration)
+		p.store.obs.RecordDeadLetter(ctx, processErr)
 		span.AddEvent("dead_lettered", oteltrace.WithAttributes(attribute.String("failure_kind", failureKind(processErr))))
 	}
 
@@ -402,10 +402,10 @@ func (p *BatchProcessor[M, D]) dispatchAvailable(ctx context.Context, workCh cha
 			return p.releaseClaimedBatch(ctx, claimed)
 		}
 
-		p.store.obs.workQueuedBatch(len(claimed))
+		p.store.obs.WorkQueuedBatch(len(claimed))
 		select {
 		case <-ctx.Done():
-			p.store.obs.workDequeuedBatch(len(claimed))
+			p.store.obs.WorkDequeuedBatch(len(claimed))
 			workerSlots <- struct{}{}
 			return p.releaseClaimedBatch(ctx, claimed)
 		case workCh <- claimed:
@@ -431,7 +431,7 @@ func (p *BatchProcessor[M, D]) releaseQueuedBatch(ctx context.Context, work []cl
 		return nil
 	}
 
-	p.store.obs.workDequeuedBatch(len(work))
+	p.store.obs.WorkDequeuedBatch(len(work))
 	return p.releaseClaimedBatch(ctx, work)
 }
 func (p *BatchProcessor[M, D]) workerLoop(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
@@ -457,8 +457,8 @@ func (p *BatchProcessor[M, D]) workerLoop(ctx context.Context, workCh <-chan []c
 	}
 }
 func (p *BatchProcessor[M, D]) processWorkerBatch(ctx context.Context, work []claimedRecord[M, D]) error {
-	p.store.obs.workStartedBatch(len(work))
-	defer p.store.obs.workFinished()
+	p.store.obs.WorkStartedBatch(len(work))
+	defer p.store.obs.WorkFinished()
 	return p.processBatch(ctx, work)
 }
 func (p *BatchProcessor[M, D]) drainQueuedWork(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
@@ -601,7 +601,7 @@ func (p *BatchProcessor[M, D]) reaperLoop(ctx context.Context) error {
 func (p *BatchProcessor[M, D]) startMessageTraces(ctx context.Context, work []claimedRecord[M, D], start time.Time) (context.Context, func()) {
 	traces := make(messageTraces, len(work))
 	for _, record := range work {
-		messageCtx, span := p.store.obs.startProcessSpan(ctx, record.Message.ID, record.Message.Attempt, record.Message.MaxAttempts, record.Message.CreatedAt, record.Message.AvailableAt, record.TraceCarrier, oteltrace.WithTimestamp(start))
+		messageCtx, span := p.store.obs.StartProcessSpan(ctx, record.Message.ID, record.Message.Attempt, record.Message.MaxAttempts, record.Message.CreatedAt, record.Message.AvailableAt, record.TraceCarrier, oteltrace.WithTimestamp(start))
 		traces[record.Message.ID] = newMessageTrace(messageCtx, span)
 	}
 	ctx = context.WithValue(ctx, messageTracesKey{}, traces)
