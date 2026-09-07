@@ -29,6 +29,9 @@ type BatchProcessResult struct {
 // The function must return when its context is canceled. Run joins function
 // invocations before returning; caller-owned asynchronous clients must be flushed
 // and closed after Run returns.
+// A worker retains its concurrency slot until the function returns, including
+// cancellation cleanup after lease expiry. Terminal results are settled before
+// waiting for that cleanup, so canceled work remains recoverable.
 //
 // The processor owns Badger settlement. It acknowledges, retries, or dead-letters
 // records as results arrive; the batch function must not mutate the store. The
@@ -84,13 +87,20 @@ type BatchProcessor[M any, D any] struct {
 
 // NewBatchProcessor builds a BatchProcessor for store and fn.
 //
-// Zero-value options are replaced with package defaults.
+// Zero-value options are replaced with package defaults. Negative values and an
+// explicit retry maximum below the retry base are rejected.
 func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, D], opts BatchProcessorOptions) (*BatchProcessor[M, D], error) {
 	if store == nil {
 		return nil, ErrNilStore
 	}
 	if fn == nil {
 		return nil, ErrProcessorFuncNil
+	}
+	if err := validateProcessorOptions(opts.ProcessorOptions); err != nil {
+		return nil, err
+	}
+	if opts.ClaimBatchSize < 0 {
+		return nil, boxErrorf("ClaimBatchSize must be nonnegative; zero selects the default")
 	}
 
 	processor := &BatchProcessor[M, D]{
@@ -141,9 +151,18 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 
 	processDone := make(chan error, 1)
 	invoked := make(chan bool, 1)
+	callbackReturned := make(chan struct{})
+	defer func() {
+		cancelProcess()
+		// Lease expiry must not make an occupied callback slot available again.
+		// A slow or stuck callback otherwise accumulates another invocation and
+		// retained batch on each expiry, exceeding the configured concurrency.
+		<-callbackReturned
+	}()
 	p.callbacks.Add(1)
 	go func() {
 		defer p.callbacks.Done()
+		defer close(callbackReturned)
 		// Commit to invoking the callback only after the final cancellation
 		// and lease check. After sending true, always call it, even if canceled.
 		if ctxErr(processCtx) != nil || p.resultWaitDuration(work) <= 0 {
