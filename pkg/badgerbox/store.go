@@ -33,6 +33,8 @@ type Options struct {
 	// settlement and dead-letter recovery do not invoke it. This advisory hook
 	// does not reserve external resources or roll back caller-owned writes.
 	EnqueueGuard func(context.Context) error
+	// AdmissionLimits must match persisted namespace limits when reopening.
+	AdmissionLimits AdmissionLimits
 }
 
 type Store[M any, D any] struct {
@@ -44,6 +46,8 @@ type Store[M any, D any] struct {
 	obs     *otelInstrumentation
 	runtime Runtime
 	closed  atomic.Bool
+
+	admissionIdentity [16]byte
 
 	closeOnce sync.Once
 	closeErr  error
@@ -108,6 +112,10 @@ func normalizedAvailableAt(now time.Time, availableAt time.Time) time.Time {
 func New[M any, D any](db *badger.DB, serde Serde[M, D], opts Options) (*Store[M, D], error) {
 	if db == nil {
 		return nil, ErrNilDB
+	}
+
+	if !db.Opts().DetectConflicts {
+		return nil, ErrConflictDetectionRequired
 	}
 
 	opts = normalizeOptions(opts)
@@ -211,8 +219,12 @@ func (s *Store[M, D]) Enqueue(ctx context.Context, req EnqueueRequest[M, D]) (Me
 	return result.id, nil
 }
 
-// EnqueueTx applies the same lifecycle size budget as Enqueue before adding any
-// queue entries to txn. The caller owns the transaction and its final commit.
+// EnqueueTx checks lifecycle and namespace admission budgets before adding queue
+// entries to txn. The transaction must belong to this Store's database. Prepared
+// messages consume capacity only if the caller successfully commits the entire
+// transaction; conflicts require retrying the whole application transaction.
+// As with Badger writes, a storage error can leave partial pending writes: the
+// caller must abort the entire transaction whenever EnqueueTx returns an error.
 func (s *Store[M, D]) EnqueueTx(ctx context.Context, txn *badger.Txn, req EnqueueRequest[M, D]) (MessageID, error) {
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
@@ -523,6 +535,10 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	if err := s.validateRecordSize(record, len(encodedRecord)); err != nil {
 		return result, err
 	}
+	usage, err := s.prepareAdmission(txn, record)
+	if err != nil {
+		return result, err
+	}
 	if err := txn.Set(s.keys.messageKey(id), encodedRecord); err != nil {
 		return result, err
 	}
@@ -531,6 +547,10 @@ func (s *Store[M, D]) enqueueTx(ctx context.Context, txn *badger.Txn, req Enqueu
 	}
 
 	if err := txn.Set(s.keys.readyCreatedKey(now, id), emptyValue); err != nil {
+		return result, err
+	}
+
+	if err := s.storeAdmissionState(txn, usage); err != nil {
 		return result, err
 	}
 
@@ -560,6 +580,10 @@ func (s *Store[M, D]) acknowledge(ctx context.Context, id MessageID, leaseToken 
 			}
 			if record.Status != recordStatusProcessing || record.LeaseToken != leaseToken {
 				return nil
+			}
+
+			if err := s.releaseAdmission(txn, record); err != nil {
+				return err
 			}
 
 			if err := txn.Delete(s.keys.messageKey(id)); err != nil {
@@ -1112,6 +1136,10 @@ func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, 
 			}
 			if record.Status != recordStatusProcessing || record.LeaseToken != leaseToken {
 				return nil
+			}
+
+			if err := s.releaseAdmission(txn, record); err != nil {
+				return err
 			}
 
 			if err := txn.Delete(s.keys.messageKey(id)); err != nil {

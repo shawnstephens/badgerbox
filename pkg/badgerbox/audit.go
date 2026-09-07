@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"time"
 
@@ -132,8 +133,20 @@ type AuditReport struct {
 	States AuditStateReports `json:"states"`
 	// DeadLetters contains dead-letter row diagnostics.
 	DeadLetters AuditDeadLetterReport `json:"dead_letters"`
+	// Usage compares retained rows with persisted admission accounting.
+	Usage AuditUsageReport `json:"usage"`
 	// Samples contains bounded row and anomaly examples.
 	Samples AuditSamples `json:"samples"`
+}
+
+// AuditUsageReport reconstructs logical retained usage independently of the
+// metadata. Matches is meaningful only for a Complete audit: incomplete scans
+// provide partial row totals and must not be interpreted as a healthy result.
+type AuditUsageReport struct {
+	Persisted        UsageSnapshot `json:"persisted"`
+	RetainedMessages uint64        `json:"retained_messages"`
+	RetainedBytes    uint64        `json:"retained_bytes"`
+	Matches          bool          `json:"matches"`
 }
 
 // AuditStateReports contains diagnostics for every live lifecycle state.
@@ -218,11 +231,12 @@ type AuditAnomalySample struct {
 }
 
 type auditRecordView struct {
-	status      MessageState
-	createdAt   time.Time
-	availableAt time.Time
-	leaseUntil  time.Time
-	leaseToken  string
+	status        MessageState
+	createdAt     time.Time
+	availableAt   time.Time
+	leaseUntil    time.Time
+	leaseToken    string
+	retainedBytes uint64
 }
 
 type auditIndexSpec struct {
@@ -278,7 +292,26 @@ func (s *Store[M, D]) Audit(ctx context.Context, opts AuditOptions) (AuditReport
 				return err
 			}
 		}
-		return s.auditDeadLetters(ctx, txn, records, &report, &sampler, &budget)
+		if err := s.auditDeadLetters(ctx, txn, records, &report, &sampler, &budget); err != nil {
+			return err
+		}
+		if err := ctxErr(ctx); err != nil {
+			return err
+		}
+		item, err := txn.Get(s.keys.admissionKey)
+		if err != nil {
+			return err
+		}
+		if err := budget.charge(item); err != nil {
+			return err
+		}
+		usage, err := s.loadAdmissionState(txn)
+		if err != nil {
+			return err
+		}
+		report.Usage.Persisted = usage.UsageSnapshot
+		report.Usage.Matches = report.Usage.RetainedMessages == usage.RetainedMessages && report.Usage.RetainedBytes == usage.RetainedBytes
+		return nil
 	})
 	report.Complete = err == nil
 	return report, err
@@ -305,6 +338,9 @@ func (s *Store[M, D]) collectAuditRows(ctx context.Context, txn *badger.Txn, rep
 		}
 		record, err := decodeAuditRecord(id, value)
 		if err != nil {
+			return nil, err
+		}
+		if err := addAuditUsage(&report.Usage, record.retainedBytes); err != nil {
 			return nil, err
 		}
 		records[id] = record
@@ -431,6 +467,13 @@ func (s *Store[M, D]) auditDeadLetters(ctx context.Context, txn *badger.Txn, rec
 		if !isValidRecordState(deadLetter.Record.Status) {
 			return boxErrorf("invalid dead-letter record status %q", deadLetter.Record.Status)
 		}
+		retainedBytes, err := retainedRecordBytes(deadLetter.Record)
+		if err != nil {
+			return err
+		}
+		if err := addAuditUsage(&report.Usage, retainedBytes); err != nil {
+			return err
+		}
 		report.DeadLetters.Rows++
 		seenKeyIDs[id]++
 		seenRecordIDs[deadLetter.Record.ID]++
@@ -486,8 +529,13 @@ func decodeAuditRecord(id MessageID, value []byte) (auditRecordView, error) {
 	if record.ID != id {
 		return auditRecordView{}, boxErrorf("record ID %s does not match message key %s", record.ID, id)
 	}
+	retainedBytes, err := retainedRecordBytes(record)
+	if err != nil {
+		return auditRecordView{}, err
+	}
 	return auditRecordView{
-		status: record.Status, createdAt: time.Unix(0, record.CreatedAtUnix).UTC(),
+		retainedBytes: retainedBytes,
+		status:        record.Status, createdAt: time.Unix(0, record.CreatedAtUnix).UTC(),
 		availableAt: time.Unix(0, record.AvailableAtUnix).UTC(),
 		leaseUntil:  time.Unix(0, record.LeaseUntilUnix).UTC(), leaseToken: record.LeaseToken,
 	}, nil
@@ -558,4 +606,13 @@ func insertSmallestMessageID(ids *[]MessageID, limit int, id MessageID) {
 
 func isValidRecordState(state MessageState) bool {
 	return state == recordStatusPending || state == recordStatusProcessing
+}
+
+func addAuditUsage(report *AuditUsageReport, bytes uint64) error {
+	if report.RetainedMessages == math.MaxUint64 || bytes > math.MaxUint64-report.RetainedBytes {
+		return ErrAdmissionOverflow
+	}
+	report.RetainedMessages++
+	report.RetainedBytes += bytes
+	return nil
 }

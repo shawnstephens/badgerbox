@@ -2,6 +2,7 @@ package badgerbox
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"time"
@@ -9,67 +10,70 @@ import (
 	"github.com/dgraph-io/badger/v4"
 )
 
-const queueStateVersion = byte(2)
+const queueStateVersion = byte(3)
 
+// Initialization is one conflict-retried transaction: concurrent constructors
+// cannot overwrite the winning limits, identity, or usage. It examines only the
+// fixed metadata and the first namespace key, never existing payloads.
 func (s *Store[M, D]) initializeQueueState() error {
-	var (
-		versionPresent   bool
-		namespaceHasData bool
-	)
-
-	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(s.keys.queueStateVersionKey)
-		switch {
-		case err == nil:
-			value, err := item.ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-			if len(value) != 1 || value[0] != queueStateVersion {
-				return ErrIncompatibleFormat
-			}
-			versionPresent = true
-			return nil
-		case !errors.Is(err, badger.ErrKeyNotFound):
-			return err
-		}
-
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		prefixes := [][]byte{
-			[]byte("ob/" + s.opts.Namespace + "/"),
-			s.keys.readyPrefix,
-			s.keys.processingPrefix,
-			s.keys.deadLetterPrefix,
-		}
-		for _, prefix := range prefixes {
-			it.Seek(prefix)
-			if it.ValidForPrefix(prefix) {
-				namespaceHasData = true
+	var identity [16]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return err
+	}
+	var persistedIdentity [16]byte
+	err := withConflictRetry(context.Background(), s.runtime, func() error {
+		return s.db.Update(func(txn *badger.Txn) error {
+			item, err := txn.Get(s.keys.queueStateVersionKey)
+			if err == nil {
+				if item.ValueSize() > 1+16 {
+					return ErrIncompatibleFormat
+				}
+				if err := item.Value(func(value []byte) error {
+					if len(value) != 1 || value[0] != queueStateVersion {
+						return ErrIncompatibleFormat
+					}
+					return nil
+				}); err != nil {
+					return err
+				}
+				state, err := readAdmissionState(txn, s.keys.admissionKey)
+				if err != nil {
+					return err
+				}
+				if state.Limits != s.opts.AdmissionLimits {
+					return &AdmissionLimitsMismatchError{Expected: s.opts.AdmissionLimits, Actual: state.Limits}
+				}
+				persistedIdentity = state.identity
 				return nil
 			}
-		}
-		return nil
+			if !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
+			}
+			opts := badger.DefaultIteratorOptions
+			opts.PrefetchValues = false
+			it := txn.NewIterator(opts)
+			prefix := []byte("ob/" + s.opts.Namespace + "/")
+			it.Seek(prefix)
+			hasData := it.ValidForPrefix(prefix)
+			it.Close()
+			if hasData {
+				return ErrIncompatibleFormat
+			}
+			if err := txn.Set(s.keys.queueStateVersionKey, []byte{queueStateVersion}); err != nil {
+				return err
+			}
+			state := admissionState{UsageSnapshot: UsageSnapshot{Limits: s.opts.AdmissionLimits}, identity: identity}
+			if err := s.storeAdmissionState(txn, state); err != nil {
+				return err
+			}
+			persistedIdentity = identity
+			return nil
+		})
 	})
-	if err != nil {
-		return err
+	if err == nil {
+		s.admissionIdentity = persistedIdentity
 	}
-	if versionPresent {
-		return nil
-	}
-	if namespaceHasData {
-		return ErrIncompatibleFormat
-	}
-
-	if err := s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(s.keys.queueStateVersionKey, []byte{queueStateVersion})
-	}); err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 func (s *Store[M, D]) loadQueueSnapshotFromIndexes(ctx context.Context, txn *badger.Txn, now time.Time) (queueSnapshot, error) {
 	var snapshot queueSnapshot

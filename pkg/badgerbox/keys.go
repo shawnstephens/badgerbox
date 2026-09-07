@@ -17,6 +17,7 @@ type keyspace struct {
 	readyCreatedPrefix      []byte
 	processingCreatedPrefix []byte
 	sequenceKey             []byte
+	admissionKey            []byte
 }
 
 func newKeyspace(namespace string) keyspace {
@@ -33,6 +34,7 @@ func newKeyspace(namespace string) keyspace {
 		readyCreatedPrefix:      []byte(queueStateBase + "ready-created/"),
 		processingCreatedPrefix: []byte(queueStateBase + "processing-created/"),
 		sequenceKey:             []byte(base + "seq/message-id"),
+		admissionKey:            []byte(queueStateBase + "admission"),
 	}
 }
 
