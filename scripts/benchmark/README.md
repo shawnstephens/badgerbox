@@ -52,3 +52,58 @@ The summary's slopes describe the latter half of intake, with no automatic
 memory bound, sustained production capacity, Kafka behavior, or crash durability.
 Extend duration, repeat against the actual filesystem and payload distribution,
 and compare only matching durability and maintenance settings.
+
+The harness also accepts the demo resource-control flags:
+`--max-retained-messages`, `--max-retained-bytes`,
+`--processor-claim-max-bytes`, `--min-free-disk-bytes`,
+`--disk-check-interval`, and `--admission-retry-interval`. All capacity limits
+remain disabled by default. Add `--outage-seconds 20` with a message quota to
+exercise recovery from a full namespace; this is a local sink outage. Reports
+and summaries preserve explicit settings, rejection counts by reason, and final
+usage. Timeline points record retained messages/bytes and cumulative admission
+rejections. Admission wait contributes to enqueue and end-to-end latency, and
+backpressure can lower achieved throughput below the offered rate. The full
+semantics and persisted quota rules are in [the producer guide](../../cmd/badgerbox-demo/README.md).
+
+## Linux cgroup evidence
+
+`cgroup_probe.go` is a standalone static Linux supervisor for a scratch container.
+It launches the benchmark, samples cgroup v2 once per second, and records a final
+sample before the cgroup disappears. Its JSON preserves kernel `memory.max`,
+`memory.swap.max`, `cpu.max`, `memory.peak`, memory events (including OOM kills),
+CPU usage/throttling, and selected memory statistics. Up to 1024 points cover the
+whole run through even downsampling. Missing statistics fail the run; a default
+10-minute supervisor timeout kills a stuck child. Signals are forwarded.
+
+Build both binaries into an otherwise empty temporary context (set `GOARCH` to
+the Docker engine architecture), then build `Dockerfile.cgroup` with that context:
+
+```sh
+mkdir /tmp/badgerbox-cgroup-image /tmp/badgerbox-cgroup-output
+(cd cmd/badgerbox-demo && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOWORK=off \
+  go build -o /tmp/badgerbox-cgroup-image/badgerbox-demo .)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOWORK=off go build \
+  -o /tmp/badgerbox-cgroup-image/cgroup-probe scripts/benchmark/cgroup_probe.go
+docker build -f scripts/benchmark/Dockerfile.cgroup \
+  -t badgerbox-cgroup-evidence /tmp/badgerbox-cgroup-image
+docker run --name badgerbox-cgroup-evidence --network=none \
+  --cpus=2 --memory=256m --memory-swap=256m \
+  -e GOMAXPROCS=2 -e GOMEMLIMIT=96MiB \
+  -v /tmp/badgerbox-cgroup-output:/output \
+  badgerbox-cgroup-evidence --output /output/cgroup.json -- \
+  /badgerbox-demo benchmark --messages 90000 --rate 500 --payload-bytes 16384 \
+  --observe-after-drain 30s --timeout 330s --db-path /data \
+  --output /output/report.json --max-retained-messages 128 \
+  --max-retained-bytes 64MiB --processor-claim-max-bytes 2MiB \
+  --min-free-disk-bytes 512MiB
+```
+
+Choose Badger settings explicitly as in `soak.py` for comparative GC evidence;
+the command above otherwise uses demo defaults. Database writes use the writable
+container layer, while only reports use the host bind mount. Retain `docker
+inspect` output before removing the stopped container. Cgroup memory includes
+supervisor overhead, file cache and kernel accounting, so compare it separately
+with benchmark process RSS. The kernel peak captures short memory peaks that
+periodic samples miss; the finite experiment still does not prove a long-term
+bound, production capacity or crash durability. Docker Desktop adds a VM and
+storage layer that differs from a native production Linux host.

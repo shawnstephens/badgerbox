@@ -89,7 +89,7 @@ func newKafkaCommand() *cli.Command {
 func newProducerCommand() *cli.Command {
 	badgerDefaults := demo.DefaultBadgerOptions("")
 
-	return &cli.Command{
+	command := &cli.Command{
 		Name:  "producer",
 		Usage: "Run badgerbox enqueueing and processing in one process, publishing to Kafka or demo logs until stopped",
 		Flags: []cli.Flag{
@@ -287,6 +287,8 @@ func newProducerCommand() *cli.Command {
 		},
 		Action: runProducer,
 	}
+	command.Flags = append(command.Flags, resourceControlFlags()...)
+	return command
 }
 
 func newConsumerCommand() *cli.Command {
@@ -409,6 +411,10 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	logger := demo.NewLogger(os.Stdout, cmd.String("color"))
 	stateFile := cmd.String("state-file")
 	loggingProducer := cmd.Bool("logging-producer")
+	controls, err := parseResourceControls(cmd)
+	if err != nil {
+		return err
+	}
 
 	target, err := resolveProducerTarget(cmd.String("brokers"), cmd.String("topic"), stateFile, loggingProducer)
 	if err != nil {
@@ -480,6 +486,10 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	if err != nil {
 		return fmt.Errorf("build badger options: %w", err)
 	}
+	storeOptions, err := controls.storeOptions(namespace, badgerOpts)
+	if err != nil {
+		return err
+	}
 
 	publishTransport := "kafka"
 	if loggingProducer {
@@ -491,6 +501,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	}
 
 	logger.Printf("startup", "command=producer publish_transport=%s brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d processor_claim_batch_size=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_compact_on_startup=%t badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", publishTransport, brokerSummary, target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, processorClaimBatchSize, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerCompactOnStartup, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
+	logger.Printf("startup", "event=resource_controls max_retained_messages=%d max_retained_bytes=%d processor_claim_max_bytes=%d min_free_disk_bytes=%d disk_check_interval=%s admission_retry_interval=%s", controls.AdmissionLimits.MaxRetainedMessages, controls.AdmissionLimits.MaxRetainedBytes, controls.ClaimMaxBytes, controls.MinFreeDiskBytes, controls.DiskCheckInterval, controls.AdmissionRetryInterval)
 
 	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
 	if err != nil {
@@ -555,7 +566,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 
 	processFn := demo.NewBatchProcessFunc(publisher, publishTimeout, logger)
 	store, err := runner.Register(service, badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{}, runner.QueueOptions{
-		Store: badgerbox.Options{Namespace: namespace}, Processor: badgerbox.BatchProcessorOptions{ClaimBatchSize: processorClaimBatchSize, ProcessorOptions: badgerbox.ProcessorOptions{Concurrency: processorConcurrency, PollInterval: pollInterval, LeaseDuration: leaseDuration, RetryBaseDelay: retryBaseDelay, RetryMaxDelay: retryMaxDelay}},
+		Store: storeOptions, Processor: badgerbox.BatchProcessorOptions{ClaimBatchSize: processorClaimBatchSize, ProcessorOptions: badgerbox.ProcessorOptions{ClaimMaxBytes: controls.ClaimMaxBytes, Concurrency: processorConcurrency, PollInterval: pollInterval, LeaseDuration: leaseDuration, RetryBaseDelay: retryBaseDelay, RetryMaxDelay: retryMaxDelay}},
 	}, processFn)
 	if err != nil {
 		return err
@@ -581,6 +592,8 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	}
 
 	var sequence atomic.Uint64
+	var accepted atomic.Uint64
+	var rejections admissionRejections
 	var wg sync.WaitGroup
 	enqueueErrCh := make(chan error, enqueueParallelism)
 
@@ -590,6 +603,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		go func() {
 			defer wg.Done()
 			first := true
+			var lastAdmissionLog time.Time
 
 			for {
 				if !first && messageInterval > 0 {
@@ -617,9 +631,14 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 					return
 				}
 
-				id, err := store.Enqueue(runCtx, badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
-					Payload:     payload,
-					Destination: destination,
+				id, err := enqueueWithAdmissionRetry(runCtx, controls.AdmissionRetryInterval, func() (badgerbox.MessageID, error) {
+					return store.Enqueue(runCtx, badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{Payload: payload, Destination: destination})
+				}, func(reason string) {
+					rejections.record(reason)
+					if time.Since(lastAdmissionLog) >= time.Second {
+						logger.Printf("warning", "event=admission_backpressure worker=%d reason=%s rejected_attempts=%d retry_interval=%s", worker, reason, rejections.total(), controls.AdmissionRetryInterval)
+						lastAdmissionLog = time.Now()
+					}
 				})
 				if err != nil {
 					if context.Canceled == err || errors.Is(err, context.Canceled) {
@@ -632,6 +651,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 					return
 				}
 
+				accepted.Add(1)
 				logger.Printf("enqueue", "worker=%d msg_id=%d seq=%d key=%s topic=%s", worker, id, seq, string(payload.Key), target.Topic)
 			}
 		}()
@@ -668,7 +688,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 
 	wg.Wait()
 
-	logger.Printf("shutdown", "command=producer produced=%d", sequence.Load())
+	logger.Printf("shutdown", "command=producer produced=%d admission_rejected_attempts=%d", accepted.Load(), rejections.total())
 	return nil
 }
 

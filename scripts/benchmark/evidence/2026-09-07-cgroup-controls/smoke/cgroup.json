@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-09-07T05:31:56.213588208Z",
+  "command": [
+    "/badgerbox-demo",
+    "benchmark",
+    "--messages",
+    "4",
+    "--payload-bytes",
+    "16384",
+    "--timeout",
+    "10s",
+    "--db-path",
+    "/data",
+    "--output",
+    "/output/report.json",
+    "--max-retained-messages",
+    "128",
+    "--max-retained-bytes",
+    "64MiB",
+    "--processor-claim-max-bytes",
+    "2MiB",
+    "--min-free-disk-bytes",
+    "512MiB",
+    "--badger-sync-writes=true",
+    "--badger-memtable-size",
+    "4MiB",
+    "--badger-num-memtables",
+    "2",
+    "--badger-block-cache-size",
+    "8MiB",
+    "--badger-index-cache-size",
+    "4MiB",
+    "--badger-base-table-size",
+    "1MiB",
+    "--badger-value-log-file-size",
+    "8MiB",
+    "--badger-value-threshold",
+    "1KiB",
+    "--badger-num-compactors",
+    "2"
+  ],
+  "kernel_limits": {
+    "cpu.max": "200000 100000",
+    "memory.max": "268435456",
+    "memory.swap.max": "0"
+  },
+  "sample_interval": "1s",
+  "max_points": 1024,
+  "observed_points": 2,
+  "retained_every_nth_observation": 1,
+  "points": [
+    {
+      "timestamp": "2026-09-07T05:31:56.213614833Z",
+      "elapsed_seconds": 0.000026709,
+      "memory_current_bytes": 5619712,
+      "memory_peak_bytes": 5689344,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 0,
+        "nr_throttled": 0,
+        "system_usec": 2472,
+        "throttled_usec": 0,
+        "usage_usec": 7417,
+        "user_usec": 4945
+      },
+      "memory_stat": {
+        "anon": 4435968,
+        "file": 0,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 901120,
+        "slab": 466000
+      }
+    },
+    {
+      "timestamp": "2026-09-07T05:31:56.253701333Z",
+      "elapsed_seconds": 0.040113292,
+      "memory_current_bytes": 6651904,
+      "memory_peak_bytes": 25677824,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 1,
+        "nr_throttled": 0,
+        "system_usec": 8280,
+        "throttled_usec": 0,
+        "usage_usec": 22080,
+        "user_usec": 13800
+      },
+      "memory_stat": {
+        "anon": 4444160,
+        "file": 405504,
+        "file_dirty": 0,
+        "file_writeback": 0,
+        "kernel": 1069056,
+        "slab": 533200
+      }
+    }
+  ],
+  "child_exit_code": 0,
+  "notes": [
+    "Kernel cgroup v2 memory includes benchmark, this supervisor, filesystem page cache and kernel accounting; process RSS is reported separately by the benchmark.",
+    "CPU counters include supervisor overhead. memory.peak is the kernel peak, not a sampled maximum. Finite success does not establish a permanent bound or prove crash durability."
+  ]
+}

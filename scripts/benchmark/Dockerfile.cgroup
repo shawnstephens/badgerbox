@@ -1,0 +1,4 @@
+FROM scratch
+COPY badgerbox-demo /badgerbox-demo
+COPY cgroup-probe /cgroup-probe
+ENTRYPOINT ["/cgroup-probe"]

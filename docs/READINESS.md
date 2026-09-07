@@ -1,4 +1,4 @@
-# Production-readiness evidence and remaining work
+# Production-readiness verification
 
 This document tracks the evidence from the production-readiness audit. Passing
 tests prove the behaviors they exercise; deployment capacity and failure budgets
@@ -26,6 +26,7 @@ still require measurement on the target filesystem and downstream service.
 | Inspectable admission state | `/usage`, quota gauges, and independent bounded audit reconciliation with usage-error telemetry |
 | Full-filesystem admission and recovery | [Disposable APFS fault test](RESOURCE_FAULTS.md): actual `ENOSPC`, both enqueue paths rejected, application transaction rolled back, all 32 retained messages verified after reopening and drain |
 | Sustained ordinary GC | [Three-minute churn evidence](../scripts/benchmark/evidence/2026-09-07-local-churn/INTERPRETATION.md): 90,000 verified deliveries, 601 successful rewrites, bounded timeline and labeled outcomes |
+| Final controls under container resource limits | [Linux cgroup evidence](../scripts/benchmark/evidence/2026-09-07-cgroup-controls/README.md): 90,000 verified deliveries at 499.87/s, 37 quota rejections retried, 618 successful GC rewrites, no OOM or swap, final usage zero |
 
 Run `just check` for both modules and `just test-integration` with Docker.
 Integration tests require real dependencies and fail when setup fails. The
@@ -42,9 +43,14 @@ cannot reserve physical space against concurrent writers.
 
 The three-minute churn run demonstrates normal reclamation, including repeated
 value-log rotation and successful GC. Its disk peaks still drifted upward, so
-it does not establish a long-term disk plateau. A follow-up benchmark must
-exercise the final controls under explicit CPU and memory limits. Measure drain
-margin with continued intake and repeat on the intended payload distribution.
+it does not establish a long-term disk plateau. The final-controls run verifies
+continued intake and reclamation under a configured 2-CPU quota, 256 MiB cgroup
+memory limit, and no swap. Its message quota reached 128 and blocked new intake
+until capacity became available. Kernel memory peaked at 256 MiB plus 4 KiB,
+and sampled process RSS reached 257.74 MiB; these are different accounting
+measurements, so this is not an exact RSS-ceiling claim. The raw report preserves
+memory pressure, peak, and OOM counters. Repeat on the deployment's filesystem
+and payload distribution to choose sustained capacity and outage drain margin.
 
 The full-volume test verifies guarded rejection at real filesystem exhaustion;
 the crash tests separately verify process recovery. They do not inject power

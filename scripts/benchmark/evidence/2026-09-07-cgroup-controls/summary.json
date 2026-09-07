@@ -1,0 +1,135 @@
+{
+  "passed": true,
+  "measurements_complete": true,
+  "schema_version": 2,
+  "started_at": "2026-09-07T05:34:27.299985167Z",
+  "accepted": 90000,
+  "resource_controls": {
+    "admission_limits": {
+      "max_retained_messages": 128,
+      "max_retained_bytes": 67108864
+    },
+    "claim_max_bytes": 2097152,
+    "min_free_disk_bytes": 536870912,
+    "disk_check_interval_nanoseconds": 100000000,
+    "admission_retry_interval_nanoseconds": 10000000
+  },
+  "admission_rejected_attempts": 37,
+  "admission_rejections": {
+    "disk_pressure": 0,
+    "namespace_quota": 37
+  },
+  "final_usage": {
+    "limits": {
+      "max_retained_messages": 128,
+      "max_retained_bytes": 67108864
+    },
+    "retained_messages": 0,
+    "retained_bytes": 0
+  },
+  "unique_delivered": 90000,
+  "duplicates": 0,
+  "delivery_seconds": 180.045184749,
+  "observed_resource_seconds": 210.056816429,
+  "messages_per_second": 499.8745183075488,
+  "gc_outcomes": {
+    "success": 618,
+    "no_rewrite": 138,
+    "error": 0
+  },
+  "peak_observed_value_log_bytes": 442242935,
+  "final_observed_value_log_bytes_before_close": 109901692,
+  "largest_observed_value_log_drop_bytes": 105295761,
+  "sampled_peak_rss_bytes": 270262272,
+  "descriptive_trends": {
+    "late_delivery_points": 84,
+    "late_delivery_rss_slope_bytes_per_second": -209016.86153288337,
+    "late_delivery_value_log_slope_bytes_per_second": -25594.384876987686,
+    "late_delivery_rss_min_bytes": 187994112,
+    "late_delivery_rss_max_bytes": 260919296
+  },
+  "limits": [
+    "One local verified-sink experiment includes producer, verifier, sampling and database CPU/RSS; it does not measure Kafka broker behavior.",
+    "Normal periodic GC and compaction run without forced Flatten, DB reopen, runtime.GC or manual reclamation.",
+    "Sampled apparent file sizes include preallocation and omit deleted-but-open files; changes are not physical I/O or exact bytes reclaimed.",
+    "A GC success proves a successful value-log rewrite, not a fixed amount of reclaimed space.",
+    "Slopes describe this finite interval; they do not establish a long-term memory or disk bound.",
+    "Cgroup memory includes file cache, kernel accounting and the small supervisor process; process RSS is a separate measure.",
+    "Docker Desktop Linux adds a VM and storage layer; this single run has no matched uncapped control, no broker outage and no crash/replay phase.",
+    "memory.max was configured at 256 MiB; exact kernel peak exceeded it by 4096 bytes. Kernel documentation permits temporary excess. This is not an observed strict RSS <= 256 MiB bound.",
+    "The message quota bound was exercised; byte quota and free-space guard did not bind. CPU limit was configured but no CPU throttling occurred."
+  ],
+  "cgroup": {
+    "kernel_limits": {
+      "cpu.max": "200000 100000",
+      "memory.max": "268435456",
+      "memory.swap.max": "0"
+    },
+    "measurement_errors": [],
+    "kernel_peak_memory_bytes": 268439552,
+    "sampled_max_memory_current_bytes": 268435456,
+    "max_sampled_swap_bytes": 0,
+    "memory_events_delta": {
+      "high": 0,
+      "low": 0,
+      "max": 11447,
+      "oom": 0,
+      "oom_group_kill": 0,
+      "oom_kill": 0
+    },
+    "cpu_stat_delta": {
+      "burst_usec": 0,
+      "nice_usec": 0,
+      "nr_bursts": 0,
+      "nr_periods": 2101,
+      "nr_throttled": 0,
+      "system_usec": 7673045,
+      "throttled_usec": 0,
+      "usage_usec": 120065963,
+      "user_usec": 112392919
+    },
+    "observed_points": 212,
+    "container_oom_killed": false,
+    "container_exit_code": 0,
+    "sampled_peak_anon_bytes": 46309376,
+    "sampled_peak_file_bytes": 220254208,
+    "first_maximum_current_sample": {
+      "timestamp": "2026-09-07T05:34:36.297878546Z",
+      "elapsed_seconds": 9.001797963,
+      "memory_current_bytes": 268435456,
+      "memory_peak_bytes": 268435456,
+      "swap_current_bytes": 0,
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 203,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "cpu_stat": {
+        "burst_usec": 0,
+        "nice_usec": 0,
+        "nr_bursts": 0,
+        "nr_periods": 90,
+        "nr_throttled": 0,
+        "system_usec": 307546,
+        "throttled_usec": 0,
+        "usage_usec": 4163857,
+        "user_usec": 3856311
+      },
+      "memory_stat": {
+        "anon": 42795008,
+        "file": 213434368,
+        "file_dirty": 20480,
+        "file_writeback": 0,
+        "kernel": 8241152,
+        "slab": 6973344
+      }
+    },
+    "kernel_peak_minus_configured_max_bytes": 4096
+  },
+  "invalid_deliveries": 0,
+  "sampled_peak_retained_messages": 128,
+  "sampled_peak_retained_logical_bytes": 3761664
+}

@@ -172,6 +172,7 @@ just benchmark
 
 Both modules are checked with `GOWORK=off`. Integration tests exercise a real Kafka broker plus SIGTERM/SIGKILL recovery in separate processes, including a mixed acknowledged, delivered-but-unacknowledged, and ready-message checkpoint. Benchmarks cover queue workloads and compare index snapshots with full record scans. See [the implementation stack](plan.md) for review order and validation scope.
 
-The ongoing [production-readiness audit](docs/READINESS.md) records verification
-coverage and remaining resource-control work. See it before interpreting a passing
-benchmark as evidence for a deployment's capacity or failure budget.
+The [production-readiness verification](docs/READINESS.md) records resource-control,
+quarantine, full-filesystem, Kafka, and crash-recovery evidence, including a
+container benchmark with explicit CPU and memory limits. Use its stated scope
+when sizing a deployment and choosing a failure budget.
