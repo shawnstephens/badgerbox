@@ -68,7 +68,3 @@ func (o *otelInstrumentation) RecordKafkaPromise(ctx context.Context, d time.Dur
 		o.count(ctx, "kafka_produce_error_total", 1)
 	}
 }
-
-func (o *otelInstrumentation) workQueuedBatch(n int)   { o.workDepth.Add(int64(n)) }
-func (o *otelInstrumentation) workDequeuedBatch(n int) { o.workDepth.Add(-int64(n)) }
-func (o *otelInstrumentation) workStartedBatch(n int)  { o.workDequeuedBatch(n); o.activeWorkers.Add(1) }
