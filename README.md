@@ -4,465 +4,143 @@
 
 ![badgerbox](image.png)
 
-Badger Box is an embedded, durable outbox library for Go applications. It uses [Badger](https://github.com/dgraph-io/badger) as a fast, embedded key/value store. It stores typed payloads and typed destinations, runs an embedded processor with a worker pool, and provides at-least-once delivery with retries, lease recovery, and a dead-letter queue.
+Badger Box is an embedded, durable message queue for Go. It stores typed payloads and destinations through injected codecs, delivers batches, and provides retries, lease recovery, consistency audits, and dead-letter administration. Delivery is **at least once** within the configured durability boundary: consumers must tolerate duplicates. See the write-durability requirements below.
 
-The project also ships a Kafka-specific adapter in `./pkg/kafka` built on [Franz-go](https://github.com/twmb/franz-go).
+This is a prerelease API and storage-format break. Existing unversioned or incompatible queue directories are rejected before sequence allocation. Use a fresh directory; see [storage compatibility](docs/STORAGE.md).
 
-> [!WARNING]
-> Badger Box is under active development. There is no release yet, and breaking changes are likely until the project reaches an initial stable release.
+## Packages
 
-## Guarantees and constraints
+The layout follows the relevant library, executable, and deployment conventions in [project-layout](https://github.com/golang-standards/project-layout).
 
-- Delivery is at-least-once. Your `ProcessFunc` must be idempotent.
-- The processor uses leases. If a worker dies or exceeds its lease, the message is requeued and may be delivered again.
-- Badger allows only one live process to own a DB path. The example worker binary is for exclusive DB ownership only; it is not a multi-process shared-worker deployment model.
-- Badger value log GC is still an operational responsibility of the embedding application.
+| Path | Responsibility |
+| --- | --- |
+| `pkg/badgerbox` | Typed stores, codecs, processing, retries, snapshots, audits, dead letters |
+| `pkg/kafka` | Optional franz-go delivery adapter and partitioner |
+| `pkg/adminhttp` | Metadata-only, bounded HTTP administration routes |
+| `pkg/maintenance` | Database-wide startup flattening and periodic value-log GC |
+| `pkg/telemetry` | OpenTelemetry configuration, database metrics, maintenance and delivery observers |
+| `pkg/runner` | Shared database ownership, typed queue registration, ordered shutdown |
+| `internal/instrumentation` | Queue instrumentation and internal delivery context plumbing |
+| `cmd/badgerbox-demo` | Separate Go module containing the runnable demo |
+| `deployments/observability` | Local collector, dashboards, and backend configuration |
+| `tests/integration` | Process-level recovery validation |
 
-If you keep a long-lived Badger DB, run value-log GC periodically from your application. `badgerbox` removes processed messages logically, but Badger only reclaims old value-log space when you call `RunValueLogGC` yourself. A simple maintenance loop looks like this:
+## Codecs and storage
+
+`Codec[T]` defines `Marshal(T) ([]byte, error)` and `Unmarshal([]byte) (T, error)`. Supply message and destination codecs independently through `Serde[M,D]`. Each missing codec defaults to `JSONCodec[T]`; JSON is optional. Codec output remains opaque bytes throughout persistence, retry, and dead-letter requeue. Codecs must be safe for concurrent use.
 
 ```go
-go func() {
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		for {
-			if err := db.RunValueLogGC(0.5); err != nil {
-				break
-			}
-		}
-	}
-}()
+store, err := badgerbox.New[Payload, Destination](db,
+    badgerbox.Serde[Payload, Destination]{
+        Message: payloadCodec,
+        Destination: destinationCodec,
+    },
+    badgerbox.Options{Namespace: "events"},
+)
 ```
 
-If you never run value-log GC, disk usage can keep growing even though outbox messages are being acknowledged and deleted.
+See the executable [binary codec example](pkg/badgerbox/example_test.go). Snapshots, audits, and HTTP dead-letter listings never invoke application codecs. HTTP responses contain storage metadata only; payloads and destinations are omitted, and application JSON marshalers are never called.
 
-## Architecture
+`Enqueue` commits a record and its indexes atomically. `EnqueueTx` prepares the same changes inside a caller-owned Badger transaction; the caller must commit it. All public operations require a non-nil context. One live process owns each database directory.
 
-```mermaid
-flowchart LR
-    app["Go application"]
-    producer["Store.Enqueue / EnqueueTx"]
-    processor["Processor<br/>(dispatcher + workers + reaper)"]
-    handler["ProcessFunc"]
-    kafka["kafka.NewProcessFunc"]
+Badger defaults `SyncWrites` to `false`: writes use memory mapping and can survive a process crash, but a successful enqueue or acknowledgement does not establish hard-reboot or power-loss durability. For that boundary, open the database with `badger.DefaultOptions(path).WithSyncWrites(true)` so writes are synchronized to storage; this still depends on the filesystem and device honoring synchronization. `runner.Open` preserves caller-selected Badger options and does not enable this setting implicitly. An `EnqueueTx` success only prepares changes; the caller must successfully commit the transaction before treating the enqueue as committed.
 
-    subgraph badger["Badger DB"]
-        msg["msg/<id><br/>canonical record"]
-        ready["ready/<availableAt>/<id><br/>pending index"]
-        processing["processing/<leaseUntil>/<id><br/>lease index"]
-        dlq["dlq/<failedAt>/<id><br/>dead-letter record"]
-        seq["seq/message-id<br/>ID allocator"]
-    end
+The recovery tests enable `SyncWrites(true)` and kill an isolated process with SIGKILL. They verify process-crash recovery, including committed acknowledgements staying deleted; they do not simulate host failure or power loss.
 
-    app --> producer
-    app --> processor
-    producer --> seq
-    producer --> msg
-    producer --> ready
+Enqueue and requeue reject records with `ErrMessageTooLarge` if later lifecycle transitions cannot fit Badger's storage limits. Admission reserves 32 KiB of lifecycle headroom. Keep those limits when reopening populated databases; reducing them requires migration. Stored failure text is capped at 4 KiB with a truncation marker, and custom runtimes must return unique nonempty UTF-8 lease tokens of at most 256 bytes. Admission normalizes mutable availability and attempt-limit metadata so unchanged payloads retain their storage budget across requeues.
 
-    processor --> ready
-    processor --> msg
-    processor --> processing
-    processor --> dlq
+## Processing
 
-    processor --> handler
-    handler --> kafka
-    kafka --> broker["Kafka broker"]
-```
+`NewBatchProcessor` accepts a `BatchProcessFunc[M,D]`. The function sends exactly one `BatchProcessResult` per message and leaves the result channel open. Each result is settled independently. A nil error acknowledges the record; a retryable error schedules it again; `Permanent(err)` sends that message to the dead-letter queue. Function-level errors, panics, missing results, and cancellation retry unresolved messages.
 
-## Outbox key flow
+`NewProcessor` accepts a single-message `ProcessFunc` and `ProcessorOptions`. Every available worker reserves exactly one message. `NewBatchProcessor` accepts `BatchProcessorOptions`, which embeds the shared `ProcessorOptions` and adds `ClaimBatchSize`. Runner queue registration uses these batch options.
 
-The store keeps one canonical message record plus time-ordered index keys that move as the message advances through the outbox lifecycle:
+Each processing span starts before its callback and ends with settlement. Single-message callbacks receive the message trace and persisted baggage directly. Batch callbacks call `badgerbox.ContextForMessage(ctx, message.ID)` for per-message work; this preserves callback-added deadlines and cancellation. `ProcessorOptions.SettlementTimeout` bounds detached settlement.
 
-```mermaid
-flowchart TD
-    enqueued["Enqueued<br/>msg/&lt;id&gt;<br/>ready/&lt;availableAt&gt;/&lt;id&gt;"]
-    processing["Processing<br/>msg/&lt;id&gt;<br/>processing/&lt;leaseUntil&gt;/&lt;id&gt;"]
-    deleted["Deleted<br/>delete msg + processing"]
-    retrying["Retrying<br/>msg/&lt;id&gt;<br/>ready/&lt;nextAvailableAt&gt;/&lt;id&gt;"]
-    deadlettered["Dead-lettered<br/>dlq/&lt;failedAt&gt;/&lt;id&gt;"]
+Workers reserve capacity before claiming. Large claim transactions reduce the effective batch size on Badger's transaction-size limit. Expired leases are recovered in bounded pages. Undispatched claims are released without consuming an attempt.
 
-    enqueued -->|"claimReadyBatch"| processing
-    processing -->|"acknowledge"| deleted
-    processing -->|"failProcessing\nretryable error"| retrying
-    retrying -->|"claimReadyBatch"| processing
-    processing -->|"failProcessing\npermanent or max attempts"| deadlettered
-    deadlettered -->|"RequeueDeadLetter"| enqueued
-```
+| Core default | Value |
+| --- | --- |
+| Workers / maximum batch claim | 4 / 32 (single-message workers always claim 1) |
+| Poll interval / lease | 250ms / 30s |
+| Retry base / maximum delay | 1s / 1h |
+| Maximum attempts | 36 |
+| Expired-lease recovery page | 64 |
+| Detached settlement budget | 10s |
 
-Prefix roles:
+Callbacks must return when their context is canceled. `Run` joins callback invocations before returning. Caller-owned asynchronous delivery clients must then be flushed and closed to join their remaining callbacks. A broker acceptance followed by a process crash before durable acknowledgement can produce duplicates.
 
-- `ob/<namespace>/msg/` stores the durable source-of-truth record.
-- `ob/<namespace>/ready/` is the pending-work index scanned by the dispatcher in available-at order.
-- `ob/<namespace>/processing/` is the in-flight lease index scanned by the reaper in lease-expiry order.
-- `ob/<namespace>/dlq/` stores dead-letter records for failed messages.
-- `ob/<namespace>/seq/message-id` is the Badger sequence key used to allocate message IDs.
+## Owning the lifecycle
 
-## Install
+For several queues in one database, use `runner.Open`, generic `runner.Register`, optional `RegisterDelivery`, and `Start`. Registration requires unique nonempty namespaces. Each registered queue retains its own typed payload, destination, codecs, and processor settings.
 
-```bash
-go get github.com/shawnstephens/badgerbox
-```
+`runner.Options.QueueFailurePolicy` defaults to `runner.IsolateQueue`: a worker failure stops that namespace while healthy queues and maintenance continue. `runner.FailFast` cancels all workers and maintenance. Failed queues are not automatically restarted. `Errors()` emits `*runner.QueueError` values carrying the namespace and original cause (`errors.Is`/`errors.As` work). Notifications are nonblocking and may be dropped if their buffer is full; `Stop` and `Shutdown` return the aggregate of all worker failures. Applications using isolation should handle a notification without assuming that all processing has stopped.
 
-The demo lives in its own module under `cmd/badgerbox-demo`. Run it from that directory:
+Stop intake first, then call `Shutdown` with a deadline. The runner joins workers and maintenance, flushes and closes named delivery clients, closes store instrumentation, unregisters database metrics, and closes Badger. A worker-join timeout leaves dependencies open so shutdown can be retried. Badger maintenance and close calls cannot be forcibly canceled; after joining succeeds, an ongoing closer may finish after the caller's deadline.
 
-```bash
+The lower-level `badgerbox.New` constructor accepts a caller-owned database. Its `Close` closes only that store's resources. For direct use, join processors and stop maintenance before closing stores and Badger.
+
+## Kafka delivery
+
+Create clients with `kafka.NewClient(opts...)`; it installs the required partitioner after caller options. Both `kafka.NewBatchProducerFunc(client)` and `kafka.NewProcessFunc(client, options)` return a function and an error. They reject nil clients or clients without `KafkaPartitioner` before any delivery. Explicit configuration with `kgo.RecordPartitioner(kafka.KafkaPartitioner())` is also supported. A nil destination partition selects automatic partitioning. A nonnegative explicit partition selects that partition; negative explicit values are permanent validation errors. Records clone payload bytes, keys, and sorted headers before asynchronous production.
+
+## Snapshots and administration
+
+`QueueSnapshot` scans lifecycle and creation index keys; it does not read payload records or maintain sharded counters. A nonempty state with no creation index returns `ErrInconsistentIndex`. `Audit` reconciles all live rows, lifecycle/creation indexes, and dead letters without mutations. Reports contain bounded content-free anomaly samples. `AuditOptions.MaxScannedKeys` defaults to 100,000 and `MaxScannedBytes` to 64 MiB; zero selects defaults and negative values are invalid. One budget covers all rows and indexes, including dead-letter history. Limits are checked before copying values or retaining identifiers. Memory scales with these budgets, which are not an exact heap-size guarantee. Exhaustion returns `ErrAuditLimitExceeded` and a partial report with `Complete=false`, `ScannedKeys`, and `ScannedBytes`. Missing-index conclusions require the relevant scan to finish.
+
+Full-data dead-letter lists retain count and encoded-byte limits. `ListDeadLetterMetadata` provides a codec-free alternative, returning at most 1,000 summaries and defaulting to a 2 MiB stored-value budget. Oversized records return key-derived identity, failure time, stored size, an oversized marker, and a continuation cursor without loading their values. Ordinary entries include metadata with failure text capped at 1 KiB and explicit truncation. Each entry has a cursor for resuming after it; the final page cursor is nil.
+
+Requeue requires the exact message ID and failure timestamp and refuses to overwrite a live message. `RequeueDeadLetterWithOptions` checks `MaxBytes` before loading the record; zero disables this limit for trusted callers. It preserves opaque payload bytes without application decoding.
+
+`adminhttp.New(store, options)` exposes:
+
+- `GET /audit?sample_limit=20`
+- `GET /dead-letters?page_size=100&cursor=...`
+- `POST /dead-letters/{message_id}/requeue` with `failed_at` and optional `available_at` RFC3339 timestamps
+
+Handlers default to one 30s deadline covering body reading, storage, encoding, and flushing; an 8 MiB encoded response limit; four concurrent lists; one audit; one concurrent requeue; a 2 MiB requeue stored-value limit; and 16 KiB request bodies. `MaxConcurrentRequeues` and `MaxRequeueBytes` configure mutation limits. Namespace names are limited to 256 bytes. Admission includes flushing and returns 429 immediately when full. Hosting middleware must preserve response-controller read/write deadlines and flush support.
+
+Dead-letter responses contain `message_id`, `failed_at`, `stored_bytes`, `oversized`, and optional `metadata`; oversized entries omit metadata but remain navigable. Encoded pages stop before exceeding the response budget and resume after the last returned row. If necessary, the first row omits its failure text with `failure_text_truncated=true`. Audit budget exhaustion returns 413 with `code: "audit_incomplete"` and progress; oversized requeues return 413 with `code: "dead_letter_too_large"`. Audit responses mark omitted anomaly samples with `samples_truncated=true`. Authentication and network exposure are application responsibilities; the demo listens on loopback by default.
+
+## Telemetry and maintenance
+
+Inject OpenTelemetry meter/tracer providers and a propagator through `telemetry.Options`. The library chooses no exporter and does not replace global providers. Queue metrics use fixed names with namespace attributes. One process-wide database collector reports disk capacity, Badger sizes and compaction, and reset-safe compaction counters. Maintenance and shared-client flush observers report outcomes separately.
+
+The runner owns optional startup flattening and periodic value-log GC. Each GC tick continues after successful rewrites until no rewrite is available, another error occurs, cancellation is requested, or a budget is exhausted. `ValueLogGCMaxRuns` and `ValueLogGCMaxDuration` default to eight calls and one second; negative values are invalid. The time budget limits starting another call, and shutdown still waits for an in-flight Badger call to finish. Direct users can compose `maintenance.Service` with their own database lifecycle. See [observability](docs/OBSERVABILITY.md) and [memory tuning](docs/MEMORY.md).
+
+## Demo
+
+Use Go 1.26 or newer. Run from the demo module, independently of a local `go.work`:
+
+```sh
 cd cmd/badgerbox-demo
-go run . --help
+GOWORK=off go run . kafka
+# Separate terminals, same directory:
+GOWORK=off go run . producer
+GOWORK=off go run . consumer
 ```
 
-For optional workspace development, run `go work init . ./cmd/badgerbox-demo` once at the repository root. The workspace file is local and ignored by Git. You can then run the demo from the root:
+A Docker-compatible container runtime is required for Kafka. The producer can also run with `--logging-producer`. The default admin listener is `127.0.0.1:3031`; `--admin-listen-addr ''` disables it.
 
-```bash
-go run ./cmd/badgerbox-demo --help
+The demo supports OTLP HTTP/protobuf by default and optional gRPC:
+
+```sh
+GOWORK=off go run . producer --logging-producer \
+  --otel-endpoint localhost:34318 --otel-insecure
+GOWORK=off go run . producer --logging-producer \
+  --otel-protocol grpc --otel-endpoint localhost:34317 --otel-insecure
 ```
 
-## Demo binary
+TLS is the exporter default. Plaintext is explicit for local collectors. `--help` lists Badger memory, batching, retry, and listener settings. Demo retry timing is intentionally faster than the core defaults.
 
-The demo binary runs three separate processes:
+## Validation
 
-1. `kafka` starts a Kafka broker with Testcontainers and writes shared runtime state to `./.demo/badgerbox-demo/state.json`.
-2. `producer` opens Badger, continuously enqueues messages into badgerbox, runs the badgerbox processor, and publishes to Kafka. It can start before Kafka is available and will keep retrying until the broker comes back.
-3. `consumer` connects to the same Kafka broker and prints consumed messages.
+From the repository root:
 
-### Podman setup for Testcontainers
-
-The `kafka` demo command starts Kafka through Testcontainers. If you want to use Podman instead of Docker, configure Testcontainers for Podman before running the demo or the Kafka integration suite.
-
-Start the Podman socket service:
-
-```bash
-podman system service --time=0 &
+```sh
+just check
+just test-integration
+just benchmark
 ```
 
-Then configure Testcontainers using one of these approaches:
-
-- Enable Podman's Docker compatibility feature.
-- Or create `~/.testcontainers.properties` and set `docker.host` using the values from the Podman Desktop guide:
-
-```properties
-# macOS
-docker.host=unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')
-
-# Linux
-docker.host=unix://${XDG_RUNTIME_DIR}/podman/podman.sock
-```
-
-If you use the macOS configuration above, run:
-
-```bash
-export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
-```
-
-If you run Podman in rootless mode, you may also need:
-
-```bash
-export TESTCONTAINERS_RYUK_DISABLED=true
-```
-
-Source: [Podman Desktop: Setup Testcontainers with Podman](https://podman-desktop.io/tutorial/testcontainers-with-podman#setup-testcontainers-with-podman).
-
-Default workflow:
-
-```bash
-(cd cmd/badgerbox-demo && go run . kafka)
-(cd cmd/badgerbox-demo && go run . producer)
-(cd cmd/badgerbox-demo && go run . consumer)
-```
-
-From the repo root, the same flow can be run as:
-
-```bash
-go run ./cmd/badgerbox-demo kafka
-go run ./cmd/badgerbox-demo producer
-go run ./cmd/badgerbox-demo consumer
-```
-
-For producer-side bottleneck checks, you can bypass Kafka entirely and log each publish instead:
-
-```bash
-go run ./cmd/badgerbox-demo producer --logging-producer
-```
-
-This demo-only mode skips Kafka client creation and broker resolution, logs `phase=publish event=logged` lines instead of sending records to Kafka, and is intended for comparing demo producer overhead against the Kafka path.
-
-Defaults are chosen so you do not need to pass flags for the common case:
-
-- shared state file: `./.demo/badgerbox-demo/state.json`
-- Badger path: `./.demo/badgerbox-demo/badger`
-- topic: `badgerbox-demo`
-- topic partitions: `10`
-- namespace: `demo`
-- enqueue parallelism: `1`
-- message interval: `500ms`
-- processor concurrency: `4`
-- retry base delay: `1s`
-- retry max delay: `5s`
-- poll interval: `250ms`
-- lease duration: `30s`
-- publish timeout: `2s`
-- Badger value-log GC interval: `1m`
-- Badger value-log GC discard ratio: `0.5`
-
-Every flag also supports an environment variable with the `BADGERBOX_DEMO_` prefix. For example:
-
-```bash
-BADGERBOX_DEMO_ENQUEUE_PARALLELISM=4 \
-BADGERBOX_DEMO_PROCESSOR_CONCURRENCY=8 \
-(cd cmd/badgerbox-demo && go run . producer)
-```
-
-The `kafka` process owns the Testcontainers Kafka broker. Its state file is preserved on shutdown so the producer can start later, keep retrying against the stored broker metadata, and reconnect after Kafka restarts on a new mapped port. All demo output is printed to the console with colorized phase logs for startup, enqueue, processing, publish, consume, warnings, and shutdown.
-
-The producer also runs Badger value-log GC periodically with a discard ratio of `0.5`. Adjust the interval with `--badger-gc-interval` or `BADGERBOX_DEMO_BADGER_GC_INTERVAL`.
-
-For the demo producer's Badger memory flags and direct tuning guidance, see [MEMORY.md](./docs/MEMORY.md).
-Use `--badger-sync-writes` or `BADGERBOX_DEMO_BADGER_SYNC_WRITES=true` to enable Badger's `SyncWrites` durability path. It is disabled by default.
-
-Offline retry demo:
-
-1. `badgerbox-demo kafka`
-2. Stop it with `Ctrl+C`
-3. `badgerbox-demo producer`
-4. Watch repeated `phase=warning event=publish_failed` lines while messages continue to enqueue
-5. `badgerbox-demo kafka`
-6. `badgerbox-demo consumer`
-7. Watch the producer log `phase=warning event=reload_state`, then `phase=ready event=reconnected`, and finally drain the backlog into Kafka for the consumer to print
-
-Using repo-local commands, that flow is:
-
-1. `(cd cmd/badgerbox-demo && go run . kafka)`
-2. Stop it with `Ctrl+C`
-3. `(cd cmd/badgerbox-demo && go run . producer)`
-4. Watch repeated `phase=warning event=publish_failed` lines while messages continue to enqueue
-5. `(cd cmd/badgerbox-demo && go run . kafka)`
-6. `(cd cmd/badgerbox-demo && go run . consumer)`
-7. Watch the producer reconnect and drain the backlog
-
-The producer follows the preserved state file by default. If Kafka restarts with a new mapped port, the producer reloads the state file after a publish failure, rebuilds its Kafka client, and resumes publishing on the next retry. The producer still requires some broker source at startup, either from flags, environment variables, or the preserved state file.
-
-## Generic producer example
-
-These examples keep Badger's defaults for brevity. If you want to tune Badger memory directly in code, see [MEMORY.md](./docs/MEMORY.md).
-
-```go
-package main
-
-import (
-	"context"
-	"log"
-
-	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/dgraph-io/badger/v4"
-)
-
-type OrderEvent struct {
-	OrderID string `json:"order_id"`
-	Status  string `json:"status"`
-}
-
-type HTTPDestination struct {
-	URL    string `json:"url"`
-	Method string `json:"method"`
-}
-
-func main() {
-	db, err := badger.Open(badger.DefaultOptions("./data").WithLogger(nil))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	store, err := badgerbox.New[OrderEvent, HTTPDestination](
-		db,
-		badgerbox.Serde[OrderEvent, HTTPDestination]{},
-		badgerbox.Options{Namespace: "orders"},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	_, err = store.Enqueue(context.Background(), badgerbox.EnqueueRequest[OrderEvent, HTTPDestination]{
-		Payload: OrderEvent{
-			OrderID: "o-123",
-			Status:  "created",
-		},
-		Destination: HTTPDestination{
-			URL:    "https://example.internal/orders",
-			Method: "POST",
-		},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-## Enqueue within a caller-owned Badger transaction
-
-```go
-err := db.Update(func(txn *badger.Txn) error {
-	if err := txn.Set([]byte("orders/o-123"), []byte("created")); err != nil {
-		return err
-	}
-
-	_, err := store.EnqueueTx(context.Background(), txn, badgerbox.EnqueueRequest[OrderEvent, HTTPDestination]{
-		Payload: OrderEvent{
-			OrderID: "o-123",
-			Status:  "created",
-		},
-		Destination: HTTPDestination{
-			URL:    "https://example.internal/orders",
-			Method: "POST",
-		},
-	})
-	return err
-})
-```
-
-Enqueue and EnqueueTx reject records with `ErrMessageTooLarge` when the encoded
-record cannot safely fit later claims, retries, recovery, and dead-letter writes.
-Admission reserves 32 KiB for lifecycle metadata and accounts for Badger's
-transaction, value, and index-key limits. Large values that safely use the value
-log remain supported. Keep the same storage limits when reopening a populated
-database; lowering them requires migrating its records. Stored failure text is
-limited to 4 KiB, with a truncation marker. Custom runtimes must return unique,
-nonempty UTF-8 lease tokens of at most 256 bytes. Admission normalizes mutable
-availability and attempt-limit metadata, so later retries and manual requeues
-retain the same storage budget for an unchanged payload.
-
-
-## Generic embedded processor example
-
-```go
-processor, err := badgerbox.NewProcessor(
-	store,
-	func(ctx context.Context, msg badgerbox.Message[OrderEvent, HTTPDestination]) error {
-		log.Printf("send %s to %s %s", msg.Payload.OrderID, msg.Destination.Method, msg.Destination.URL)
-		return nil
-	},
-	badgerbox.ProcessorOptions{
-		Concurrency: 4,
-	},
-)
-if err != nil {
-	log.Fatal(err)
-}
-
-if err := processor.Run(context.Background()); err != nil {
-	log.Fatal(err)
-}
-```
-
-## Kafka example
-
-The same direct Badger tuning patterns apply here; see [MEMORY.md](./docs/MEMORY.md) for concrete `badger.DefaultOptions(...).WithX(...)` examples.
-
-```go
-package main
-
-import (
-	"context"
-	"log"
-
-	"github.com/shawnstephens/badgerbox/pkg/badgerbox"
-	"github.com/shawnstephens/badgerbox/pkg/kafka"
-	"github.com/dgraph-io/badger/v4"
-	"github.com/twmb/franz-go/pkg/kgo"
-)
-
-func main() {
-	db, err := badger.Open(badger.DefaultOptions("./data").WithLogger(nil))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	store, err := badgerbox.New[kafka.KafkaMessage, kafka.KafkaDestination](
-		db,
-		badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{},
-		badgerbox.Options{Namespace: "kafka"},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	client, err := kafka.NewClient(kgo.SeedBrokers("localhost:9092"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer client.Close()
-
-	processFn, err := kafka.NewProcessFunc(client, kafka.Options{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	processor, err := badgerbox.NewProcessor(store, processFn, badgerbox.ProcessorOptions{})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = store.Enqueue(context.Background(), badgerbox.EnqueueRequest[kafka.KafkaMessage, kafka.KafkaDestination]{
-		Payload: kafka.KafkaMessage{
-			Key:   []byte("order-1"),
-			Value: []byte(`{"status":"created"}`),
-			Headers: map[string][]byte{
-				"type": []byte("order.created"),
-			},
-		},
-		Destination: kafka.KafkaDestination{
-			Topic: "orders.created",
-		},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := processor.Run(context.Background()); err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-## Observability
-
-`badgerbox` supports optional OpenTelemetry metrics and tracing directly in core.
-
-- Observability is opt-in.
-- `badgerbox.New(...)` is a pure constructor. It does not start background polling or record an initial snapshot.
-- `Processor.Run(ctx)` records one initial snapshot and starts observability polling automatically. If you are not running a processor, call `store.RecordObservabilitySnapshot(ctx)` and `store.StartObservability(ctx)` yourself.
-- Enqueue and processing traces can be linked across the durable queue boundary.
-- Queue depth, processing, retry, dead-letter, and tracing metrics are supported in core.
-- Inject `badgerbox.Options.Runtime` in tests when you need deterministic time, retry, ticker, or lease-token behavior.
-- The demo producer also republishes selected Badger `expvar` metrics on `/metrics` with Prometheus's expvar collector for Badger-specific storage metrics.
-
-See [OBSERVABILITY.md](./docs/OBSERVABILITY.md) for setup, metric and trace details, and the local OTEL Collector + Grafana + Tempo demo stack.
-
-## Testing
-
-Run the unit suite:
-
-```bash
-go test ./...
-```
-
-Run the Kafka integration suite with a Testcontainers-compatible container runtime available. Docker works by default, and Podman works after the setup described in [Podman setup for Testcontainers](#podman-setup-for-testcontainers):
-
-```bash
-go test -tags=integration ./...
-```
-
-Run the demo module tests separately:
-
-```bash
-(cd cmd/badgerbox-demo && go test ./...)
-```
-
-## Development checks
-
-Run `just check` for formatting, builds, lint, and race tests across both modules.
-Run `just test-integration` with a Docker-compatible runtime for Kafka tests.
-`just coverage` and `just benchmark` produce coverage and workload measurements.
+Both modules are checked with `GOWORK=off`. Integration tests exercise a real Kafka broker plus SIGTERM/SIGKILL recovery in separate processes, including a mixed acknowledged, delivered-but-unacknowledged, and ready-message checkpoint. Benchmarks cover queue workloads and compare index snapshots with full record scans. See [the implementation stack](plan.md) for review order and validation scope.
