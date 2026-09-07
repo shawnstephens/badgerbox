@@ -60,10 +60,10 @@ func TestProcessorClaimsMessagesInOrder(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}, ProcessorOptions{
-		Concurrency:    1,
-		ClaimBatchSize: 1,
-		PollInterval:   5 * time.Millisecond,
-		LeaseDuration:  100 * time.Millisecond,
+		Concurrency: 1,
+
+		PollInterval:  5 * time.Millisecond,
+		LeaseDuration: 100 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("new processor: %v", err)
@@ -126,10 +126,10 @@ func TestProcessorConcurrentWorkersProcessDistinctMessages(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}, ProcessorOptions{
-		Concurrency:    4,
-		ClaimBatchSize: 1,
-		PollInterval:   5 * time.Millisecond,
-		LeaseDuration:  200 * time.Millisecond,
+		Concurrency: 4,
+
+		PollInterval:  5 * time.Millisecond,
+		LeaseDuration: 200 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("new processor: %v", err)
@@ -182,8 +182,8 @@ func TestProcessorRetryableFailureReschedules(t *testing.T) {
 		}
 		return nil
 	}, ProcessorOptions{
-		Concurrency:    1,
-		ClaimBatchSize: 1,
+		Concurrency: 1,
+
 		PollInterval:   5 * time.Millisecond,
 		LeaseDuration:  50 * time.Millisecond,
 		RetryBaseDelay: 25 * time.Millisecond,
@@ -265,10 +265,10 @@ func TestProcessorMaxAttemptsMovesToDLQ(t *testing.T) {
 	processor, err := NewProcessor(store, func(ctx context.Context, msg Message[testPayload, testDestination]) error {
 		return errors.New("keep failing")
 	}, ProcessorOptions{
-		Concurrency:    1,
-		ClaimBatchSize: 1,
+		Concurrency: 1,
+
 		PollInterval:   5 * time.Millisecond,
-		LeaseDuration:  50 * time.Millisecond,
+		LeaseDuration:  time.Second,
 		RetryBaseDelay: 5 * time.Millisecond,
 		RetryMaxDelay:  5 * time.Millisecond,
 		MaxAttempts:    2,
@@ -322,8 +322,8 @@ func TestProcessorReclaimsExpiredLeaseAndIgnoresStaleAck(t *testing.T) {
 			return nil
 		}
 	}, ProcessorOptions{
-		Concurrency:    2,
-		ClaimBatchSize: 1,
+		Concurrency: 2,
+
 		PollInterval:   10 * time.Millisecond,
 		LeaseDuration:  30 * time.Millisecond,
 		RetryBaseDelay: 10 * time.Millisecond,
@@ -443,10 +443,10 @@ func TestProcessorRunAdvancesFromRuntimeTickers(t *testing.T) {
 		processed <- msg.Payload.Name
 		return nil
 	}, ProcessorOptions{
-		Concurrency:    1,
-		ClaimBatchSize: 1,
-		PollInterval:   time.Second,
-		LeaseDuration:  time.Minute,
+		Concurrency: 1,
+
+		PollInterval:  time.Second,
+		LeaseDuration: time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("NewProcessor: %v", err)
