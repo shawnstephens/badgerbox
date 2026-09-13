@@ -93,6 +93,10 @@ func newProducerCommand() *cli.Command {
 		Name:  "producer",
 		Usage: "Run badgerbox enqueueing and processing in one process, publishing to Kafka or demo logs until stopped",
 		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "circuit-breaker", Value: true, Usage: "Suspend claims during producer outages", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_BREAKER")},
+			&cli.IntFlag{Name: "circuit-failure-threshold", Value: 3, Usage: "Unavailable results before claims are suspended", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_FAILURE_THRESHOLD")},
+			&cli.DurationFlag{Name: "circuit-initial-cooldown", Value: 5 * time.Second, Usage: "Initial recovery trial delay", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_INITIAL_COOLDOWN")},
+			&cli.DurationFlag{Name: "circuit-max-cooldown", Value: time.Minute, Usage: "Maximum recovery trial delay", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_MAX_COOLDOWN")},
 			&cli.StringFlag{
 				Name:    "state-file",
 				Usage:   "Path to the shared demo state file",
@@ -564,9 +568,18 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		return err
 	}
 
+	var circuitOptions *badgerbox.CircuitBreakerOptions
+	if cmd.Bool("circuit-breaker") {
+		circuitOptions = &badgerbox.CircuitBreakerOptions{
+			FailureThreshold: cmd.Int("circuit-failure-threshold"),
+			InitialCooldown:  cmd.Duration("circuit-initial-cooldown"),
+			MaxCooldown:      cmd.Duration("circuit-max-cooldown"),
+			OnStateChange:    func(from, to string) { logger.Printf("process", "event=circuit_transition from=%s to=%s", from, to) },
+		}
+	}
 	processFn := demo.NewBatchProcessFunc(publisher, publishTimeout, logger)
 	store, err := runner.Register(service, badgerbox.Serde[kafka.KafkaMessage, kafka.KafkaDestination]{}, runner.QueueOptions{
-		Store: storeOptions, Processor: badgerbox.BatchProcessorOptions{ClaimBatchSize: processorClaimBatchSize, ProcessorOptions: badgerbox.ProcessorOptions{ClaimMaxBytes: controls.ClaimMaxBytes, Concurrency: processorConcurrency, PollInterval: pollInterval, LeaseDuration: leaseDuration, RetryBaseDelay: retryBaseDelay, RetryMaxDelay: retryMaxDelay}},
+		Store: storeOptions, Processor: badgerbox.BatchProcessorOptions{ClaimBatchSize: processorClaimBatchSize, ProcessorOptions: badgerbox.ProcessorOptions{CircuitBreaker: circuitOptions, ClaimMaxBytes: controls.ClaimMaxBytes, Concurrency: processorConcurrency, PollInterval: pollInterval, LeaseDuration: leaseDuration, RetryBaseDelay: retryBaseDelay, RetryMaxDelay: retryMaxDelay}},
 	}, processFn)
 	if err != nil {
 		return err

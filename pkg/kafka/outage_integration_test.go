@@ -29,7 +29,10 @@ func (h *outageHook) OnProduceRecordUnbuffered(_ *kgo.Record, err error) {
 
 // A stalled broker must never turn a failed produce into an outbox
 // acknowledgement. Once resumed, every persisted payload must be consumable.
-func TestBatchDeliverySurvivesBrokerOutage(t *testing.T) {
+func TestBatchDeliverySurvivesBrokerOutage(t *testing.T)  { testBatchDeliveryOutage(t, false) }
+func TestCircuitBreakerSurvivesBrokerOutage(t *testing.T) { testBatchDeliveryOutage(t, true) }
+
+func testBatchDeliveryOutage(t *testing.T, breakerEnabled bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	broker, err := testcontainerskafka.Run(ctx, "confluentinc/confluent-local:7.5.0", testcontainerskafka.WithClusterID("outage-cluster"))
@@ -82,9 +85,31 @@ func TestBatchDeliverySurvivesBrokerOutage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var circuitOptions *badgerbox.CircuitBreakerOptions
+	opened := make(chan struct{}, 1)
+	var delivered atomic.Int64
+	if breakerEnabled {
+		circuitOptions = &badgerbox.CircuitBreakerOptions{FailureThreshold: 1, InitialCooldown: 5 * time.Second, MaxCooldown: 5 * time.Second, OnStateChange: func(_, to string) {
+			if to == "open" {
+				select {
+				case opened <- struct{}{}:
+				default:
+				}
+			}
+		}}
+	}
+	baseFn := fn
+	fn = func(ctx context.Context, messages []badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination], out chan<- badgerbox.BatchProcessResult) error {
+		delivered.Add(int64(len(messages)))
+		return baseFn(ctx, messages, out)
+	}
+	attempts := 100
+	if breakerEnabled {
+		attempts = 1
+	}
 	processor, err := badgerbox.NewBatchProcessor(store, fn, badgerbox.BatchProcessorOptions{ClaimBatchSize: 16, ProcessorOptions: badgerbox.ProcessorOptions{
-		Concurrency: 2, PollInterval: 10 * time.Millisecond, LeaseDuration: 10 * time.Second,
-		RetryBaseDelay: 50 * time.Millisecond, RetryMaxDelay: 100 * time.Millisecond, MaxAttempts: 100,
+		CircuitBreaker: circuitOptions, Concurrency: 2, PollInterval: 10 * time.Millisecond, LeaseDuration: 10 * time.Second,
+		RetryBaseDelay: 50 * time.Millisecond, RetryMaxDelay: 100 * time.Millisecond, MaxAttempts: attempts,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +129,21 @@ func TestBatchDeliverySurvivesBrokerOutage(t *testing.T) {
 			t.Fatal("broker outage produced no delivery failures")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if breakerEnabled {
+		select {
+		case <-opened:
+		case <-ctx.Done():
+			t.Fatal("circuit did not open", ctx.Err())
+		}
+		// Existing batches may already be in flight; allow dispatch to observe
+		// opening, then verify it does not schedule more work during cooldown.
+		time.Sleep(100 * time.Millisecond)
+		before := delivered.Load()
+		time.Sleep(250 * time.Millisecond)
+		if delivered.Load() != before {
+			t.Fatal("new batches delivered while circuit open")
+		}
 	}
 	for _, id := range ids {
 		msg, err := store.Get(ctx, id)

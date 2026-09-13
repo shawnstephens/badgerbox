@@ -95,12 +95,17 @@ type Queue struct {
 	activeWorkers atomic.Int64
 	workDepth     atomic.Int64
 
-	enqueueTotal       metric.Int64Counter
-	claimTotal         metric.Int64Counter
-	processTotal       metric.Int64Counter
-	deadLetterTotal    metric.Int64Counter
-	requeueTotal       metric.Int64Counter
-	conflictRetryTotal metric.Int64Counter
+	circuitState        metric.Int64Gauge
+	circuitTransitions  metric.Int64Counter
+	circuitTrials       metric.Int64Counter
+	circuitDeferred     metric.Int64Counter
+	circuitOpenDuration metric.Float64Histogram
+	enqueueTotal        metric.Int64Counter
+	claimTotal          metric.Int64Counter
+	processTotal        metric.Int64Counter
+	deadLetterTotal     metric.Int64Counter
+	requeueTotal        metric.Int64Counter
+	conflictRetryTotal  metric.Int64Counter
 
 	enqueueDuration metric.Float64Histogram
 	processDuration metric.Float64Histogram
@@ -184,6 +189,21 @@ func NewQueue(opts ObservabilityOptions, namespace string, queueSnapshot func(co
 	}
 
 	var err error
+	if inst.circuitState, err = meter.Int64Gauge("badgerbox_circuit_state"); err != nil {
+		return nil, err
+	}
+	if inst.circuitTransitions, err = meter.Int64Counter("badgerbox_circuit_transitions_total"); err != nil {
+		return nil, err
+	}
+	if inst.circuitTrials, err = meter.Int64Counter("badgerbox_circuit_trials_total"); err != nil {
+		return nil, err
+	}
+	if inst.circuitDeferred, err = meter.Int64Counter("badgerbox_circuit_deferred_total"); err != nil {
+		return nil, err
+	}
+	if inst.circuitOpenDuration, err = meter.Float64Histogram("badgerbox_circuit_open_duration_seconds"); err != nil {
+		return nil, err
+	}
 	if inst.enqueueTotal, err = meter.Int64Counter("badgerbox_enqueue_total"); err != nil {
 		return nil, err
 	}

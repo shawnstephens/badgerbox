@@ -7,6 +7,7 @@ import (
 
 type ProcessFunc[M any, D any] func(context.Context, Message[M, D]) error
 type ProcessorOptions struct {
+	CircuitBreaker *CircuitBreakerOptions
 	// ClaimMaxBytes limits the sum of stored source values read by one claim.
 	// Zero disables this limit; negative values are invalid. Badger metadata is
 	// checked before copying or decoding. Values larger than the entire limit
@@ -29,6 +30,7 @@ type claimedRecord[M any, D any] struct {
 	LeaseToken   string
 	LeaseUntil   time.Time
 	TraceCarrier map[string]string
+	permit       circuitPermit
 }
 
 func validateProcessorOptions(opts ProcessorOptions) error {

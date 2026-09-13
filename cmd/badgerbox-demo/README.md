@@ -63,3 +63,7 @@ under pressure. A recovered producer can catch up with that schedule.
 
 See [the sustained churn harness](../../scripts/benchmark/README.md) for repeatable
 runs and the limits of finite GC/RSS evidence.
+
+## Producer outages
+
+The producer enables the generic circuit breaker by default. Enqueues continue within admission limits while claims pause; recovery trials still reload broker state. See the [circuit breaker guide and diagram](../../docs/CIRCUIT_BREAKER.md) for flags, environment variables, and metrics.

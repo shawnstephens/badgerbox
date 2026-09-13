@@ -1,3 +1,53 @@
+# Producer circuit breaker
+
+Implemented on `codex/producer-circuit-breaker` against current main. The public guide is [docs/CIRCUIT_BREAKER.md](docs/CIRCUIT_BREAKER.md), linked from the README and demo documentation. The PR includes the same diagram.
+
+The breaker uses `golang.org/x/time/rate` before durable claim admission. It is shared by single-message processors, batch processors, and runner queues. Options are copied at construction; state is private to each serialized processor run. Independent downstreams need separate queues/processors.
+
+```mermaid
+flowchart TD
+    E["Application enqueues"] --> Q[("Durable queue")]
+    C["Closed: normal claim batches"] --> P["Generic ProcessFunc"]
+    Q -.-> C
+    P -->|Success| A["Acknowledge; reset failure streak"]
+    A --> C
+    P -->|Message error| M["Existing retry or DLQ policy"]
+    M --> C
+    P -->|Producer unavailable| F["Defer message; restore attempt budget"]
+    F --> T{"Failure threshold reached?"}
+    T -->|No| C
+    T -->|Yes| O["Open: suspend claims and ready scans"]
+    O --> R["Release buffered, unstarted claims once"]
+    R --> W["Wait for rate limiter recovery token"]
+    W --> H["Half-open: claim and publish one message"]
+    Q -.-> H
+    H -->|Success| A
+    H -->|Unavailable| B["Defer; increase cooldown"]
+    B --> O
+    H -->|Message error| D["Retry or DLQ; retain cooldown"]
+    D --> O
+    H -->|Queue empty| I["Wait for enqueue or poll"]
+    I --> H
+```
+
+## API and defaults
+
+`ProcessorOptions.CircuitBreaker *CircuitBreakerOptions` is nil by default in the library; the demo enables it. Options are `FailureThreshold` (3), `InitialCooldown` (5s), `MaxCooldown` (1m), a concurrency-safe `IsUnavailable func(error) bool`, and optional `OnStateChange func(from,to string)` notifications. Zero fields select defaults; negatives and inconsistent cooldowns are rejected. `Unavailable(error)` and `IsUnavailable(error)` preserve underlying errors. Permanent errors and producer panics retain existing handling; shutdown settlement does not update breaker state.
+
+Closed admission is unlimited. Opening drains the initial token from a fresh burst-one limiter and reserves the next token using `ReserveN`; `DelayFrom` and cancellable `Runtime.Sleep` pace recovery. Half-open admits one message, regardless of normal batch size. A success closes the breaker; unavailable trials double cooldown to the cap; other trial failures retain cooldown. Empty claims and unstarted expired leases release trial occupancy. Generation checks reject obsolete starts and ignore late observations.
+
+## Current-main integration
+
+Upstream already bounds claims with worker slots and has transactional `releaseClaimed`. Extend that operation with an optional availability timestamp for outage deferral. This preserves retained-message/byte admission usage, restores scheduling indexes, refunds owned attempts, and ignores stale/quarantined records. Preserve detached settlement contexts, per-message async results, duplicate-result suppression, callback joining, and claim byte limits. During opening, release queued batches once; in-flight batches finish normally. The single dispatcher permits at most one already-admitted claim transaction to cross opening.
+
+Kafka classification belongs in `pkg/kafka`, covering both synchronous sends and async callbacks. The async demo also classifies terminal publish timeouts so unresolved messages defer; broker-state reload remains active. Breaker telemetry stays in `internal/instrumentation`; it does not add queue scans. The direct rate dependency resolves to v0.11.0 under upstream's existing dependency graph, without a broader upgrade.
+
+## Validation and delivery
+
+Test generic and batch outage recovery, no ready scans while open, exclusive trials, cancellation, stale generations, unstarted expiry, attempt refunds, retained admission, and Kafka classification. Run race tests and the repository's pinned lint in both modules (`GOWORK=off`), plus tagged Kafka tests where Docker is available. Measure a fixed simulated outage without concurrent enqueue, reaper, or GC work. Render the Mermaid diagram and verify documentation links. Commit and open a PR against main; do not merge it.
+
+---
+
 # Implementation and review order
 
 The modernization is a linear stack. Each branch builds on the preceding branch; review and merge from the bottom upward. Every public library package lives under `pkg`; the executable remains a separate module under `cmd`.

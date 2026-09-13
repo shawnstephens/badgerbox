@@ -17,6 +17,7 @@ func NewBatchProcessFunc(p BatchPublisher, timeout time.Duration, logger *Logger
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		failed := false
 		forward := func(result badgerbox.BatchProcessResult) error {
+			result.Err = kafka.ClassifyProducerError(result.Err)
 			if result.Err != nil {
 				failed = true
 				if logger != nil {
@@ -42,6 +43,9 @@ func NewBatchProcessFunc(p BatchPublisher, timeout time.Duration, logger *Logger
 		// One slot per callback allows every late result to complete after timeout.
 		incoming := make(chan badgerbox.BatchProcessResult, len(messages))
 		defer func() {
+			if parentCtx.Err() == nil {
+				deliveryErr = kafka.ClassifyProducerError(deliveryErr)
+			}
 			// Cancel asynchronous publishing before closing/replacing its client. A
 			// publish timeout permits recovery; parent cancellation means shutdown.
 			cancel()

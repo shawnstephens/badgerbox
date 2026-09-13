@@ -44,7 +44,7 @@ func newProcessFunc(producer syncProducer, _ Options) badgerbox.ProcessFunc[Kafk
 			return badgerbox.Permanent(err)
 		}
 
-		return producer.ProduceSync(ctx, record).FirstErr()
+		return ClassifyProducerError(producer.ProduceSync(ctx, record).FirstErr())
 	}
 }
 

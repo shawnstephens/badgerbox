@@ -128,7 +128,7 @@ func (p *ReloadingPublisher) Publish(ctx context.Context, msg badgerbox.Message[
 	}
 
 	record := buildKafkaRecord(msg)
-	err = client.ProduceSync(ctx, record)
+	err = kafka.ClassifyProducerError(client.ProduceSync(ctx, record))
 	if err == nil {
 		return nil
 	}

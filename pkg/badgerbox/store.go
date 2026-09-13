@@ -1319,6 +1319,12 @@ func (s *Store[M, D]) acknowledgeUsingUpdate(ctx context.Context, id MessageID, 
 }
 
 func (s *Store[M, D]) releaseClaimed(ctx context.Context, work []claimedRecord[M, D]) (int, error) {
+	return s.releaseClaimedAt(ctx, work, time.Time{})
+}
+
+// releaseClaimedAt preserves retained admission usage and restores owned leases;
+// a nonzero at reschedules unavailable deliveries without consuming attempts.
+func (s *Store[M, D]) releaseClaimedAt(ctx context.Context, work []claimedRecord[M, D], at time.Time) (int, error) {
 	if len(work) == 0 {
 		return 0, nil
 	}
@@ -1348,6 +1354,10 @@ func (s *Store[M, D]) releaseClaimed(ctx context.Context, work []claimedRecord[M
 				processingKey := s.keys.processingKey(time.Unix(0, record.LeaseUntilUnix).UTC(), record.ID)
 				createdAt := time.Unix(0, record.CreatedAtUnix).UTC()
 				availableAt := time.Unix(0, record.AvailableAtUnix).UTC()
+				if !at.IsZero() {
+					availableAt = at.UTC()
+					record.AvailableAtUnix = availableAt.UnixNano()
+				}
 				record.Attempt = max(0, record.Attempt-1)
 				record.Status = recordStatusPending
 				record.LeaseToken = ""
