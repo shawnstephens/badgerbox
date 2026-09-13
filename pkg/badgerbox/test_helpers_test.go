@@ -131,6 +131,7 @@ func assertMessageDeleted(t *testing.T, store *Store[testPayload, testDestinatio
 type fakeRuntime struct {
 	mu              sync.Mutex
 	now             time.Time
+	elapsed         time.Time
 	tickers         []*fakeTicker
 	tickerIntervals []time.Duration
 	sleepCalls      []time.Duration
@@ -140,7 +141,13 @@ type fakeRuntime struct {
 }
 
 func newFakeRuntime(now time.Time) *fakeRuntime {
-	return &fakeRuntime{now: now.UTC()}
+	return &fakeRuntime{now: now.UTC(), elapsed: now.UTC()}
+}
+
+func (r *fakeRuntime) MonotonicNow() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.elapsed
 }
 
 func (r *fakeRuntime) Now() time.Time {
@@ -158,6 +165,7 @@ func (r *fakeRuntime) SetNow(now time.Time) {
 func (r *fakeRuntime) Advance(delta time.Duration) time.Time {
 	r.mu.Lock()
 	r.now = r.now.Add(delta)
+	r.elapsed = r.elapsed.Add(delta)
 	now := r.now
 	r.mu.Unlock()
 	return now

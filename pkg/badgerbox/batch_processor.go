@@ -348,11 +348,11 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 		canClassify := observe || IsUnavailable(processErr) ||
 			(!errors.Is(processErr, context.Canceled) && !errors.Is(processErr, context.DeadlineExceeded))
 		unavailable := canClassify && p.breaker.unavailable(processErr)
-		if observe {
+		if observe && unavailable {
 			p.breaker.report(work.permit, false, unavailable)
 		}
 		if unavailable {
-			released, err := p.store.releaseClaimedAt(ctx, []claimedRecord[M, D]{work}, p.store.runtime.Now().Add(p.opts.CircuitBreaker.InitialCooldown))
+			released, err := p.store.releaseClaimedAt(ctx, []claimedRecord[M, D]{work}, p.store.runtime.Now().Add(p.breaker.deferralDelay()))
 			if err != nil {
 				span.RecordError(err)
 				delivery.end("error", p.store.runtime.Now())
@@ -375,6 +375,9 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 			return markSettlementError(boxErrorf("settle message %s: %w", work.Message.ID, failErr))
 		}
 		p.finishProcessing(ctx, delivery, started, processErr, result)
+		if observe {
+			p.breaker.report(work.permit, false, false)
+		}
 		return nil
 	}
 
@@ -506,7 +509,7 @@ func (p *BatchProcessor[M, D]) releaseClaimedBatch(ctx context.Context, work []c
 		return nil
 	}
 
-	defer p.breaker.empty(work[0].permit)
+	defer p.breaker.releaseUnstarted(work[0].permit)
 	settlementCtx, cancel := p.batchSettlementContext(ctx)
 	defer cancel()
 	released, err := p.store.releaseClaimed(settlementCtx, work)

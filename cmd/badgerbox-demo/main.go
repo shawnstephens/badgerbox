@@ -96,7 +96,9 @@ func newProducerCommand() *cli.Command {
 			&cli.BoolFlag{Name: "circuit-breaker", Value: true, Usage: "Suspend claims during producer outages", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_BREAKER")},
 			&cli.IntFlag{Name: "circuit-failure-threshold", Value: 3, Usage: "Unavailable results before claims are suspended", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_FAILURE_THRESHOLD")},
 			&cli.DurationFlag{Name: "circuit-initial-cooldown", Value: 5 * time.Second, Usage: "Initial recovery trial delay", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_INITIAL_COOLDOWN")},
-			&cli.DurationFlag{Name: "circuit-max-cooldown", Value: time.Minute, Usage: "Maximum recovery trial delay", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_MAX_COOLDOWN")},
+			&cli.DurationFlag{Name: "circuit-max-cooldown", Usage: "Maximum nominal recovery delay; zero uses the initial cooldown", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_MAX_COOLDOWN")},
+			&cli.DurationFlag{Name: "circuit-message-error-cooldown", Usage: "Nominal trial delay after a message error; zero uses min(1s, initial cooldown)", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_MESSAGE_ERROR_COOLDOWN")},
+			&cli.BoolFlag{Name: "circuit-disable-jitter", Usage: "Use exact recovery delays instead of sampling 80–100%", Sources: cli.EnvVars("BADGERBOX_DEMO_CIRCUIT_DISABLE_JITTER")},
 			&cli.StringFlag{
 				Name:    "state-file",
 				Usage:   "Path to the shared demo state file",
@@ -250,6 +252,7 @@ func newProducerCommand() *cli.Command {
 				Value:   demo.DefaultPublishTimeout,
 				Sources: cli.EnvVars("BADGERBOX_DEMO_PUBLISH_TIMEOUT"),
 			},
+			&cli.DurationFlag{Name: "record-delivery-timeout", Usage: "Kafka record deadline (minimum 1s); zero uses half of publish-timeout", Sources: cli.EnvVars("BADGERBOX_DEMO_RECORD_DELIVERY_TIMEOUT")},
 			&cli.DurationFlag{
 				Name:    "badger-gc-interval",
 				Usage:   "How often to run Badger value-log GC",
@@ -466,6 +469,13 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	if publishTimeout <= 0 {
 		return errors.New("publish-timeout must be greater than 0")
 	}
+	var recordDeliveryTimeout time.Duration
+	if !loggingProducer {
+		recordDeliveryTimeout, err = resolveRecordDeliveryTimeout(cmd.Duration("record-delivery-timeout"), publishTimeout)
+		if err != nil {
+			return err
+		}
+	}
 	badgerGCInterval := cmd.Duration("badger-gc-interval")
 	if badgerGCInterval <= 0 {
 		return errors.New("badger-gc-interval must be greater than 0")
@@ -504,7 +514,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 		brokerSummary = "-"
 	}
 
-	logger.Printf("startup", "command=producer publish_transport=%s brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d processor_claim_batch_size=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_compact_on_startup=%t badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", publishTransport, brokerSummary, target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, processorClaimBatchSize, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerCompactOnStartup, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
+	logger.Printf("startup", "command=producer publish_transport=%s brokers=%s brokers_source=%s topic=%s topic_source=%s db_path=%s namespace=%s enqueue_parallelism=%d processor_concurrency=%d processor_claim_batch_size=%d interval=%s retry_base_delay=%s retry_max_delay=%s poll_interval=%s lease_duration=%s publish_timeout=%s record_delivery_timeout=%s badger_gc_interval=%s badger_gc_discard_ratio=%.2f badger_compact_on_startup=%t badger_sync_writes=%t badger_memtable_size=%s badger_num_memtables=%d badger_num_level_zero_tables=%d badger_num_level_zero_tables_stall=%d badger_num_compactors=%d badger_base_table_size=%s badger_value_log_file_size=%s badger_block_cache_size=%s badger_index_cache_size=%s badger_value_threshold=%s producer_id=%s otel_endpoint=%s expvar_listen_addr=%s", publishTransport, brokerSummary, target.BrokersSource, target.Topic, target.TopicSource, dbPath, namespace, enqueueParallelism, processorConcurrency, processorClaimBatchSize, messageInterval, retryBaseDelay, retryMaxDelay, pollInterval, leaseDuration, publishTimeout, recordDeliveryTimeout, badgerGCInterval, demo.DefaultBadgerGCDiscardRatio, badgerCompactOnStartup, badgerOpts.SyncWrites, demo.FormatBytes(badgerOpts.MemTableSize), badgerOpts.NumMemtables, badgerOpts.NumLevelZeroTables, badgerOpts.NumLevelZeroTablesStall, badgerOpts.NumCompactors, demo.FormatBytes(badgerOpts.BaseTableSize), demo.FormatBytes(badgerOpts.ValueLogFileSize), demo.FormatBytes(badgerOpts.BlockCacheSize), demo.FormatBytes(badgerOpts.IndexCacheSize), demo.FormatBytes(badgerOpts.ValueThreshold), producerID, otelConfig.Endpoint, expvarListenAddr)
 	logger.Printf("startup", "event=resource_controls max_retained_messages=%d max_retained_bytes=%d processor_claim_max_bytes=%d min_free_disk_bytes=%d disk_check_interval=%s admission_retry_interval=%s", controls.AdmissionLimits.MaxRetainedMessages, controls.AdmissionLimits.MaxRetainedBytes, controls.ClaimMaxBytes, controls.MinFreeDiskBytes, controls.DiskCheckInterval, controls.AdmissionRetryInterval)
 
 	observability, shutdownOTel, err := demo.SetupOTel(runCtx, otelConfig)
@@ -551,7 +561,7 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	if loggingProducer {
 		publisher = demo.NewLoggingPublisher(logger)
 	} else {
-		publisher = demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger)
+		publisher = demo.NewReloadingPublisher(stateFile, target.Brokers, target.Topic, logger, kgo.RecordDeliveryTimeout(recordDeliveryTimeout))
 	}
 	deliveryObserver, err := telemetry.NewDeliveryObserver(observability, publishTransport)
 	if err != nil {
@@ -571,10 +581,12 @@ func runProducer(ctx context.Context, cmd *cli.Command) (resultErr error) {
 	var circuitOptions *badgerbox.CircuitBreakerOptions
 	if cmd.Bool("circuit-breaker") {
 		circuitOptions = &badgerbox.CircuitBreakerOptions{
-			FailureThreshold: cmd.Int("circuit-failure-threshold"),
-			InitialCooldown:  cmd.Duration("circuit-initial-cooldown"),
-			MaxCooldown:      cmd.Duration("circuit-max-cooldown"),
-			OnStateChange:    func(from, to string) { logger.Printf("process", "event=circuit_transition from=%s to=%s", from, to) },
+			FailureThreshold:     cmd.Int("circuit-failure-threshold"),
+			InitialCooldown:      cmd.Duration("circuit-initial-cooldown"),
+			MaxCooldown:          cmd.Duration("circuit-max-cooldown"),
+			MessageErrorCooldown: cmd.Duration("circuit-message-error-cooldown"),
+			DisableJitter:        cmd.Bool("circuit-disable-jitter"),
+			OnStateChange:        func(from, to string) { logger.Printf("process", "event=circuit_transition from=%s to=%s", from, to) },
 		}
 	}
 	processFn := demo.NewBatchProcessFunc(publisher, publishTimeout, logger)

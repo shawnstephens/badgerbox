@@ -98,4 +98,4 @@ The optional expvar listener remains available for local Go runtime diagnostics.
 
 ## Circuit breaker
 
-Enabled processors expose circuit state, transitions, trial outcomes, deferred messages, and open durations without adding queue scans. See [Circuit breaker metrics and flow](CIRCUIT_BREAKER.md#demo-and-observability).
+Enabled processors expose circuit state, transitions, trial outcomes, deferred messages, open durations, and the `badgerbox_circuit_recovery_delay_seconds` histogram (`reason=unavailable|message_error`) without adding queue scans. See [Circuit breaker metrics and flow](CIRCUIT_BREAKER.md#demo-and-observability).

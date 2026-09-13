@@ -18,6 +18,7 @@ import (
 
 func testCircuit(t *testing.T, opts CircuitBreakerOptions) (*circuitBreaker, *fakeRuntime) {
 	t.Helper()
+	opts.DisableJitter = true // Exact schedules for existing state-machine tests.
 	normalized, err := normalizeCircuitBreakerOptions(&opts)
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +40,7 @@ func TestCircuitOptionsAndErrors(t *testing.T) {
 	if !IsUnavailable(wrapped) || !errors.Is(wrapped, base) || Unavailable(nil) != nil {
 		t.Fatal("wrapper lost identity")
 	}
-	for _, o := range []CircuitBreakerOptions{{FailureThreshold: -1}, {InitialCooldown: -1}, {MaxCooldown: -1}, {InitialCooldown: time.Minute, MaxCooldown: time.Second}} {
+	for _, o := range []CircuitBreakerOptions{{FailureThreshold: -1}, {InitialCooldown: -1}, {MaxCooldown: -1}, {MessageErrorCooldown: -1}, {InitialCooldown: time.Minute, MaxCooldown: time.Second}} {
 		if _, err := normalizeCircuitBreakerOptions(&o); err == nil {
 			t.Fatalf("accepted %+v", o)
 		}
@@ -48,7 +49,7 @@ func TestCircuitOptionsAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.FailureThreshold != 3 || opts.InitialCooldown != 5*time.Second || opts.MaxCooldown != time.Minute {
+	if opts.FailureThreshold != 3 || opts.InitialCooldown != 5*time.Second || opts.MaxCooldown != 5*time.Second || opts.MessageErrorCooldown != time.Second || opts.DisableJitter {
 		t.Fatalf("defaults: %+v", opts)
 	}
 	b, _ := testCircuit(t, CircuitBreakerOptions{IsUnavailable: func(error) bool { return true }})
@@ -259,6 +260,9 @@ func TestCircuitMetrics(t *testing.T) {
 	if got := float64HistogramCountWithAttrs(metrics, "badgerbox_circuit_open_duration_seconds", ns); got != 1 {
 		t.Fatal(got)
 	}
+	if got := float64HistogramCountWithAttrs(metrics, "badgerbox_circuit_recovery_delay_seconds", ns, attribute.String("reason", "unavailable")); got != 1 {
+		t.Fatal(got)
+	}
 	if got := int64GaugeValueWithAttrs(metrics, "badgerbox_circuit_state", ns); got != 0 {
 		t.Fatal(got)
 	}
@@ -374,7 +378,8 @@ func TestProcessorCircuitSuspendsClaimsAndRecovers(t *testing.T) {
 	sleeping := make(chan struct{}, 1)
 	wake := make(chan struct{}, 1)
 	r.sleepFunc = func(ctx context.Context, d time.Duration) error {
-		if d < time.Second {
+		if d <= conflictRetryDelay {
+			r.Advance(d)
 			return nil
 		}
 		select {
@@ -578,7 +583,7 @@ func TestRepeatedOutageTrialsPreserveAttempts(t *testing.T) {
 
 func TestCircuitReducesOutageWrites(t *testing.T) {
 	type result struct{ claims, calls, bytes int64 }
-	run := func(enabled bool) result {
+	run := func(mode string) result {
 		r := newFakeRuntime(time.Now().UTC())
 		_, s, cleanup := openTestStoreWithOptions[testPayload, testDestination](t, "write-cost", Serde[testPayload, testDestination]{}, Options{Runtime: r})
 		defer cleanup()
@@ -589,8 +594,12 @@ func TestCircuitReducesOutageWrites(t *testing.T) {
 		}
 		var got result
 		opts := BatchProcessorOptions{ClaimBatchSize: 16, ProcessorOptions: ProcessorOptions{RetryBaseDelay: time.Second, RetryMaxDelay: time.Second, MaxAttempts: 10000}}
-		if enabled {
+		if mode != "disabled" {
 			opts.CircuitBreaker = &CircuitBreakerOptions{}
+			if mode == "exponential" {
+				opts.CircuitBreaker.MaxCooldown = time.Minute
+				opts.CircuitBreaker.DisableJitter = true
+			}
 		}
 		p := circuitBatchProcessor(t, s, func(_ context.Context, msgs []Message[testPayload, testDestination], results chan<- BatchProcessResult) error {
 			for _, m := range msgs {
@@ -602,10 +611,13 @@ func TestCircuitReducesOutageWrites(t *testing.T) {
 		defer p.breaker.close()
 		writes := expvar.Get("badger_write_bytes_user").(*expvar.Int)
 		before := writes.Value()
-		for second := 0; second < 60; second++ {
-			if enabled {
+		if p.breaker != nil {
+			p.breaker.random = func() float64 { return 0.5 }
+		}
+		for tick := 0; tick < 600; tick++ {
+			if p.breaker != nil {
 				state, _ := p.breaker.signals()
-				if state == circuitOpen && p.breaker.reservation.DelayFrom(r.Now()) == 0 {
+				if state == circuitOpen && p.breaker.reservation.DelayFrom(p.breaker.now()) == 0 {
 					if err := p.breaker.wait(t.Context()); err != nil {
 						t.Fatal(err)
 					}
@@ -632,7 +644,7 @@ func TestCircuitReducesOutageWrites(t *testing.T) {
 					}
 				}
 			}
-			r.Advance(time.Second)
+			r.Advance(100 * time.Millisecond)
 		}
 		got.bytes = writes.Value() - before
 		r.mu.Lock()
@@ -640,7 +652,8 @@ func TestCircuitReducesOutageWrites(t *testing.T) {
 		r.mu.Unlock()
 		return got
 	}
-	disabled, enabled := run(false), run(true)
+	disabled, old, enabled := run("disabled"), run("exponential"), run("fixed")
+	t.Logf("previous exponential policy: claims=%d calls=%d Badger user-write bytes=%d", old.claims, old.calls, old.bytes)
 	t.Logf("60s simulated outage, 16 messages: disabled claims=%d calls=%d Badger user-write bytes=%d; enabled claims=%d calls=%d Badger user-write bytes=%d", disabled.claims, disabled.calls, disabled.bytes, enabled.claims, enabled.calls, enabled.bytes)
 	if enabled.claims >= disabled.claims/2 || enabled.calls >= disabled.calls/2 || enabled.bytes >= disabled.bytes/2 {
 		t.Fatal("outage IO not reduced")

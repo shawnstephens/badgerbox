@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -16,6 +17,10 @@ type CircuitBreakerOptions struct {
 	FailureThreshold int
 	InitialCooldown  time.Duration
 	MaxCooldown      time.Duration
+	// MessageErrorCooldown defaults to min(1s, InitialCooldown).
+	MessageErrorCooldown time.Duration
+	// DisableJitter uses exact cooldowns instead of independently sampling 80–100%.
+	DisableJitter bool
 	// IsUnavailable must be concurrency-safe. Nil uses badgerbox.IsUnavailable.
 	IsUnavailable func(error) bool
 	// OnStateChange is an optional, concurrency-safe, nonblocking notification.
@@ -28,7 +33,7 @@ func normalizeCircuitBreakerOptions(opts *CircuitBreakerOptions) (*CircuitBreake
 		return nil, nil
 	}
 	o := *opts
-	if o.FailureThreshold < 0 || o.InitialCooldown < 0 || o.MaxCooldown < 0 {
+	if o.FailureThreshold < 0 || o.InitialCooldown < 0 || o.MaxCooldown < 0 || o.MessageErrorCooldown < 0 {
 		return nil, fmt.Errorf("badgerbox: circuit breaker options must not be negative")
 	}
 	if o.FailureThreshold == 0 {
@@ -38,7 +43,10 @@ func normalizeCircuitBreakerOptions(opts *CircuitBreakerOptions) (*CircuitBreake
 		o.InitialCooldown = 5 * time.Second
 	}
 	if o.MaxCooldown == 0 {
-		o.MaxCooldown = time.Minute
+		o.MaxCooldown = o.InitialCooldown
+	}
+	if o.MessageErrorCooldown == 0 {
+		o.MessageErrorCooldown = min(time.Second, o.InitialCooldown)
 	}
 	if o.MaxCooldown < o.InitialCooldown {
 		return nil, fmt.Errorf("badgerbox: circuit breaker maximum cooldown is below initial cooldown")
@@ -66,6 +74,8 @@ type circuitBreaker struct {
 	mu          sync.Mutex
 	opts        CircuitBreakerOptions
 	runtime     Runtime
+	now         func() time.Time
+	random      func() float64
 	obs         *otelInstrumentation
 	state       circuitState
 	generation  uint64
@@ -82,22 +92,30 @@ func newCircuitBreaker(opts *CircuitBreakerOptions, runtime Runtime, obs *otelIn
 	if opts == nil {
 		return nil
 	}
-	b := &circuitBreaker{opts: *opts, runtime: runtime, obs: obs, state: circuitClosed, cooldown: opts.InitialCooldown, limiter: rate.NewLimiter(rate.Inf, 1), changed: make(chan struct{})}
+	now := runtime.Now
+	if elapsed, ok := runtime.(MonotonicRuntime); ok {
+		now = elapsed.MonotonicNow
+	}
+	b := &circuitBreaker{opts: *opts, runtime: runtime, now: now, random: rand.Float64, obs: obs, state: circuitClosed, cooldown: opts.InitialCooldown, limiter: rate.NewLimiter(rate.Inf, 1), changed: make(chan struct{})}
 	if obs != nil {
 		obs.RecordCircuitState(context.Background(), string(circuitClosed))
 	}
 	return b
 }
 
+func (b *circuitBreaker) signalLocked() {
+	close(b.changed)
+	b.changed = make(chan struct{})
+}
+
 func (b *circuitBreaker) changeLocked(state circuitState) func() {
 	from := b.state
 	b.state = state
-	close(b.changed)
-	b.changed = make(chan struct{})
+	b.signalLocked()
 	if b.obs != nil {
 		b.obs.RecordCircuitTransition(context.Background(), string(from), string(state))
 		if from == circuitOpen {
-			b.obs.RecordCircuitOpenDuration(context.Background(), b.runtime.Now().Sub(b.openedAt))
+			b.obs.RecordCircuitOpenDuration(context.Background(), b.now().Sub(b.openedAt))
 		}
 	}
 	return func() {
@@ -107,17 +125,44 @@ func (b *circuitBreaker) changeLocked(state circuitState) func() {
 	}
 }
 
-func (b *circuitBreaker) openLocked() func() {
-	now := b.runtime.Now()
+// minimumCircuitDelay rounds up, including sub-nanosecond fractional results.
+func minimumCircuitDelay(nominal time.Duration) time.Duration {
+	return nominal - nominal/5
+}
+
+func (b *circuitBreaker) sampleDelay(nominal time.Duration) time.Duration {
+	if b.opts.DisableJitter {
+		return nominal
+	}
+	minimum := minimumCircuitDelay(nominal)
+	spread := nominal - minimum
+	// Clamp before adding: float rounding near MaxInt64 must not overflow.
+	offset := min(spread, time.Duration(b.random()*float64(spread)))
+	return minimum + offset
+}
+
+func (b *circuitBreaker) deferralDelay() time.Duration {
+	if b.opts.DisableJitter {
+		return b.opts.InitialCooldown
+	}
+	return minimumCircuitDelay(b.opts.InitialCooldown)
+}
+
+func (b *circuitBreaker) openLocked(nominal time.Duration, reason string) func() {
+	now := b.now()
 	if b.reservation != nil {
 		b.reservation.CancelAt(now)
 	}
 	b.generation++
 	b.trial = false
 	b.openedAt = now
-	b.limiter = rate.NewLimiter(rate.Every(b.cooldown), 1)
+	delay := b.sampleDelay(nominal)
+	b.limiter = rate.NewLimiter(rate.Every(delay), 1)
 	b.limiter.AllowN(now, 1) // Drain the initially full bucket: no immediate trial.
 	b.reservation = b.limiter.ReserveN(now, 1)
+	if b.obs != nil {
+		b.obs.RecordCircuitRecoveryDelay(context.Background(), reason, delay)
+	}
 	return b.changeLocked(circuitOpen)
 }
 
@@ -140,23 +185,23 @@ func (b *circuitBreaker) wait(ctx context.Context) error {
 			b.mu.Unlock()
 			return fmt.Errorf("badgerbox: invalid circuit recovery reservation")
 		}
-		delay := r.DelayFrom(b.runtime.Now())
+		delay := r.DelayFrom(b.now())
 		b.mu.Unlock()
 		if err := b.runtime.Sleep(ctx, delay); err != nil {
-			r.CancelAt(b.runtime.Now())
+			r.CancelAt(b.now())
 			return err
 		}
 		b.mu.Lock()
 		if ctxErr(ctx) != nil {
 			b.mu.Unlock()
-			r.CancelAt(b.runtime.Now())
+			r.CancelAt(b.now())
 			return ctx.Err()
 		}
 		if b.state != circuitOpen || b.generation != generation {
 			b.mu.Unlock()
 			continue
 		}
-		if r.DelayFrom(b.runtime.Now()) > 0 {
+		if r.DelayFrom(b.now()) > 0 {
 			b.mu.Unlock()
 			continue
 		}
@@ -182,7 +227,7 @@ func (b *circuitBreaker) admit() (circuitPermit, bool) {
 		b.trial = true
 		return p, true
 	}
-	return p, b.limiter.AllowN(b.runtime.Now(), 1)
+	return p, b.limiter.AllowN(b.now(), 1)
 }
 
 func (b *circuitBreaker) start(p circuitPermit) bool {
@@ -195,13 +240,24 @@ func (b *circuitBreaker) start(p circuitPermit) bool {
 }
 
 func (b *circuitBreaker) empty(p circuitPermit) {
+	b.clearTrial(p, false)
+}
+
+func (b *circuitBreaker) releaseUnstarted(p circuitPermit) {
+	b.clearTrial(p, true)
+}
+
+func (b *circuitBreaker) clearTrial(p circuitPermit, wake bool) {
 	if b == nil || !p.trial {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if p.generation == b.generation {
+	if p.generation == b.generation && b.trial {
 		b.trial = false
+		if wake {
+			b.signalLocked()
+		}
 	}
 }
 
@@ -214,8 +270,8 @@ func (b *circuitBreaker) signals() (circuitState, <-chan struct{}) {
 	return b.state, b.changed
 }
 
-// report records producer failures before storage settlement; successful trial
-// reports are delayed until acknowledgement has completed.
+// report records unavailable failures before storage settlement. Other outcomes
+// are reported after their acknowledgement or retry/DLQ settlement.
 func (b *circuitBreaker) report(p circuitPermit, success, unavailable bool) {
 	if b == nil {
 		return
@@ -251,7 +307,11 @@ func (b *circuitBreaker) report(p circuitPermit, success, unavailable bool) {
 					b.cooldown *= 2
 				}
 			}
-			notify = b.openLocked()
+			if unavailable {
+				notify = b.openLocked(b.cooldown, "unavailable")
+			} else {
+				notify = b.openLocked(b.opts.MessageErrorCooldown, "message_error")
+			}
 		}
 	} else if b.state == circuitClosed {
 		if success {
@@ -259,7 +319,7 @@ func (b *circuitBreaker) report(p circuitPermit, success, unavailable bool) {
 		} else if unavailable {
 			b.failures++
 			if b.failures >= b.opts.FailureThreshold {
-				notify = b.openLocked()
+				notify = b.openLocked(b.cooldown, "unavailable")
 			}
 		}
 	}
@@ -281,6 +341,6 @@ func (b *circuitBreaker) close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.reservation != nil {
-		b.reservation.CancelAt(b.runtime.Now())
+		b.reservation.CancelAt(b.now())
 	}
 }

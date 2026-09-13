@@ -7,44 +7,47 @@ The breaker uses `golang.org/x/time/rate` before durable claim admission. It is 
 ```mermaid
 flowchart TD
     E["Application enqueues"] --> Q[("Durable queue")]
-    C["Closed: normal claim batches"] --> P["Generic ProcessFunc"]
-    Q -.-> C
+    Q -.-> C["Closed: normal claim batches"]
+    C --> P["Generic producer"]
     P -->|Success| A["Acknowledge; reset failure streak"]
     A --> C
-    P -->|Message error| M["Existing retry or DLQ policy"]
+    P -->|Message error| M["Normal retry or DLQ"]
     M --> C
-    P -->|Producer unavailable| F["Defer message; restore attempt budget"]
+    P -->|Unavailable| F["Defer; refund owned attempt"]
     F --> T{"Failure threshold reached?"}
     T -->|No| C
     T -->|Yes| O["Open: suspend claims and ready scans"]
-    O --> R["Release buffered, unstarted claims once"]
-    R --> W["Wait for rate limiter recovery token"]
-    W --> H["Half-open: claim and publish one message"]
+    O --> R["Release unstarted claims once"]
+    R --> W["Monotonic rate-limiter wait: 4–5s by default"]
+    W --> H["Half-open: publish one eligible message"]
     Q -.-> H
     H -->|Success| A
-    H -->|Unavailable| B["Defer; increase cooldown"]
+    H -->|Unavailable| B["Defer and refund; schedule outage interval"]
     B --> O
-    H -->|Message error| D["Retry or DLQ; retain cooldown"]
-    D --> O
-    H -->|Queue empty| I["Wait for enqueue or poll"]
+    H -->|Message error| D["Normal retry or DLQ; retain outage backoff"]
+    D --> S["Restricted rate-limiter wait: 0.8–1s by default"]
+    S --> H
+    H -->|Queue empty| I["Retain permission; wait for enqueue or poll"]
     I --> H
 ```
 
 ## API and defaults
 
-`ProcessorOptions.CircuitBreaker *CircuitBreakerOptions` is nil by default in the library; the demo enables it. Options are `FailureThreshold` (3), `InitialCooldown` (5s), `MaxCooldown` (1m), a concurrency-safe `IsUnavailable func(error) bool`, and optional `OnStateChange func(from,to string)` notifications. Zero fields select defaults; negatives and inconsistent cooldowns are rejected. `Unavailable(error)` and `IsUnavailable(error)` preserve underlying errors. Permanent errors and producer panics retain existing handling; shutdown settlement does not update breaker state.
+`ProcessorOptions.CircuitBreaker *CircuitBreakerOptions` is nil by default in the library; the demo enables it. Options are `FailureThreshold` (3), `InitialCooldown` (5s), `MaxCooldown` (initial cooldown), `MessageErrorCooldown` (min(1s, initial cooldown)), `DisableJitter` (false), a concurrency-safe `IsUnavailable func(error) bool`, and optional `OnStateChange func(from,to string)` notifications. Zero fields select defaults; negatives and inconsistent cooldowns are rejected. `Unavailable(error)` and `IsUnavailable(error)` preserve underlying errors. Permanent errors and producer panics retain existing handling; shutdown settlement does not update breaker state.
 
-Closed admission is unlimited. Opening drains the initial token from a fresh burst-one limiter and reserves the next token using `ReserveN`; `DelayFrom` and cancellable `Runtime.Sleep` pace recovery. Half-open admits one message, regardless of normal batch size. A success closes the breaker; unavailable trials double cooldown to the cap; other trial failures retain cooldown. Empty claims and unstarted expired leases release trial occupancy. Generation checks reject obsolete starts and ignore late observations.
+Closed admission is unlimited. Opening drains the initial token from a fresh burst-one limiter and reserves the next token using `ReserveN`; `DelayFrom` and cancellable `Runtime.Sleep` pace recovery. Half-open admits one message, regardless of normal batch size. A success closes the breaker; unavailable trials use a fixed nominal 5s by default, or double to an explicitly larger maximum. Other trial failures first settle normally, then use a nominal 1s delay without resetting outage backoff. Each delay is independently jittered to 80–100% unless disabled. Empty claims release occupancy without waking themselves; unstarted expired leases release occupancy before waking dispatch. Optional MonotonicRuntime timing isolates reservations and cancellation from wall-clock corrections while durable scheduling stays in UTC. Outage deferrals use the minimum initial jittered delay. Generation checks reject obsolete starts and ignore late observations.
 
 ## Current-main integration
 
 Upstream already bounds claims with worker slots and has transactional `releaseClaimed`. Extend that operation with an optional availability timestamp for outage deferral. This preserves retained-message/byte admission usage, restores scheduling indexes, refunds owned attempts, and ignores stale/quarantined records. Preserve detached settlement contexts, per-message async results, duplicate-result suppression, callback joining, and claim byte limits. During opening, release queued batches once; in-flight batches finish normally. The single dispatcher permits at most one already-admitted claim transaction to cross opening.
 
-Kafka classification belongs in `pkg/kafka`, covering both synchronous sends and async callbacks. Known message-specific causes inside timeout error chains retain their retry/DLQ budget. The async demo also classifies terminal publish timeouts so unresolved messages defer; broker-state reload remains active. Shutdown suppresses breaker observations while preserving known outage deferrals and refunds, including marked publish deadlines; cancellation and unmarked shutdown deadlines retain normal handling. Breaker telemetry stays in `internal/instrumentation`; it does not add queue scans. The direct rate dependency resolves to v0.11.0 under upstream's existing dependency graph, without a broader upgrade.
+The demo configures a Kafka record deadline at half the outer publish deadline by default, validates the client's 1s minimum, and preserves options on reload. Kafka classification belongs in `pkg/kafka`, covering both synchronous sends and async callbacks. Known message-specific causes inside timeout error chains retain their retry/DLQ budget. The async demo also classifies terminal publish timeouts so unresolved messages defer; broker-state reload remains active. Shutdown suppresses breaker observations while preserving known outage deferrals and refunds, including marked publish deadlines; cancellation and unmarked shutdown deadlines retain normal handling. Breaker telemetry stays in `internal/instrumentation`; it does not add queue scans. The direct rate dependency resolves to v0.11.0 under upstream's existing dependency graph, without a broader upgrade.
 
 ## Validation and delivery
 
-Test generic and batch outage recovery, no ready scans while open, exclusive trials, cancellation, stale generations, unstarted expiry, attempt refunds, retained admission, and Kafka classification. Run race tests and the repository's pinned lint in both modules (`GOWORK=off`), plus tagged Kafka tests where Docker is available. Measure a fixed simulated outage without concurrent enqueue, reaper, or GC work. Render the Mermaid diagram and verify documentation links. Commit and open a PR against main; do not merge it.
+Posted a fresh inline COMMENT review before these changes, distinguishing the P2 monotonic-clock defect from recovery-policy and error-information tradeoffs. Keep the PR unmerged.
+
+Test generic and batch outage recovery, no ready scans while open, exclusive trials, cancellation, stale generations, unstarted expiry, attempt refunds, retained admission, and Kafka classification. Run race tests and the repository's pinned lint in both modules (`GOWORK=off`), plus tagged Kafka tests where Docker is available. Measure a fixed simulated outage without concurrent enqueue, reaper, or GC work. Render the Mermaid diagram and verify documentation links. Commit and push the hardening to PR #23, update its behavior and validation summary, and reply to and resolve addressed review threads with evidence. Keep it unmerged. See [measured performance tradeoffs](docs/CIRCUIT_BREAKER_PERFORMANCE.md).
 
 ---
 

@@ -43,6 +43,12 @@ func (o *Queue) RecordCircuitOpenDuration(ctx context.Context, duration time.Dur
 	}
 }
 
+func (o *Queue) RecordCircuitRecoveryDelay(ctx context.Context, reason string, duration time.Duration) {
+	if o.circuitRecoveryDelay != nil {
+		o.circuitRecoveryDelay.Record(ctx, positiveDuration(duration).Seconds(), metric.WithAttributes(attribute.String("namespace", o.namespace), attribute.String("reason", reason)))
+	}
+}
+
 func (o *Queue) RecordProcessDeferred(ctx context.Context, d time.Duration) {
 	o.RecordProcessOutcome(ctx, "deferred", "unavailable", d)
 }

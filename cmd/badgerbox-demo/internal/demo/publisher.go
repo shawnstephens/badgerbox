@@ -82,14 +82,15 @@ type ReloadingPublisher struct {
 	readState func(string) (State, error)
 }
 
-func NewReloadingPublisher(stateFile string, brokers []string, stateTopic string, logger *Logger) *ReloadingPublisher {
+func NewReloadingPublisher(stateFile string, brokers []string, stateTopic string, logger *Logger, clientOpts ...kgo.Opt) *ReloadingPublisher {
+	clientOpts = append([]kgo.Opt(nil), clientOpts...)
 	return &ReloadingPublisher{
 		stateFile:  stateFile,
 		logger:     logger,
 		brokers:    append([]string(nil), brokers...),
 		stateTopic: stateTopic,
 		newClient: func(brokers []string) (producerClient, error) {
-			client, err := NewKafkaClient(brokers)
+			client, err := NewKafkaClient(brokers, clientOpts...)
 			if err != nil {
 				return nil, err
 			}
