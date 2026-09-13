@@ -58,7 +58,7 @@ func newBatchProducerFunc(producer asyncProducer) badgerbox.BatchProcessFunc[Kaf
 				if obs != nil {
 					obs.RecordKafkaPromise(context.WithoutCancel(messageCtx), time.Since(started), err)
 				}
-				results <- badgerbox.BatchProcessResult{ID: id, Err: err}
+				results <- badgerbox.BatchProcessResult{ID: id, Err: ClassifyProducerError(err)}
 			})
 		}
 		return nil

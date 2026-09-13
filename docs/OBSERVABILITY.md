@@ -95,3 +95,7 @@ GOWORK=off go run . producer --logging-producer \
 For gRPC, add `--otel-protocol grpc --otel-endpoint localhost:34317`. The protocol defaults to `http/protobuf`. Endpoint URLs are accepted. TLS remains the exporter default unless an insecure URL or `--otel-insecure` explicitly selects plaintext. The standard OTLP endpoint/protocol environment variables are also accepted by the demo CLI; provider setup respects exporter environment configuration.
 
 The optional expvar listener remains available for local Go runtime diagnostics. Queue/database telemetry uses the injected OpenTelemetry providers and does not require that listener. Shut down the runner before shutting down providers so final settlement and flush observations can be exported.
+
+## Circuit breaker
+
+Enabled processors expose circuit state, transitions, trial outcomes, deferred messages, open durations, and the `badgerbox_circuit_recovery_delay_seconds` histogram (`reason=unavailable|message_error`) without adding queue scans. See [Circuit breaker metrics and flow](CIRCUIT_BREAKER.md#demo-and-observability).

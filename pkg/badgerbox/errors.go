@@ -45,7 +45,7 @@ func IsPermanent(err error) bool {
 }
 
 func panicError(recovered any) error {
-	return fmt.Errorf("badgerbox: process panic: %v", recovered)
+	return producerPanicError{fmt.Errorf("badgerbox: process panic: %v", recovered)}
 }
 
 var (
@@ -99,3 +99,25 @@ var ErrMessageQuarantined = errors.New("badgerbox: message is quarantined")
 
 // ErrClaimTooLarge identifies the reason stored when a record exceeds ClaimMaxBytes.
 var ErrClaimTooLarge = errors.New("badgerbox: message exceeds claim byte limit")
+
+type unavailableError struct{ err error }
+
+func (e unavailableError) Error() string { return e.err.Error() }
+func (e unavailableError) Unwrap() error { return e.err }
+
+// Unavailable marks a downstream outage. Enabled circuit breakers defer these
+// failures without consuming the message's retry budget.
+func Unavailable(err error) error {
+	if err == nil {
+		return nil
+	}
+	return unavailableError{err: err}
+}
+
+// IsUnavailable reports whether err wraps a downstream outage.
+func IsUnavailable(err error) bool {
+	var target unavailableError
+	return errors.As(err, &target)
+}
+
+type producerPanicError struct{ error }

@@ -83,6 +83,7 @@ type BatchProcessor[M any, D any] struct {
 	opts      BatchProcessorOptions
 	callbacks sync.WaitGroup
 	runMu     sync.Mutex
+	breaker   *circuitBreaker
 }
 
 // NewBatchProcessor builds a BatchProcessor for store and fn.
@@ -104,6 +105,11 @@ func NewBatchProcessor[M any, D any](store *Store[M, D], fn BatchProcessFunc[M, 
 		return nil, boxErrorf("ClaimBatchSize must be nonnegative; zero selects the default")
 	}
 
+	breakerOpts, err := normalizeCircuitBreakerOptions(opts.CircuitBreaker)
+	if err != nil {
+		return nil, err
+	}
+	opts.CircuitBreaker = breakerOpts
 	processor := &BatchProcessor[M, D]{
 		store: store,
 		fn:    fn,
@@ -116,6 +122,9 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 	if len(work) == 0 {
 		return nil
 	}
+	// Registered before callback cleanup so occupancy is released only after
+	// all settlement and the deferred callback join have completed.
+	defer p.breaker.finishTrial(work[0].permit)
 
 	messages := make([]Message[M, D], len(work))
 	for i, record := range work {
@@ -166,7 +175,7 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 		defer close(callbackReturned)
 		// Commit to invoking the callback only after the final cancellation
 		// and lease check. After sending true, always call it, even if canceled.
-		if ctxErr(processCtx) != nil || p.resultWaitDuration(work) <= 0 {
+		if ctxErr(processCtx) != nil || p.resultWaitDuration(work) <= 0 || !p.breaker.start(work[0].permit) {
 			invoked <- false
 			return
 		}
@@ -291,7 +300,7 @@ func (p *BatchProcessor[M, D]) settleBatchResult(ctx context.Context, result Bat
 	delete(pending, result.ID)
 	settlementCtx, cancel := p.batchSettlementContext(ctx)
 	defer cancel()
-	return p.settleOne(settlementCtx, work, started, result.Err)
+	return p.settleOne(settlementCtx, work, started, result.Err, ctxErr(ctx) == nil)
 }
 
 // failPendingBatchResults retries every claimed record that never produced a
@@ -313,7 +322,7 @@ func (p *BatchProcessor[M, D]) failPendingBatchResults(ctx context.Context, pend
 	var settlementErrors []error
 	for id, record := range pending {
 		delete(pending, id)
-		if err := p.settleOne(settlementCtx, record, started, processErr); err != nil {
+		if err := p.settleOne(settlementCtx, record, started, processErr, ctxErr(ctx) == nil); err != nil {
 			settlementErrors = append(settlementErrors, err)
 		}
 	}
@@ -330,12 +339,38 @@ func (p *BatchProcessor[M, D]) batchSettlementContext(ctx context.Context) (cont
 	return context.WithTimeout(context.WithoutCancel(ctx), p.opts.SettlementTimeout)
 }
 
-func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord[M, D], started time.Time, processErr error) error {
+func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord[M, D], started time.Time, processErr error, observe bool) error {
 	ctx = ContextForMessage(ctx, work.Message.ID)
 	delivery := ctx.Value(messageTracesKey{}).(messageTraces)[work.Message.ID]
 	span := delivery.span
 	if processErr != nil {
 		span.RecordError(processErr)
+		// Shutdown suppresses circuit observations, not settlement of known
+		// outages. Unmarked context errors can be shutdown itself; an explicitly
+		// marked publish deadline is still a known delivery outcome.
+		canClassify := observe || IsUnavailable(processErr) ||
+			(!errors.Is(processErr, context.Canceled) && !errors.Is(processErr, context.DeadlineExceeded))
+		unavailable := canClassify && p.breaker.unavailable(processErr)
+		if observe && unavailable {
+			p.breaker.report(work.permit, false, unavailable)
+		}
+		if unavailable {
+			released, err := p.store.releaseClaimedAt(ctx, []claimedRecord[M, D]{work}, p.store.runtime.Now().Add(p.breaker.deferralDelay()))
+			if err != nil {
+				span.RecordError(err)
+				delivery.end("error", p.store.runtime.Now())
+				return markSettlementError(err)
+			}
+			outcome := ""
+			if released > 0 {
+				outcome = "deferred"
+				p.store.obs.RecordCircuitDeferred(ctx, "unavailable")
+				p.store.obs.RecordProcessDeferred(ctx, positiveDuration(p.store.runtime.Now().Sub(started)))
+			}
+			span.AddEvent("producer_unavailable")
+			delivery.end(outcome, p.store.runtime.Now())
+			return nil
+		}
 		result, failErr := p.store.failProcessing(ctx, work.Message.ID, work.LeaseToken, processErr, p.opts.RetryBaseDelay, p.opts.RetryMaxDelay)
 		if failErr != nil {
 			span.RecordError(failErr)
@@ -343,6 +378,9 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 			return markSettlementError(boxErrorf("settle message %s: %w", work.Message.ID, failErr))
 		}
 		p.finishProcessing(ctx, delivery, started, processErr, result)
+		if observe {
+			p.breaker.report(work.permit, false, false)
+		}
 		return nil
 	}
 
@@ -356,6 +394,12 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 	result := failProcessingResult{}
 	if acknowledged {
 		result.outcome = metricOutcomeSuccess
+		if observe {
+			p.breaker.report(work.permit, true, false)
+		}
+	}
+	if !acknowledged && observe {
+		p.breaker.report(work.permit, false, false)
 	}
 	p.finishProcessing(ctx, delivery, started, nil, result)
 	return nil
@@ -382,56 +426,83 @@ func (p *BatchProcessor[M, D]) finishProcessing(ctx context.Context, delivery *m
 	delivery.end(result.outcome, finished)
 }
 
-func (p *BatchProcessor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan struct{}, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
+func (p *BatchProcessor[M, D]) dispatchLoop(ctx context.Context, notifyCh <-chan struct{}, workCh chan []claimedRecord[M, D], workerSlots chan struct{}) error {
 	ticker := p.store.runtime.NewTicker(p.opts.PollInterval)
 	defer ticker.Stop()
-
 	for {
+		state, changed := p.breaker.signals()
+		if state == circuitOpen {
+			if err := p.drainQueuedWork(ctx, workCh, workerSlots); err != nil {
+				return err
+			}
+			if err := p.breaker.wait(ctx); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := p.dispatchAvailable(ctx, workCh, workerSlots); err != nil {
 			return err
 		}
-
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.Chan():
 		case <-notifyCh:
+		case <-changed:
 		}
 	}
 }
 func (p *BatchProcessor[M, D]) dispatchAvailable(ctx context.Context, workCh chan<- []claimedRecord[M, D], workerSlots chan struct{}) error {
 	for {
+		state, changed := p.breaker.signals()
+		if state == circuitOpen {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-changed:
+			return nil
 		case <-workerSlots:
 		}
-
-		claimedAt := p.store.runtime.Now().UTC()
-		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithLimits(ctx, claimedAt, p.opts.ClaimBatchSize, p.opts.ClaimMaxBytes, p.opts.LeaseDuration, p.opts.MaxAttempts)
-		if err != nil {
-			workerSlots <- struct{}{}
-			return err
-		}
-		if len(claimed) == 0 {
+		permit, allowed := p.breaker.admit()
+		if !allowed {
 			workerSlots <- struct{}{}
 			return nil
 		}
-		if err := ctxErr(ctx); err != nil {
+		batchSize := p.opts.ClaimBatchSize
+		if permit.trial {
+			batchSize = 1
+		}
+		claimed, effectiveBatchSize, err := p.store.claimReadyBatchWithLimits(ctx, p.store.runtime.Now().UTC(), batchSize, p.opts.ClaimMaxBytes, p.opts.LeaseDuration, p.opts.MaxAttempts)
+		if err != nil || len(claimed) == 0 {
+			p.breaker.empty(permit)
+			workerSlots <- struct{}{}
+			return err
+		}
+		for i := range claimed {
+			claimed[i].permit = permit
+		}
+		if ctxErr(ctx) != nil || !p.breaker.start(permit) {
+			p.breaker.empty(permit)
 			workerSlots <- struct{}{}
 			return p.releaseClaimedBatch(ctx, claimed)
 		}
-
 		p.store.obs.WorkQueuedBatch(len(claimed))
 		select {
 		case <-ctx.Done():
 			p.store.obs.WorkDequeuedBatch(len(claimed))
 			workerSlots <- struct{}{}
+			p.breaker.empty(permit)
+			return p.releaseClaimedBatch(ctx, claimed)
+		case <-changed:
+			p.store.obs.WorkDequeuedBatch(len(claimed))
+			workerSlots <- struct{}{}
+			p.breaker.empty(permit)
 			return p.releaseClaimedBatch(ctx, claimed)
 		case workCh <- claimed:
 		}
-
-		if len(claimed) < effectiveBatchSize {
+		if permit.trial || len(claimed) < effectiveBatchSize {
 			return nil
 		}
 	}
@@ -441,9 +512,15 @@ func (p *BatchProcessor[M, D]) releaseClaimedBatch(ctx context.Context, work []c
 		return nil
 	}
 
+	defer p.breaker.releaseUnstarted(work[0].permit)
 	settlementCtx, cancel := p.batchSettlementContext(ctx)
 	defer cancel()
-	_, err := p.store.releaseClaimed(settlementCtx, work)
+	released, err := p.store.releaseClaimed(settlementCtx, work)
+	if p.breaker != nil {
+		for range released {
+			p.store.obs.RecordCircuitDeferred(settlementCtx, "unstarted")
+		}
+	}
 	return markSettlementError(err)
 }
 func (p *BatchProcessor[M, D]) releaseQueuedBatch(ctx context.Context, work []claimedRecord[M, D]) error {
@@ -479,6 +556,9 @@ func (p *BatchProcessor[M, D]) workerLoop(ctx context.Context, workCh <-chan []c
 func (p *BatchProcessor[M, D]) processWorkerBatch(ctx context.Context, work []claimedRecord[M, D]) error {
 	p.store.obs.WorkStartedBatch(len(work))
 	defer p.store.obs.WorkFinished()
+	if len(work) > 0 && !p.breaker.start(work[0].permit) {
+		return p.releaseClaimedBatch(ctx, work)
+	}
 	return p.processBatch(ctx, work)
 }
 func (p *BatchProcessor[M, D]) drainQueuedWork(ctx context.Context, workCh <-chan []claimedRecord[M, D], workerSlots chan struct{}) error {
@@ -508,6 +588,8 @@ func (p *BatchProcessor[M, D]) Run(ctx context.Context) error {
 		return err
 	}
 
+	p.breaker = newCircuitBreaker(p.opts.CircuitBreaker, p.store.runtime, p.store.obs)
+	defer p.breaker.close()
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

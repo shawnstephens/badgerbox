@@ -83,6 +83,12 @@ Callbacks must return when their context is canceled. `Run` joins callback invoc
 
 Workers retain their concurrency slots until synchronous callbacks return, including cleanup after cancellation or lease expiry. Downstream clients must separately bound any asynchronous work that outlives those callbacks.
 
+## Producer circuit breaker
+
+Set `ProcessorOptions.CircuitBreaker` to suspend claims and dispatcher ready scans during a producer outage. The same options apply to batch processors and runner queues. Durable enqueueing continues subject to configured admission limits; `golang.org/x/time/rate` paces a single recovery delivery at a time.
+
+The library is opt-in and the demo enables it by default. Recovery probes wait 4–5 seconds after outages and 0.8–1 second after message-specific trial failures; only successful delivery closes the circuit. See [Circuit breaker configuration and flow diagram](docs/CIRCUIT_BREAKER.md) for generic/Kafka examples, defaults, lease behavior, metrics, and demo flags.
+
 ## Owning the lifecycle
 
 For several queues in one database, use `runner.Open`, generic `runner.Register`, optional `RegisterDelivery`, and `Start`. Registration requires unique nonempty namespaces. Each registered queue retains its own typed payload, destination, codecs, and processor settings.
@@ -146,7 +152,7 @@ GOWORK=off go run . producer --logging-producer \
   --otel-protocol grpc --otel-endpoint localhost:34317 --otel-insecure
 ```
 
-TLS is the exporter default. Plaintext is explicit for local collectors. `--help` lists Badger memory, batching, retry, and listener settings. Demo retry timing is intentionally faster than the core defaults.
+TLS is the exporter default. Plaintext is explicit for local collectors. `--help` lists Badger memory, batching, retry, and listener settings. Demo retry timing is intentionally faster than the core defaults. During Kafka outages, `event=circuit_transition` reports claim suspension and jittered 4–5 second recovery probes; successful recovery resumes draining. Kafka record deadlines default to 1s inside the 2s publish timeout so underlying errors can reach classification. Use `--circuit-breaker=false` to restore ordinary retries.
 
 Run a finite disk-backed benchmark with delivery verification and a JSON report:
 

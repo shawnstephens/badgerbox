@@ -33,7 +33,7 @@ func (c *reloadBatchClient) Close() error {
 }
 
 func TestBatchReloadOnEveryFailureExit(t *testing.T) {
-	failure := errors.New("publish failed")
+	failure := kgo.ErrRecordTimeout
 	reloadFailure := errors.New("state unreadable")
 	for _, mode := range []string{"timeout", "immediate", "partial immediate", "callback", "partial timeout", "shutdown", "unchanged", "reload failure", "success"} {
 		t.Run(mode, func(t *testing.T) {
@@ -203,5 +203,20 @@ func TestBatchForwardingHonorsCancellation(t *testing.T) {
 	err := fn(t.Context(), []badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{{ID: 1}}, make(chan badgerbox.BatchProcessResult))
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
+	}
+}
+
+func TestBatchClassifiesLivePublishTimeout(t *testing.T) {
+	publisher := NewReloadingPublisher("state.json", []string{"old:9092"}, "topic", nil)
+	publisher.readState = func(string) (State, error) { return State{Brokers: []string{"old:9092"}}, nil }
+	publisher.client = &reloadBatchClient{deliver: func(ctx context.Context, _ []badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination], _ chan<- badgerbox.BatchProcessResult) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	fn := NewBatchProcessFunc(publisher, time.Millisecond, nil)
+	result := make(chan badgerbox.BatchProcessResult, 1)
+	err := fn(t.Context(), []badgerbox.Message[kafka.KafkaMessage, kafka.KafkaDestination]{{}}, result)
+	if !badgerbox.IsUnavailable(err) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout classification: %v", err)
 	}
 }

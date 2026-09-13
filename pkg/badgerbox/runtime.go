@@ -16,6 +16,14 @@ type Runtime interface {
 	NewLeaseToken() (string, error)
 }
 
+// MonotonicRuntime optionally separates elapsed time from durable wall timestamps.
+// MonotonicNow must advance with Sleep and retain a monotonic clock reading in
+// production. Runtimes without it retain the legacy Now-based breaker timing.
+type MonotonicRuntime interface {
+	Runtime
+	MonotonicNow() time.Time
+}
+
 type Ticker interface {
 	Chan() <-chan time.Time
 	Stop()
@@ -26,6 +34,8 @@ type SystemRuntime struct{}
 func (SystemRuntime) Now() time.Time {
 	return time.Now().UTC()
 }
+
+func (SystemRuntime) MonotonicNow() time.Time { return time.Now() }
 
 func (SystemRuntime) Sleep(ctx context.Context, delay time.Duration) error {
 	if ctx == nil {
