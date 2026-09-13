@@ -99,6 +99,7 @@ func TestCircuitJitterAndFixedDefaults(t *testing.T) {
 			t.Fatal("trial denied")
 		}
 		b.report(permit, false, true)
+		b.finishTrial(permit)
 		if delay := b.reservation.DelayFrom(b.now()); delay != want || b.cooldown != 5*time.Second || b.deferralDelay() != 4*time.Second {
 			t.Fatalf("delay=%v nominal=%v deferral=%v", delay, b.cooldown, b.deferralDelay())
 		}
@@ -222,6 +223,7 @@ func TestCircuitPoisonMessagesUseShortTrials(t *testing.T) {
 	}
 	permit, _ = b.admit()
 	b.report(permit, false, true) // Accumulate outage backoff before bad messages.
+	b.finishTrial(permit)
 	queued := make(chan []claimedRecord[testPayload, testDestination], 1)
 	slots := make(chan struct{}, 1)
 	slots <- struct{}{}

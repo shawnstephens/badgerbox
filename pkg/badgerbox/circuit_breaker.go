@@ -68,6 +68,7 @@ const (
 type circuitPermit struct {
 	generation uint64
 	trial      bool
+	trialID    uint64
 }
 
 type circuitBreaker struct {
@@ -83,7 +84,9 @@ type circuitBreaker struct {
 	cooldown    time.Duration
 	limiter     *rate.Limiter
 	reservation *rate.Reservation
-	trial       bool
+	// Trial ownership survives state/generation changes until invocation cleanup.
+	trialID     uint64
+	nextTrialID uint64
 	changed     chan struct{}
 	openedAt    time.Time
 }
@@ -154,7 +157,6 @@ func (b *circuitBreaker) openLocked(nominal time.Duration, reason string) func()
 		b.reservation.CancelAt(now)
 	}
 	b.generation++
-	b.trial = false
 	b.openedAt = now
 	delay := b.sampleDelay(nominal)
 	b.limiter = rate.NewLimiter(rate.Every(delay), 1)
@@ -220,11 +222,13 @@ func (b *circuitBreaker) admit() (circuitPermit, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	p := circuitPermit{generation: b.generation, trial: b.state == circuitHalfOpen}
-	if b.state == circuitOpen || b.trial {
+	if b.state == circuitOpen || (p.trial && b.trialID != 0) {
 		return p, false
 	}
 	if p.trial {
-		b.trial = true
+		b.nextTrialID++
+		b.trialID = b.nextTrialID
+		p.trialID = b.trialID
 		return p, true
 	}
 	return p, b.limiter.AllowN(b.now(), 1)
@@ -236,7 +240,7 @@ func (b *circuitBreaker) start(p circuitPermit) bool {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return p.generation == b.generation && b.state != circuitOpen
+	return p.generation == b.generation && b.state != circuitOpen && (!p.trial || p.trialID == b.trialID)
 }
 
 func (b *circuitBreaker) empty(p circuitPermit) {
@@ -244,6 +248,12 @@ func (b *circuitBreaker) empty(p circuitPermit) {
 }
 
 func (b *circuitBreaker) releaseUnstarted(p circuitPermit) {
+	b.finishTrial(p)
+}
+
+// finishTrial runs after settlement and joining the producer invocation. A prior
+// generation can release its own occupancy without releasing a newer trial.
+func (b *circuitBreaker) finishTrial(p circuitPermit) {
 	b.clearTrial(p, true)
 }
 
@@ -253,8 +263,8 @@ func (b *circuitBreaker) clearTrial(p circuitPermit, wake bool) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if p.generation == b.generation && b.trial {
-		b.trial = false
+	if p.trialID != 0 && p.trialID == b.trialID {
+		b.trialID = 0
 		if wake {
 			b.signalLocked()
 		}
@@ -277,7 +287,7 @@ func (b *circuitBreaker) report(p circuitPermit, success, unavailable bool) {
 		return
 	}
 	b.mu.Lock()
-	if p.generation != b.generation {
+	if p.generation != b.generation || (p.trial && p.trialID != b.trialID) {
 		b.mu.Unlock()
 		return
 	}
@@ -295,7 +305,6 @@ func (b *circuitBreaker) report(p circuitPermit, success, unavailable bool) {
 		if success {
 			b.failures = 0
 			b.cooldown = b.opts.InitialCooldown
-			b.trial = false
 			b.generation++
 			b.limiter = rate.NewLimiter(rate.Inf, 1)
 			notify = b.changeLocked(circuitClosed)

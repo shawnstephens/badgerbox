@@ -122,6 +122,9 @@ func (p *BatchProcessor[M, D]) processBatch(ctx context.Context, work []claimedR
 	if len(work) == 0 {
 		return nil
 	}
+	// Registered before callback cleanup so occupancy is released only after
+	// all settlement and the deferred callback join have completed.
+	defer p.breaker.finishTrial(work[0].permit)
 
 	messages := make([]Message[M, D], len(work))
 	for i, record := range work {

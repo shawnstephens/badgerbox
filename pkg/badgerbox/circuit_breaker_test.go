@@ -99,6 +99,7 @@ func TestCircuitRecoveryReservationsAndGenerations(t *testing.T) {
 			t.Fatal("overlapping trial")
 		}
 		b.report(trial, false, true)
+		b.finishTrial(trial)
 		if b.cooldown != want || b.reservation.DelayFrom(r.Now()) != want {
 			t.Fatalf("cooldown=%v want=%v", b.cooldown, want)
 		}
@@ -113,6 +114,7 @@ func TestCircuitRecoveryReservationsAndGenerations(t *testing.T) {
 		t.Fatal("empty claim leaked trial")
 	}
 	b.report(trial, false, false)
+	b.finishTrial(trial)
 	if b.cooldown != 4*time.Second {
 		t.Fatal("message error changed cooldown")
 	}
