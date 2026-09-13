@@ -271,7 +271,7 @@ func (b *circuitBreaker) report(p circuitPermit, success, unavailable bool) {
 
 func (b *circuitBreaker) unavailable(err error) bool {
 	var panicErr producerPanicError
-	return b != nil && err != nil && !errors.As(err, &panicErr) && !IsPermanent(err) && b.opts.IsUnavailable(err)
+	return b != nil && err != nil && !errors.Is(err, context.Canceled) && !errors.As(err, &panicErr) && !IsPermanent(err) && b.opts.IsUnavailable(err)
 }
 
 func (b *circuitBreaker) close() {

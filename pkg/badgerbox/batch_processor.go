@@ -342,7 +342,12 @@ func (p *BatchProcessor[M, D]) settleOne(ctx context.Context, work claimedRecord
 	span := delivery.span
 	if processErr != nil {
 		span.RecordError(processErr)
-		unavailable := observe && p.breaker.unavailable(processErr)
+		// Shutdown suppresses circuit observations, not settlement of known
+		// outages. Unmarked context errors can be shutdown itself; an explicitly
+		// marked publish deadline is still a known delivery outcome.
+		canClassify := observe || IsUnavailable(processErr) ||
+			(!errors.Is(processErr, context.Canceled) && !errors.Is(processErr, context.DeadlineExceeded))
+		unavailable := canClassify && p.breaker.unavailable(processErr)
 		if observe {
 			p.breaker.report(work.permit, false, unavailable)
 		}

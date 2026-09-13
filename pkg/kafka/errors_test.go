@@ -34,3 +34,25 @@ func TestClassifyProducerError(t *testing.T) {
 		t.Fatal("double-wrapped unavailable")
 	}
 }
+
+func TestClassifyProducerErrorCompoundCauses(t *testing.T) {
+	for _, cause := range []error{kerr.UnknownTopicOrPartition, kerr.UnknownTopicID, kerr.InvalidTopicException, kerr.TopicAuthorizationFailed, kerr.MessageTooLarge, kerr.RecordListTooLarge, kerr.InvalidRecord, kerr.UnsupportedForMessageFormat} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			for _, err := range []error{
+				fmt.Errorf("%w, last err: %w", kgo.ErrRecordTimeout, cause),
+				fmt.Errorf("publish: %w", errors.Join(context.DeadlineExceeded, cause)),
+			} {
+				if got := ClassifyProducerError(err); got != err || badgerbox.IsUnavailable(got) {
+					t.Fatalf("message error classified as outage: %v", got)
+				}
+			}
+		})
+	}
+	for _, cause := range []error{kerr.RequestTimedOut, kerr.NetworkException, kerr.BrokerNotAvailable, io.EOF} {
+		err := fmt.Errorf("%w, last err: %w", kgo.ErrRecordTimeout, cause)
+		got := ClassifyProducerError(err)
+		if !badgerbox.IsUnavailable(got) || !errors.Is(got, cause) || !errors.Is(got, kgo.ErrRecordTimeout) {
+			t.Fatalf("lost transport outage or error chain: %v", got)
+		}
+	}
+}
